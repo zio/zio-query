@@ -1,4 +1,4 @@
-package zquery
+package zio.zquery
 
 /**
  * A `CompletedRequestMap` is a universally quantified mapping from requests

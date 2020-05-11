@@ -1,4 +1,4 @@
-package zquery
+package zio.zquery
 
 /**
  * A `Described[A]` is a value of type `A` along with a string description of

@@ -1,4 +1,4 @@
-package zquery
+package zio.zquery
 
 import zio.Ref
 

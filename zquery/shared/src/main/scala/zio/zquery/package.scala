@@ -1,3 +1,5 @@
+package zio
+
 package object zquery {
 
   type RQuery[-R, +A]  = ZQuery[R, Throwable, A]

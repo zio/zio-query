@@ -1,4 +1,4 @@
-package zquery
+package zio.zquery
 
 import zio.{ NeedsEnv, ZIO }
 
@@ -131,7 +131,7 @@ object DataSource {
     new DataSource[Any, A] {
       val identifier: String = name
       def run(requests: Iterable[A]): ZIO[Any, Nothing, CompletedRequestMap] =
-        ZIO.succeed(requests.foldLeft(CompletedRequestMap.empty)((map, k) => map.insert(k)(Right(f(k)))))
+        ZIO.succeedNow(requests.foldLeft(CompletedRequestMap.empty)((map, k) => map.insert(k)(Right(f(k)))))
     }
 
   /**
@@ -143,7 +143,7 @@ object DataSource {
   def fromFunctionBatched[A, B](
     name: String
   )(f: Iterable[A] => Iterable[B])(implicit ev: A <:< Request[Nothing, B]): DataSource[Any, A] =
-    fromFunctionBatchedM(name)(f andThen (ZIO.succeed(_)))
+    fromFunctionBatchedM(name)(as => ZIO.succeedNow(f(as)))
 
   /**
    * Constructs a data source from an effectual function that takes a list of
@@ -176,7 +176,7 @@ object DataSource {
   def fromFunctionBatchedOption[A, B](
     name: String
   )(f: Iterable[A] => Iterable[Option[B]])(implicit ev: A <:< Request[Nothing, B]): DataSource[Any, A] =
-    fromFunctionBatchedOptionM(name)(f andThen (ZIO.succeed(_)))
+    fromFunctionBatchedOptionM(name)(as => ZIO.succeedNow(f(as)))
 
   /**
    * Constructs a data source from an effectual function that takes a list of
@@ -212,7 +212,7 @@ object DataSource {
   )(f: Iterable[A] => Iterable[B], g: B => Request[Nothing, B])(
     implicit ev: A <:< Request[Nothing, B]
   ): DataSource[Any, A] =
-    fromFunctionBatchedWithM(name)(f andThen (ZIO.succeed(_)), g)
+    fromFunctionBatchedWithM(name)(as => ZIO.succeedNow(f(as)), g)
 
   /**
    * Constructs a data source from an effectual function that takes a list of
@@ -249,7 +249,7 @@ object DataSource {
       val identifier: String = name
       def run(requests: Iterable[A]): ZIO[R, Nothing, CompletedRequestMap] =
         ZIO
-          .foreachPar(requests)(k => ZIO.succeed(k).zip(f(k).either))
+          .foreachPar(requests)(a => f(a).either.map((a, _)))
           .map(_.foldLeft(CompletedRequestMap.empty) { case (map, (k, v)) => map.insert(k)(v) })
     }
 
@@ -260,7 +260,7 @@ object DataSource {
   def fromFunctionOption[A, B](
     name: String
   )(f: A => Option[B])(implicit ev: A <:< Request[Nothing, B]): DataSource[Any, A] =
-    fromFunctionOptionM(name)(f andThen (ZIO.succeed(_)))
+    fromFunctionOptionM(name)(a => ZIO.succeedNow(f(a)))
 
   /**
    * Constructs a data source from an effectual function that may not provide
@@ -273,7 +273,7 @@ object DataSource {
       val identifier: String = name
       def run(requests: Iterable[A]): ZIO[R, Nothing, CompletedRequestMap] =
         ZIO
-          .foreachPar(requests)(k => ZIO.succeed(k).zip(f(k).either))
+          .foreachPar(requests)(a => f(a).either.map((a, _)))
           .map(_.foldLeft(CompletedRequestMap.empty) {
             case (map, (k, v)) => map.insertOption(k)(v)
           })
