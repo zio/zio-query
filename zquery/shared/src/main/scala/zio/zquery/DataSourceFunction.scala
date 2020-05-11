@@ -1,4 +1,4 @@
-package zquery
+package zio.zquery
 
 /**
  * A `DataSourceFunction[R, R1]` is a universally quantified function from

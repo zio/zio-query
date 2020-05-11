@@ -1,7 +1,7 @@
-package zquery
+package zio.zquery
 
+import zio.zquery.Result._
 import zio.{ CanFail, Cause, NeedsEnv }
-import zquery.Result._
 
 /**
  * A `Result[R, E, A]` is the result of running one step of a `ZQuery`. A

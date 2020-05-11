@@ -1,4 +1,4 @@
-package zquery
+package zio.zquery
 
 import zio._
 import zio.clock._
@@ -105,9 +105,9 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, Cache), Nothin
   final def flatMap[R1 <: R, E1 >: E, B](f: A => ZQuery[R1, E1, B]): ZQuery[R1, E1, B] =
     ZQuery {
       step.flatMap {
-        case Result.Blocked(br, c) => ZIO.succeed(Result.blocked(br, c.flatMap(f)))
+        case Result.Blocked(br, c) => ZIO.succeedNow(Result.blocked(br, c.flatMap(f)))
         case Result.Done(a)        => f(a).step
-        case Result.Fail(e)        => ZIO.succeed(Result.fail(e))
+        case Result.Fail(e)        => ZIO.succeedNow(Result.fail(e))
       }
     }
 
@@ -139,7 +139,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, Cache), Nothin
     ZQuery {
       step.foldCauseM(
         failure(_).step, {
-          case Result.Blocked(br, c) => ZIO.succeed(Result.blocked(br, c.foldCauseM(failure, success)))
+          case Result.Blocked(br, c) => ZIO.succeedNow(Result.blocked(br, c.foldCauseM(failure, success)))
           case Result.Done(a)        => success(a).step
           case Result.Fail(e)        => failure(e).step
         }
@@ -204,7 +204,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, Cache), Nothin
   )(implicit ev1: R1 <:< R, ev2: NeedsEnv[R]): ZQuery[R0, E1, A] =
     ZQuery {
       layer.value.build.provideSome[(R0, Cache)](_._1).run.use {
-        case Exit.Failure(e) => ZIO.succeed(Result.fail(e))
+        case Exit.Failure(e) => ZIO.succeedNow(Result.fail(e))
         case Exit.Success(r) => self.provide(Described(r, layer.description)).step
       }
     }
@@ -236,7 +236,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, Cache), Nothin
   final def runCache(cache: Cache): ZIO[R, E, A] =
     step.provideSome[R]((_, cache)).flatMap {
       case Result.Blocked(br, c) => br.run *> c.runCache(cache)
-      case Result.Done(a)        => ZIO.succeed(a)
+      case Result.Done(a)        => ZIO.succeedNow(a)
       case Result.Fail(e)        => ZIO.halt(e)
     }
 
@@ -419,7 +419,7 @@ object ZQuery {
                   ZQuery {
                     ref.get.flatMap {
                       case None    => ZIO.die(QueryFailure(dataSource, request))
-                      case Some(b) => ZIO.succeed(Result.fromEither(b))
+                      case Some(b) => ZIO.succeedNow(Result.fromEither(b))
                     }
                   }
                 ),
@@ -432,7 +432,7 @@ object ZQuery {
                       ZQuery {
                         ref.get.flatMap {
                           case None    => ZIO.die(QueryFailure(dataSource, request))
-                          case Some(b) => ZIO.succeed(Result.fromEither(b))
+                          case Some(b) => ZIO.succeedNow(Result.fromEither(b))
                         }
                       }
                     )
