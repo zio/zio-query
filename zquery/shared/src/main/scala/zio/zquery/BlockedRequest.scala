@@ -27,7 +27,7 @@ private[zquery] object BlockedRequest {
       type Failure = E
       type Success = B
 
-      val request = request0
+      val request = ev(request0)
 
       val result = result0
     }
