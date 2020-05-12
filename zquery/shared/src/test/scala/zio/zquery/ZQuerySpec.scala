@@ -120,7 +120,7 @@ object ZQuerySpec extends ZIOBaseSpec {
   final case class GetNameById(id: Int) extends UserRequest[String]
 
   val UserRequestDataSource: DataSource[Console, UserRequest[Any]] =
-    DataSource.Batched[Console, UserRequest[Any]]("UserRequestDataSource") { requests =>
+    DataSource.Batched.make[Console, UserRequest[Any]]("UserRequestDataSource") { requests =>
       ZIO.when(requests.toSet.size != requests.size)(ZIO.dieMessage("Duplicate requests)")) *>
         console.putStrLn("Running query") *>
         ZIO.succeed {

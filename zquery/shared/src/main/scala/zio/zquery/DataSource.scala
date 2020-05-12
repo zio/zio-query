@@ -134,24 +134,13 @@ object DataSource {
      * Constructs a data source from a function taking a collection of requests
      * and returning a `CompletedRequestMap`.
      */
-    def apply[R, A](name: String)(f: Iterable[A] => ZIO[R, Nothing, CompletedRequestMap]): DataSource[R, A] =
+    def make[R, A](name: String)(f: Iterable[A] => ZIO[R, Nothing, CompletedRequestMap]): DataSource[R, A] =
       new DataSource.Batched[R, A] {
         val identifier: String = name
         def run(requests: Iterable[A]): ZIO[R, Nothing, CompletedRequestMap] =
           f(requests)
       }
   }
-
-  /**
-   * Constructs a data source from a function taking a collection of requests
-   * and returning a `CompletedRequestMap`.
-   */
-  def apply[R, A](name: String)(f: Iterable[Iterable[A]] => ZIO[R, Nothing, CompletedRequestMap]): DataSource[R, A] =
-    new DataSource[R, A] {
-      val identifier: String = name
-      def runAll(requests: Iterable[Iterable[A]]): ZIO[R, Nothing, CompletedRequestMap] =
-        f(requests)
-    }
 
   /**
    * Constructs a data source from a pure function.
@@ -308,5 +297,16 @@ object DataSource {
           .map(_.foldLeft(CompletedRequestMap.empty) {
             case (map, (k, v)) => map.insertOption(k)(v)
           })
+    }
+
+  /**
+   * Constructs a data source from a function taking a collection of requests
+   * and returning a `CompletedRequestMap`.
+   */
+  def make[R, A](name: String)(f: Iterable[Iterable[A]] => ZIO[R, Nothing, CompletedRequestMap]): DataSource[R, A] =
+    new DataSource[R, A] {
+      val identifier: String = name
+      def runAll(requests: Iterable[Iterable[A]]): ZIO[R, Nothing, CompletedRequestMap] =
+        f(requests)
     }
 }
