@@ -197,7 +197,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, Cache), Nothin
   final def provideCustomLayer[E1 >: E, R1 <: Has[_]](
     layer: Described[ZLayer[ZEnv, E1, R1]]
   )(implicit ev: ZEnv with R1 <:< R, tagged: Tagged[R1]): ZQuery[ZEnv, E1, A] =
-    provideSomeLayer[ZEnv](layer)
+    provideSomeLayer(layer)
 
   /**
    * Provides a layer to this query, which translates it to another level.
@@ -223,7 +223,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, Cache), Nothin
    * specified layer and leaving the remainder `R0`.
    */
   final def provideSomeLayer[R0 <: Has[_]]: ZQuery.ProvideSomeLayer[R0, R, E, A] =
-    new ZQuery.ProvideSomeLayer[R0, R, E, A](self)
+    new ZQuery.ProvideSomeLayer(self)
 
   /**
    * Returns an effect that models executing this query.
@@ -424,32 +424,7 @@ object ZQuery {
   def fromRequest[R, E, A, B](
     request: A
   )(dataSource: DataSource[R, A])(implicit ev: A <:< Request[E, B]): ZQuery[R, E, B] =
-    ZQuery {
-      ZIO.accessM[(Any, Cache)] {
-        case (_, cache) =>
-          cache
-            .lookup(request)
-            .foldM(
-              _ =>
-                for {
-                  ref <- Ref.make(Option.empty[Either[E, B]])
-                  _   <- cache.insert(request, ref)
-                } yield Result.blocked(
-                  BlockedRequests.single(dataSource, BlockedRequest(request, ref)),
-                  Continue(request, dataSource, ref)
-                ),
-              ref =>
-                ref.get.map {
-                  case Some(b) => Result.fromEither(b)
-                  case None =>
-                    Result.blocked(
-                      BlockedRequests.empty,
-                      Continue(request, dataSource, ref)
-                    )
-                }
-            )
-      }
-    }
+    ZQuery(ZIO.accessM(_._2.getOrElseUpdate(request, dataSource)))
 
   /**
    * Constructs a query from a request and a data source but does not apply
@@ -459,12 +434,12 @@ object ZQuery {
     request: A
   )(dataSource: DataSource[R, A])(implicit ev: A <:< Request[E, B]): ZQuery[R, E, B] =
     ZQuery {
-      for {
-        ref <- Ref.make(Option.empty[Either[E, B]])
-      } yield Result.blocked(
-        BlockedRequests.single(dataSource, BlockedRequest(request, ref)),
-        Continue(request, dataSource, ref)
-      )
+      Ref.make(Option.empty[Either[E, B]]).map { ref =>
+        Result.blocked(
+          BlockedRequests.single(dataSource, BlockedRequest(request, ref)),
+          Continue(request, dataSource, ref)
+        )
+      }
     }
 
   /**

@@ -95,7 +95,19 @@ object ZQuerySpec extends ZIOBaseSpec {
         testM("trailing flatMap does not prevent pipelining") {
           val query = Cache.put(0, 1) *> Cache.getAll <* Cache.put(1, -1).flatMap(ZQuery.succeed(_))
           assertM(query.run *> Cache.log)(hasSize(equalTo(1)))
-        } @@ after(Cache.clear) @@ nonFlaky
+        } @@ after(Cache.clear) @@ nonFlaky,
+        testM("short circuits on failure") {
+          for {
+            ref    <- Ref.make(true)
+            query  = ZQuery.fail("fail") *> ZQuery.fromEffect(ref.set(false))
+            _      <- query.run.ignore
+            result <- ref.get
+          } yield assert(result)(isTrue)
+        } @@ nonFlaky,
+        testM("does not deduplicate uncached requests") {
+          val query = Cache.getAll *> Cache.put(0, 1) *> Cache.getAll
+          assertM(query.run)(equalTo(Map(0 -> 1)))
+        } @@ nonFlaky
       ).provideCustomLayer(Cache.live),
       testM("stack safety") {
         val effect = (0 to 100000)

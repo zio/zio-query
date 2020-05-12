@@ -110,15 +110,15 @@ private[zquery] object BlockedRequests {
    * in parallel and sequential sets represent requests that must be performed
    * sequentially.
    */
-  private def flatten[R](blockedRequests: BlockedRequests[R]): List[Set[Single[R, _]]] = {
+  private def flatten[R](blockedRequests: BlockedRequests[R]): List[List[Single[R, _]]] = {
 
     @tailrec
     def loop[R](
       blockedRequests: List[BlockedRequests[R]],
-      flattened: List[Set[Single[R, _]]]
-    ): List[Set[Single[R, _]]] = {
+      flattened: List[List[Single[R, _]]]
+    ): List[List[Single[R, _]]] = {
       val (parallel, sequential) =
-        blockedRequests.foldLeft((Set.empty[Single[R, _]], List.empty[BlockedRequests[R]])) {
+        blockedRequests.foldLeft((List.empty[Single[R, _]], List.empty[BlockedRequests[R]])) {
           case ((parallel, sequential), blockedRequest) =>
             val (set, seq) = step(blockedRequest)
             (parallel ++ set, sequential ++ seq)
@@ -136,15 +136,15 @@ private[zquery] object BlockedRequests {
    * set of blocked requests that can be performed in parallel and a list of
    * blocked requests that must be performed sequentially after those requests.
    */
-  private def step[R](c: BlockedRequests[R]): (Set[Single[R, _]], List[BlockedRequests[R]]) = {
+  private def step[R](c: BlockedRequests[R]): (List[Single[R, _]], List[BlockedRequests[R]]) = {
 
     @tailrec
     def loop[R](
       blockedRequests: BlockedRequests[R],
       stack: List[BlockedRequests[R]],
-      parallel: Set[Single[R, _]],
+      parallel: List[Single[R, _]],
       sequential: List[BlockedRequests[R]]
-    ): (Set[Single[R, _]], List[BlockedRequests[R]]) = blockedRequests match {
+    ): (List[Single[R, _]], List[BlockedRequests[R]]) = blockedRequests match {
       case Empty =>
         if (stack.isEmpty) (parallel, sequential) else loop(stack.head, stack.tail, parallel, sequential)
       case Sequential(left, right) =>
@@ -157,21 +157,21 @@ private[zquery] object BlockedRequests {
         }
       case Parallel(left, right) => loop(left, right :: stack, parallel, sequential)
       case o @ Single(_, _) =>
-        if (stack.isEmpty) (parallel ++ Set(o), sequential)
-        else loop(stack.head, stack.tail, parallel ++ Set(o), sequential)
+        if (stack.isEmpty) (parallel ++ List(o), sequential)
+        else loop(stack.head, stack.tail, parallel ++ List(o), sequential)
     }
 
-    loop(c, List.empty, Set.empty[Single[R, _]], List.empty)
+    loop(c, List.empty, List.empty[Single[R, _]], List.empty)
   }
 
-  def pipeline[R](blockedRequests: List[Set[Single[R, _]]]): List[List[Set[Single[R, _]]]] = {
+  def pipeline[R](blockedRequests: List[List[Single[R, _]]]): List[List[List[Single[R, _]]]] = {
 
     @tailrec
     def loop(
-      blockedRequests: List[Set[Single[R, _]]],
-      last: Set[Single[R, _]],
-      acc: List[List[Set[Single[R, _]]]]
-    ): List[List[Set[Single[R, _]]]] =
+      blockedRequests: List[List[Single[R, _]]],
+      last: List[Single[R, _]],
+      acc: List[List[List[Single[R, _]]]]
+    ): List[List[List[Single[R, _]]]] =
       blockedRequests match {
         case h :: t =>
           val lastDataSources    = last.map(_.dataSource)
@@ -192,18 +192,18 @@ private[zquery] object BlockedRequests {
   }
 
   def groupByDataSource[R](
-    requests: List[Set[Single[R, _]]]
-  ): Map[DataSource[R, Any], List[Set[BlockedRequest[Any]]]] =
-    requests.foldRight(Map.empty[DataSource[R, Any], List[Set[BlockedRequest[Any]]]]) { (parallel, map) =>
-      val map1 = map.map { case (k, v) => (k, Set.empty :: v) }
-        .asInstanceOf[Map[DataSource[R, Any], List[Set[BlockedRequest[Any]]]]]
+    requests: List[List[Single[R, _]]]
+  ): Map[DataSource[R, Any], List[List[BlockedRequest[Any]]]] =
+    requests.foldRight(Map.empty[DataSource[R, Any], List[List[BlockedRequest[Any]]]]) { (parallel, map) =>
+      val map1 = map.map { case (k, v) => (k, List.empty :: v) }
+        .asInstanceOf[Map[DataSource[R, Any], List[List[BlockedRequest[Any]]]]]
       parallel.foldLeft(map1) {
         case (map, Single(dataSource, request)) =>
-          val list = map.getOrElse(dataSource.asInstanceOf[DataSource[Any, Any]], List(Set.empty))
-          val updated = (list.head.asInstanceOf[Set[BlockedRequest[Any]]] + request
+          val list = map.getOrElse(dataSource.asInstanceOf[DataSource[Any, Any]], List(List.empty))
+          val updated = (list.head.asInstanceOf[List[BlockedRequest[Any]]] :+ request
             .asInstanceOf[BlockedRequest[Any]]) :: list.tail
           map + (dataSource.asInstanceOf[DataSource[R, Any]] -> updated
-            .asInstanceOf[List[Set[BlockedRequest[Any]]]])
+            .asInstanceOf[List[List[BlockedRequest[Any]]]])
       }
     }
 
