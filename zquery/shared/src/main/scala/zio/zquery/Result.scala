@@ -59,7 +59,7 @@ private[zquery] object Result {
    * Constructs a result that is blocked on the specified requests with the
    * specified continuation.
    */
-  def blocked[R, E, A](blockedRequests: BlockedRequestMap[R], continue: ZQuery[R, E, A]): Result[R, E, A] =
+  def blocked[R, E, A](blockedRequests: BlockedRequests[R], continue: Continue[R, E, A]): Result[R, E, A] =
     Blocked(blockedRequests, continue)
 
   /**
@@ -80,7 +80,7 @@ private[zquery] object Result {
   def fromEither[E, A](either: Either[E, A]): Result[Any, E, A] =
     either.fold(e => Result.fail(Cause.fail(e)), a => Result.done(a))
 
-  final case class Blocked[-R, +E, +A](blockedRequests: BlockedRequestMap[R], continue: ZQuery[R, E, A])
+  final case class Blocked[-R, +E, +A](blockedRequests: BlockedRequests[R], continue: Continue[R, E, A])
       extends Result[R, E, A]
 
   final case class Done[+A](value: A) extends Result[Any, Nothing, A]

@@ -235,7 +235,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, Cache), Nothin
    */
   final def runCache(cache: Cache): ZIO[R, E, A] =
     step.provideSome[R]((_, cache)).flatMap {
-      case Result.Blocked(br, c) => br.run *> c.runCache(cache)
+      case Result.Blocked(br, c) => br.run *> c.run.runCache(cache)
       case Result.Done(a)        => ZIO.succeedNow(a)
       case Result.Fail(e)        => ZIO.halt(e)
     }
@@ -317,7 +317,20 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, Cache), Nothin
    * query sequentially, combining their results with the specified function.
    */
   final def zipWith[R1 <: R, E1 >: E, B, C](that: ZQuery[R1, E1, B])(f: (A, B) => C): ZQuery[R1, E1, C] =
-    flatMap(a => that.map(b => f(a, b)))
+    ZQuery {
+      self.step.zipWith(that.step) {
+        case (Result.Blocked(br1, c1 @ Continue.Done(_)), Result.Blocked(br2, c2)) =>
+          Result.blocked(br1 ++ br2, c1.zipWith(c2)(f))
+        case (Result.Blocked(br1, c1), Result.Blocked(br2, c2)) =>
+          Result.blocked(br1, c1.zipWith(Continue.more(ZQuery(ZIO.succeedNow(Result.blocked(br2, c2)))))(f))
+        case (Result.Blocked(br, c), Result.Done(b)) => Result.blocked(br, c.map(a => f(a, b)))
+        case (Result.Done(a), Result.Blocked(br, c)) => Result.blocked(br, c.map(b => f(a, b)))
+        case (Result.Done(a), Result.Done(b))        => Result.done(f(a, b))
+        case (Result.Fail(e1), Result.Fail(e2))      => Result.fail(Cause.Then(e1, e2))
+        case (Result.Fail(e), _)                     => Result.fail(e)
+        case (_, Result.Fail(e))                     => Result.fail(e)
+      }
+    }
 
   /**
    * Returns a query that models the execution of this query and the specified
@@ -328,7 +341,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, Cache), Nothin
   final def zipWithPar[R1 <: R, E1 >: E, B, C](that: ZQuery[R1, E1, B])(f: (A, B) => C): ZQuery[R1, E1, C] =
     ZQuery {
       self.step.zipWithPar(that.step) {
-        case (Result.Blocked(br1, c1), Result.Blocked(br2, c2)) => Result.blocked(br1 ++ br2, c1.zipWithPar(c2)(f))
+        case (Result.Blocked(br1, c1), Result.Blocked(br2, c2)) => Result.blocked(br1 && br2, c1.zipWithPar(c2)(f))
         case (Result.Blocked(br, c), Result.Done(b))            => Result.blocked(br, c.map(a => f(a, b)))
         case (Result.Done(a), Result.Blocked(br, c))            => Result.blocked(br, c.map(b => f(a, b)))
         case (Result.Done(a), Result.Done(b))                   => Result.done(f(a, b))
@@ -415,11 +428,13 @@ object ZQuery {
                   ref <- Ref.make(Option.empty[Either[E, B]])
                   _   <- cache.insert(request, ref)
                 } yield Result.blocked(
-                  BlockedRequestMap(dataSource, BlockedRequest(request, ref)),
-                  ZQuery {
-                    ref.get.flatMap {
-                      case None    => ZIO.die(QueryFailure(dataSource, request))
-                      case Some(b) => ZIO.succeedNow(Result.fromEither(b))
+                  BlockedRequests.single(dataSource, BlockedRequest(request, ref)),
+                  Continue.done {
+                    ZQuery {
+                      ref.get.flatMap {
+                        case None    => ZIO.die(QueryFailure(dataSource, request))
+                        case Some(b) => ZIO.succeedNow(Result.fromEither(b))
+                      }
                     }
                   }
                 ),
@@ -428,17 +443,42 @@ object ZQuery {
                   case Some(b) => Result.fromEither(b)
                   case None =>
                     Result.blocked(
-                      BlockedRequestMap.empty,
-                      ZQuery {
-                        ref.get.flatMap {
-                          case None    => ZIO.die(QueryFailure(dataSource, request))
-                          case Some(b) => ZIO.succeedNow(Result.fromEither(b))
+                      BlockedRequests.empty,
+                      Continue.done {
+                        ZQuery {
+                          ref.get.flatMap {
+                            case None    => ZIO.die(QueryFailure(dataSource, request))
+                            case Some(b) => ZIO.succeedNow(Result.fromEither(b))
+                          }
                         }
                       }
                     )
                 }
             )
       }
+    }
+
+  /**
+   * Constructs a query from a request and a data source but does not apply
+   * caching to the query.
+   */
+  def fromRequestUncached[R, E, A, B](
+    request: A
+  )(dataSource: DataSource[R, A])(implicit ev: A <:< Request[E, B]): ZQuery[R, E, B] =
+    ZQuery {
+      for {
+        ref <- Ref.make(Option.empty[Either[E, B]])
+      } yield Result.blocked(
+        BlockedRequests.single(dataSource, BlockedRequest(request, ref)),
+        Continue.done {
+          ZQuery {
+            ref.get.flatMap {
+              case None    => ZIO.die(QueryFailure(dataSource, request))
+              case Some(b) => ZIO.succeedNow(Result.fromEither(b))
+            }
+          }
+        }
+      )
     }
 
   /**
