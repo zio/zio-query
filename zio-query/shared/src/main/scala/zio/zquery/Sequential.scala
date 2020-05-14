@@ -1,4 +1,4 @@
-package zio.zquery
+package zio.query
 
 import zio.Chunk
 
@@ -6,7 +6,7 @@ import zio.Chunk
  * A `Sequential[R]` maintains a mapping from data sources to batches of
  * requests from those data sources that must be executed sequentially.
  */
-private[zquery] final class Sequential[-R](
+private[query] final class Sequential[-R](
   private val map: Map[DataSource[Any, Any], Chunk[Chunk[BlockedRequest[Any]]]]
 ) { self =>
 

@@ -1,4 +1,4 @@
-package zio.zquery
+package zio.query
 
 /**
  * A `Request[E, A]` is a request from a data source for a value of type `A`

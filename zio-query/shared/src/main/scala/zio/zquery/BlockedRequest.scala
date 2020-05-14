@@ -1,4 +1,4 @@
-package zio.zquery
+package zio.query
 
 import zio.Ref
 
@@ -9,7 +9,7 @@ import zio.Ref
  * return different result types for different requests while guaranteeing that
  * results will be of the type requested.
  */
-private[zquery] sealed trait BlockedRequest[+A] {
+private[query] sealed trait BlockedRequest[+A] {
   type Failure
   type Success
 
@@ -21,7 +21,7 @@ private[zquery] sealed trait BlockedRequest[+A] {
     s"BlockedRequest($request, $result)"
 }
 
-private[zquery] object BlockedRequest {
+private[query] object BlockedRequest {
 
   def apply[E, A, B](request0: A, result0: Ref[Option[Either[E, B]]])(
     implicit ev: A <:< Request[E, B]

@@ -1,6 +1,6 @@
 ---
 id: about_index
-title:  "About zquery"
+title:  "About zio-query"
 ---
 
 TODO: Tagline

@@ -37,9 +37,9 @@ class Footer extends React.Component {
                         <h5>GitHub</h5>
                         <a
                             className="github-button"
-                            href="https://github.com/zio/zquery"
+                            href="https://github.com/zio/zio-query"
                             data-icon="octicon-star"
-                            data-count-href="/zio/zquery/stargazers"
+                            data-count-href="/zio/zio-query/stargazers"
                             data-show-count="true"
                             data-count-aria-label="# stargazers on GitHub"
                             aria-label="Star this project on GitHub">
@@ -53,8 +53,8 @@ class Footer extends React.Component {
                     <div>
                         <h5>Additional resources</h5>
                         <a
-                            href="/zquery/api/index.html">
-                            Scaladoc of zquery
+                            href="/zio-query/api/index.html">
+                            Scaladoc of zio-query
                         </a>
                     </div>
                 </section>

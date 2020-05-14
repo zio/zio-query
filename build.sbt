@@ -5,7 +5,7 @@ import sbtcrossproject.CrossPlugin.autoImport.crossProject
 inThisBuild(
   List(
     organization := "dev.zio",
-    homepage := Some(url("https://zio.github.io/zquery/")),
+    homepage := Some(url("https://zio.github.io/zio-query/")),
     licenses := List("Apache-2.0" -> url("http://www.apache.org/licenses/LICENSE-2.0")),
     developers := List(
       Developer(
@@ -19,7 +19,7 @@ inThisBuild(
     pgpPublicRing := file("/tmp/public.asc"),
     pgpSecretRing := file("/tmp/secret.asc"),
     scmInfo := Some(
-      ScmInfo(url("https://github.com/zio/zquery/"), "scm:git:git@github.com:zio/zquery.git")
+      ScmInfo(url("https://github.com/zio/zio-query/"), "scm:git:git@github.com:zio/zio-query.git")
     )
   )
 )
@@ -36,15 +36,15 @@ lazy val root = project
     unusedCompileDependenciesFilter -= moduleFilter("org.scala-js", "scalajs-library")
   )
   .aggregate(
-    zqueryJVM,
-    zqueryJS
+    zioQueryJVM,
+    zioQueryJS
   )
 
-lazy val zquery = crossProject(JSPlatform, JVMPlatform)
-  .in(file("zquery"))
-  .settings(stdSettings("zquery"))
+lazy val zioQuery = crossProject(JSPlatform, JVMPlatform)
+  .in(file("zio-query"))
+  .settings(stdSettings("zioQuery"))
   .settings(crossProjectSettings)
-  .settings(buildInfoSettings("zquery"))
+  .settings(buildInfoSettings("zio.query"))
   .settings(
     libraryDependencies ++= Seq(
       "dev.zio" %% "zio"          % zioVersion,
@@ -54,17 +54,17 @@ lazy val zquery = crossProject(JSPlatform, JVMPlatform)
   )
   .settings(testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework"))
 
-lazy val zqueryJS = zquery.js
+lazy val zioQueryJS = zioQuery.js
   .settings(scalaJSUseMainModuleInitializer := true)
 
-lazy val zqueryJVM = zquery.jvm
+lazy val zioQueryJVM = zioQuery.jvm
   .settings(dottySettings)
 
 lazy val docs = project
-  .in(file("zquery-docs"))
+  .in(file("zio-query-docs"))
   .settings(
     skip.in(publish) := true,
-    moduleName := "zquery-docs",
+    moduleName := "zio-query-docs",
     scalacOptions -= "-Yno-imports",
     scalacOptions -= "-Xfatal-warnings",
     libraryDependencies ++= Seq(

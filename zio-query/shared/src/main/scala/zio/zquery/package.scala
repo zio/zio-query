@@ -1,6 +1,6 @@
 package zio
 
-package object zquery {
+package object query {
 
   type RQuery[-R, +A]  = ZQuery[R, Throwable, A]
   type URQuery[-R, +A] = ZQuery[R, Nothing, A]

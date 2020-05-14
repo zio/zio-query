@@ -1,4 +1,4 @@
-# ZQuery
+# ZIO Query
 
 | CI | Release | Snapshot | Discord |
 | --- | --- | --- | --- |
@@ -29,7 +29,7 @@ To build a `ZQuery` that executes a request, you first need to build a `DataSour
 - an `identifier` that uniquely identifies the data source (requests from _different_ data sources will _not_ be batched together)
 - a effectful function `run` from an `Iterable` of requests to a `Map` of requests and results
 
-Let's consider `getUserNameById` from the previous example. We need to define a corresponding request type that extends `zquery.Request` for a given response type:
+Let's consider `getUserNameById` from the previous example. We need to define a corresponding request type that extends `Request` for a given response type:
 
 ```scala
 case class GetUserName(id: Int) extends Request[Throwable, String]
@@ -102,11 +102,11 @@ There are several ways to run a `ZQuery`:
 - `run` runs the query and returns its result.
 
 # Contributing
-[Documentation for contributors](https://zio.github.io/zquery/docs/about/about_contributing)
+[Documentation for contributors](https://zio.github.io/zio-query/docs/about/about_contributing)
 
 ## Code of Conduct
 
-See the [Code of Conduct](https://zio.github.io/zquery/docs/about/about_coc)
+See the [Code of Conduct](https://zio.github.io/zio-query/docs/about/about_coc)
 
 ## Support
 
@@ -116,12 +116,12 @@ Come chat with us on [![Badge-Discord]][Link-Discord].
 # License
 [License](LICENSE)
 
-[Badge-SonatypeReleases]: https://img.shields.io/nexus/r/https/oss.sonatype.org/dev.zio/zquery_2.12.svg "Sonatype Releases"
-[Badge-SonatypeSnapshots]: https://img.shields.io/nexus/s/https/oss.sonatype.org/dev.zio/zquery_2.12.svg "Sonatype Snapshots"
+[Badge-SonatypeReleases]: https://img.shields.io/nexus/r/https/oss.sonatype.org/dev.zio/zio-query_2.12.svg "Sonatype Releases"
+[Badge-SonatypeSnapshots]: https://img.shields.io/nexus/s/https/oss.sonatype.org/dev.zio/zio-query_2.12.svg "Sonatype Snapshots"
 [Badge-Discord]: https://img.shields.io/discord/629491597070827530?logo=discord "chat on discord"
-[Badge-Circle]: https://circleci.com/gh/zio/zquery.svg?style=svg "circleci"
-[Link-Circle]: https://circleci.com/gh/zio/zquery "circleci"
-[Link-SonatypeReleases]: https://oss.sonatype.org/content/repositories/releases/dev/zio/zquery_2.12/ "Sonatype Releases"
-[Link-SonatypeSnapshots]: https://oss.sonatype.org/content/repositories/snapshots/dev/zio/zquery_2.12/ "Sonatype Snapshots"
+[Badge-Circle]: https://circleci.com/gh/zio/zio-query.svg?style=svg "circleci"
+[Link-Circle]: https://circleci.com/gh/zio/zio-query "circleci"
+[Link-SonatypeReleases]: https://oss.sonatype.org/content/repositories/releases/dev/zio/zio-query_2.12/ "Sonatype Releases"
+[Link-SonatypeSnapshots]: https://oss.sonatype.org/content/repositories/snapshots/dev/zio/zio-query_2.12/ "Sonatype Snapshots"
 [Link-Discord]: https://discord.gg/2ccFBr4 "Discord"
 

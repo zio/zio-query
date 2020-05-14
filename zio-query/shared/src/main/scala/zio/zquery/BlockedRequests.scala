@@ -1,9 +1,9 @@
-package zio.zquery
+package zio.query
 
 import scala.annotation.tailrec
 
 import zio.ZIO
-import zio.zquery.BlockedRequests._
+import zio.query.BlockedRequests._
 
 /**
  * `BlockedRequests` captures a collection of blocked requests as a data
@@ -12,7 +12,7 @@ import zio.zquery.BlockedRequests._
  * parallel, allowing for maximum possible batching and pipelining while
  * preserving ordering guarantees.
  */
-private[zquery] sealed trait BlockedRequests[-R] { self =>
+private[query] sealed trait BlockedRequests[-R] { self =>
 
   /**
    * Combines this collection of blocked requests with the specified collection
@@ -61,7 +61,7 @@ private[zquery] sealed trait BlockedRequests[-R] { self =>
     }
 }
 
-private[zquery] object BlockedRequests {
+private[query] object BlockedRequests {
 
   /**
    * The empty collection of blocked requests.

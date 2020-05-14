@@ -1,4 +1,4 @@
-package zio.zquery
+package zio.query
 
 import zio.Cause
 
