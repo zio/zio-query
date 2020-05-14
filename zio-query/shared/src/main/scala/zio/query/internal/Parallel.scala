@@ -1,6 +1,7 @@
-package zio.query
+package zio.query.internal
 
 import zio.Chunk
+import zio.query.DataSource
 
 /**
  * A `Parallel[R]` maintains a mapping from data sources to requests from

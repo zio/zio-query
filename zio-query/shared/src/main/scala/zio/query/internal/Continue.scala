@@ -1,7 +1,8 @@
-package zio.query
+package zio.query.internal
 
+import zio.query.internal.Continue._
+import zio.query.{ Cache, DataSource, Described, QueryFailure, Request, ZQuery }
 import zio.{ CanFail, Cause, IO, NeedsEnv, Ref, ZIO }
-import zio.query.Continue._
 
 /**
  * A `Continue[R, E, A]` models a continuation of a blocked request that

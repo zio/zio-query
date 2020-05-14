@@ -1,6 +1,7 @@
-package zio.query
+package zio.query.internal
 
-import zio.query.Result._
+import zio.query.internal.Result._
+import zio.query.{ DataSourceFunction, Described }
 import zio.{ CanFail, Cause, NeedsEnv }
 
 /**

@@ -1,6 +1,7 @@
-package zio.query
+package zio.query.internal
 
 import zio.Chunk
+import zio.query.DataSource
 
 /**
  * A `Sequential[R]` maintains a mapping from data sources to batches of

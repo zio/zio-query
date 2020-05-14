@@ -1,5 +1,6 @@
 package zio.query
 
+import zio.query.internal.{ BlockedRequest, BlockedRequests, Continue, Result }
 import zio.{ IO, Ref, UIO }
 
 /**

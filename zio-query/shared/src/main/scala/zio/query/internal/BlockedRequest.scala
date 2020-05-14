@@ -1,6 +1,7 @@
-package zio.query
+package zio.query.internal
 
 import zio.Ref
+import zio.query.Request
 
 /**
  * A `BlockedRequest[A]` keeps track of a request of type `A` along with a
