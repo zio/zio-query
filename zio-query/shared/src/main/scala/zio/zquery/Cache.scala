@@ -1,4 +1,4 @@
-package zio.zquery
+package zio.query
 
 import zio.{ IO, Ref, UIO }
 
@@ -33,7 +33,7 @@ final class Cache private (private val state: Ref[Map[Any, Any]]) {
    * the previous request. If the request has been executed returns a result
    * that is done.
    */
-  private[zquery] def getOrElseUpdate[R, E, A, B](request: A, dataSource: DataSource[R, A])(
+  private[query] def getOrElseUpdate[R, E, A, B](request: A, dataSource: DataSource[R, A])(
     implicit ev: A <:< Request[E, B]
   ): UIO[Result[R, E, B]] =
     Ref.make(Option.empty[Either[E, B]]).flatMap { ref =>

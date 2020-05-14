@@ -1,6 +1,6 @@
-package zio.zquery
+package zio.query
 
-import zio.zquery.Result._
+import zio.query.Result._
 import zio.{ CanFail, Cause, NeedsEnv }
 
 /**
@@ -8,7 +8,7 @@ import zio.{ CanFail, Cause, NeedsEnv }
  * result may either by done with a value `A`, blocked on a set of requests
  * to data sources that require an environment `R`, or failed with an `E`.
  */
-private[zquery] sealed trait Result[-R, +E, +A] {
+private[query] sealed trait Result[-R, +E, +A] {
 
   /**
    * Folds over the successful or failed result.
@@ -53,7 +53,7 @@ private[zquery] sealed trait Result[-R, +E, +A] {
   }
 }
 
-private[zquery] object Result {
+private[query] object Result {
 
   /**
    * Constructs a result that is blocked on the specified requests with the

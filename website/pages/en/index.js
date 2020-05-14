@@ -65,7 +65,7 @@ class HomeSplash extends React.Component {
                     <PromoSection>
                         <Button href={docUrl('overview/overview_index')}>Overview</Button>
                         <Button href={docUrl('usecases/usecases_index')}>Use Cases</Button>
-                        <Button href="https://github.com/zio/zquery" target="_blank">GitHub</Button>
+                        <Button href="https://github.com/zio/zio-query" target="_blank">GitHub</Button>
                     </PromoSection>
                 </div>
             </SplashContainer>
@@ -95,7 +95,7 @@ class Index extends React.Component {
             <div
                 className="productShowcaseSection paddingBottom"
                 style={{textAlign: 'center'}}>
-                <h2>Welcome to zquery</h2>
+                <h2>Welcome to zio-query</h2>
                 <MarkdownBlock>
                     TODO: Tagline
                 </MarkdownBlock>

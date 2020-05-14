@@ -47,7 +47,7 @@ install_jdk: &install_jdk
 
 load_cache: &load_cache
   - restore_cache:
-      key: sbt-zquery-cache-v2
+      key: sbt-zio-query-cache-v2
 
 clean_cache: &clean_cache
   - run:
@@ -59,7 +59,7 @@ clean_cache: &clean_cache
 
 save_cache: &save_cache
   - save_cache:
-      key: sbt-zquery-cache-v2
+      key: sbt-zio-query-cache-v2
       paths:
           - "~/.ivy2/cache"
           - "~/.sbt"

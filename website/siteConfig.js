@@ -21,12 +21,12 @@ const users = [
 ];
 
 const siteConfig = {
-  title: 'zquery',
+  title: 'zio-query',
   tagline: 'TODO: Tagline',
   url: 'https://zio.github.io',
-  baseUrl: '/zquery/',
+  baseUrl: '/zio-query/',
 
-  projectName: 'zquery',
+  projectName: 'zio-query',
   organizationName: 'zio',
 
   // For no header links in the top nav bar -> headerLinks: [],
@@ -103,7 +103,7 @@ const siteConfig = {
     cornerOffset: 100,
   },
 
-  customDocsPath: 'zquery-docs/target/mdoc',
+  customDocsPath: 'zio-query-docs/target/mdoc',
 
   // You may provide arbitrary config keys to be used as needed by your
   // template. For example, if you need your repo's URL...

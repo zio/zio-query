@@ -1,7 +1,7 @@
-package zio.zquery
+package zio.query
 
 import zio.{ CanFail, Cause, IO, NeedsEnv, Ref, ZIO }
-import zio.zquery.Continue._
+import zio.query.Continue._
 
 /**
  * A `Continue[R, E, A]` models a continuation of a blocked request that
@@ -12,7 +12,7 @@ import zio.zquery.Continue._
  * internally to determine whether it is safe to pipeline two requests that
  * must be executed sequentially.
  */
-private[zquery] sealed trait Continue[-R, +E, +A] { self =>
+private[query] sealed trait Continue[-R, +E, +A] { self =>
 
   /**
    * Purely folds over the failure and success types of this continuation.
@@ -106,7 +106,7 @@ private[zquery] sealed trait Continue[-R, +E, +A] { self =>
 
 }
 
-private[zquery] object Continue {
+private[query] object Continue {
 
   /**
    * Constructs a continuation from a request, a data source, and a `Ref` that

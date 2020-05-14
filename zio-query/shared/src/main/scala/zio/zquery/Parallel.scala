@@ -1,4 +1,4 @@
-package zio.zquery
+package zio.query
 
 import zio.Chunk
 
@@ -6,7 +6,7 @@ import zio.Chunk
  * A `Parallel[R]` maintains a mapping from data sources to requests from
  * those data sources that can be executed in parallel.
  */
-private[zquery] final class Parallel[-R](private val map: Map[DataSource[Any, Any], Chunk[BlockedRequest[Any]]]) {
+private[query] final class Parallel[-R](private val map: Map[DataSource[Any, Any], Chunk[BlockedRequest[Any]]]) {
   self =>
 
   /**
@@ -52,7 +52,7 @@ private[zquery] final class Parallel[-R](private val map: Map[DataSource[Any, An
     map
 }
 
-private[zquery] object Parallel {
+private[query] object Parallel {
 
   /**
    * Constructs a new collection of requests containing a mapping from the
