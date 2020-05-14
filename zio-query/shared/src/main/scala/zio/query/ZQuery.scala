@@ -5,7 +5,6 @@ import zio.clock._
 import zio.duration._
 import zio.query.internal.{ BlockedRequest, BlockedRequests, Continue, Result }
 
-
 /**
  * A `ZQuery[R, E, A]` is a purely functional description of an effectual query
  * that may contain requests from one or more data sources, requires an
