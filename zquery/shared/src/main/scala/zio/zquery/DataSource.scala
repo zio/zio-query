@@ -33,9 +33,9 @@ trait DataSource[-R, -A] { self =>
   val identifier: String
 
   /**
-   * Execute a collection of requests. Data sources are guaranteed that the
-   * collection will contain at least one request and that all requests will be
-   * unique when they are called by `ZQuery`.
+   * Execute a collection of requests. The outer `Iterable` represents batches
+   * of requests that must be performed sequentially. The inner `Iterable`
+   * represents a batch of requests that may be performed in parallel.
    */
   def runAll(requests: Iterable[Iterable[A]]): ZIO[R, Nothing, CompletedRequestMap]
 
