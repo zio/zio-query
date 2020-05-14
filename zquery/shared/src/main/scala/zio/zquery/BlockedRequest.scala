@@ -16,6 +16,9 @@ private[zquery] sealed trait BlockedRequest[+A] {
   def request: Request[Failure, Success]
 
   def result: Ref[Option[Either[Failure, Success]]]
+
+  override final def toString =
+    s"BlockedRequest($request, $result)"
 }
 
 private[zquery] object BlockedRequest {

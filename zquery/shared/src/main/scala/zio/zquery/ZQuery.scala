@@ -7,18 +7,21 @@ import zio.duration._
 /**
  * A `ZQuery[R, E, A]` is a purely functional description of an effectual query
  * that may contain requests from one or more data sources, requires an
- * environment `R`, may fail with an `E`, and may succeed with an `A`. All
- * requests that do not need to be performed sequentially, as expressed by
- * `flatMap` or combinators derived from it, will automatically be batched,
- * allowing for aggressive data source specific optimizations. Requests will
- * also automatically be deduplicated and cached.
+ * environment `R`, may fail with an `E`, and may succeed with an `A`.
+ *
+ * Requests that can be performed in parallel, as expressed by `zipWithPar` and
+ * combinators derived from it, will automatically be batched. Requests that
+ * must be performed sequentially, as expressed by `zipWith` and combinators
+ * derived from it, will automatically be pipelined. This allows for aggressive
+ * data source specific optimizations. Requests can also be deduplicated and
+ * cached.
  *
  * This allows for writing queries in a high level, compositional style, with
  * confidence that they will automatically be optimized. For example, consider
  * the following query from a user service.
  *
  * {{{
- * val getAllUserIds: ZQuery[Any, Nothing, List[Int]] = ???
+ * val getAllUserIds: ZQuery[Any, Nothing, List[Int]]         = ???
  * def getUserNameById(id: Int): ZQuery[Any, Nothing, String] = ???
  *
  * for {
@@ -99,13 +102,13 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, Cache), Nothin
    * Returns a query that models execution of this query, followed by passing
    * its result to the specified function that returns a query. Requests
    * composed with `flatMap` or combinators derived from it will be executed
-   * sequentially and will not be batched, though deduplication and caching of
-   * requests will still be applied.
+   * sequentially and will not be pipelined, though deduplication and caching of
+   * requests may still be applied.
    */
   final def flatMap[R1 <: R, E1 >: E, B](f: A => ZQuery[R1, E1, B]): ZQuery[R1, E1, B] =
     ZQuery {
       step.flatMap {
-        case Result.Blocked(br, c) => ZIO.succeedNow(Result.blocked(br, c.flatMap(f)))
+        case Result.Blocked(br, c) => ZIO.succeedNow(Result.blocked(br, c.mapM(f)))
         case Result.Done(a)        => f(a).step
         case Result.Fail(e)        => ZIO.succeedNow(Result.fail(e))
       }
@@ -194,7 +197,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, Cache), Nothin
   final def provideCustomLayer[E1 >: E, R1 <: Has[_]](
     layer: Described[ZLayer[ZEnv, E1, R1]]
   )(implicit ev: ZEnv with R1 <:< R, tagged: Tagged[R1]): ZQuery[ZEnv, E1, A] =
-    provideSomeLayer[ZEnv](layer)
+    provideSomeLayer(layer)
 
   /**
    * Provides a layer to this query, which translates it to another level.
@@ -220,7 +223,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, Cache), Nothin
    * specified layer and leaving the remainder `R0`.
    */
   final def provideSomeLayer[R0 <: Has[_]]: ZQuery.ProvideSomeLayer[R0, R, E, A] =
-    new ZQuery.ProvideSomeLayer[R0, R, E, A](self)
+    new ZQuery.ProvideSomeLayer(self)
 
   /**
    * Returns an effect that models executing this query.
@@ -230,8 +233,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, Cache), Nothin
 
   /**
    * Returns an effect that models executing this query with the specified
-   * cache. This can be useful for deterministically "replaying" a query
-   * without executing any new requests.
+   * cache.
    */
   final def runCache(cache: Cache): ZIO[R, E, A] =
     step.provideSome[R]((_, cache)).flatMap {
@@ -242,9 +244,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, Cache), Nothin
 
   /**
    * Returns an effect that models executing this query, returning the query
-   * result along with the cache containing a complete log of all requests
-   * executed and their results. This can be useful for logging or analysis of
-   * query execution.
+   * result along with the cache.
    */
   final def runLog: ZIO[R, E, (Cache, A)] =
     for {
@@ -268,7 +268,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, Cache), Nothin
    * Returns a new query that executes this one and times the execution.
    */
   final def timed: ZQuery[R with Clock, E, (Duration, A)] =
-    summarized[R with Clock, E, Long, Duration](clock.nanoTime)((start, end) => Duration.fromNanos(end - start))
+    summarized(clock.nanoTime)((start, end) => Duration.fromNanos(end - start))
 
   /**
    * Returns a query that models the execution of this query and the specified
@@ -315,20 +315,40 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, Cache), Nothin
   /**
    * Returns a query that models the execution of this query and the specified
    * query sequentially, combining their results with the specified function.
+   * Requests composed with `zipWith` or combinators derived from it will
+   * automatically be pipelined.
    */
   final def zipWith[R1 <: R, E1 >: E, B, C](that: ZQuery[R1, E1, B])(f: (A, B) => C): ZQuery[R1, E1, C] =
-    flatMap(a => that.map(b => f(a, b)))
+    ZQuery {
+      self.step.flatMap {
+        case Result.Blocked(br, Continue.Effect(c)) =>
+          ZIO.succeedNow(Result.blocked(br, Continue.effect(c.zipWith(that)(f))))
+        case Result.Blocked(br1, c1) =>
+          that.step.map {
+            case Result.Blocked(br2, c2) => Result.blocked(br1 ++ br2, c1.zipWith(c2)(f))
+            case Result.Done(b)          => Result.blocked(br1, c1.map(a => f(a, b)))
+            case Result.Fail(e)          => Result.fail(e)
+          }
+        case Result.Done(a) =>
+          that.step.map {
+            case Result.Blocked(br, c) => Result.blocked(br, c.map(b => f(a, b)))
+            case Result.Done(b)        => Result.done(f(a, b))
+            case Result.Fail(e)        => Result.fail(e)
+          }
+        case Result.Fail(e) => ZIO.succeedNow(Result.fail(e))
+      }
+    }
 
   /**
    * Returns a query that models the execution of this query and the specified
    * query in parallel, combining their results with the specified function.
    * Requests composed with `zipWithPar` or combinators derived from it will
-   * be batched and deduplication and caching of requests will be applied.
+   * automatically be batched.
    */
   final def zipWithPar[R1 <: R, E1 >: E, B, C](that: ZQuery[R1, E1, B])(f: (A, B) => C): ZQuery[R1, E1, C] =
     ZQuery {
       self.step.zipWithPar(that.step) {
-        case (Result.Blocked(br1, c1), Result.Blocked(br2, c2)) => Result.blocked(br1 ++ br2, c1.zipWithPar(c2)(f))
+        case (Result.Blocked(br1, c1), Result.Blocked(br2, c2)) => Result.blocked(br1 && br2, c1.zipWithPar(c2)(f))
         case (Result.Blocked(br, c), Result.Done(b))            => Result.blocked(br, c.map(a => f(a, b)))
         case (Result.Done(a), Result.Blocked(br, c))            => Result.blocked(br, c.map(b => f(a, b)))
         case (Result.Done(a), Result.Done(b))                   => Result.done(f(a, b))
@@ -343,15 +363,15 @@ object ZQuery {
 
   /**
    * Collects a collection of queries into a query returning a collection of
-   * their results. Requests will be executed sequentially and will not be
-   * batched.
+   * their results. Requests will be executed sequentially and will be
+   * pipelined.
    */
   def collectAll[R, E, A](as: Iterable[ZQuery[R, E, A]]): ZQuery[R, E, List[A]] =
     foreach(as)(identity)
 
   /**
    * Collects a collection of queries into a query returning a collection of
-   * their results. All requests will be batched.
+   * their results. Requests will be executed in parallel and will be batched.
    */
   def collectAllPar[R, E, A](as: Iterable[ZQuery[R, E, A]]): ZQuery[R, E, List[A]] =
     foreachPar(as)(identity)
@@ -376,15 +396,15 @@ object ZQuery {
   /**
    * Performs a query for each element in a collection, collecting the results
    * into a query returning a collection of their results. Requests will be
-   * executed sequentially and will not be batched.
+   * executed sequentially and will be pipelined.
    */
   def foreach[R, E, A, B](as: Iterable[A])(f: A => ZQuery[R, E, B]): ZQuery[R, E, List[B]] =
     as.foldRight[ZQuery[R, E, List[B]]](ZQuery.succeed(Nil))((a, bs) => f(a).zipWith(bs)(_ :: _))
 
   /**
    * Performs a query for each element in a collection, collecting the results
-   * into a query returning a collection of their results. All requests will be
-   * batched.
+   * into a query returning a collection of their results. Requests will be
+   * executed in parallel and will be batched.
    */
   def foreachPar[R, E, A, B](as: Iterable[A])(f: A => ZQuery[R, E, B]): ZQuery[R, E, List[B]] =
     as.foldRight[ZQuery[R, E, List[B]]](ZQuery.succeed(Nil))((a, bs) => f(a).zipWithPar(bs)(_ :: _))
@@ -399,45 +419,26 @@ object ZQuery {
    * Constructs a query from a request and a data source. Queries will die with
    * a `QueryFailure` when run if the data source does not provide results for
    * all requests received. Queries must be constructed with `fromRequest` or
-   * combinators derived from it for optimizations to be applied.
+   * one of its variants for optimizations to be applied.
    */
   def fromRequest[R, E, A, B](
     request: A
   )(dataSource: DataSource[R, A])(implicit ev: A <:< Request[E, B]): ZQuery[R, E, B] =
+    ZQuery(ZIO.accessM(_._2.getOrElseUpdate(request, dataSource)))
+
+  /**
+   * Constructs a query from a request and a data source but does not apply
+   * caching to the query.
+   */
+  def fromRequestUncached[R, E, A, B](
+    request: A
+  )(dataSource: DataSource[R, A])(implicit ev: A <:< Request[E, B]): ZQuery[R, E, B] =
     ZQuery {
-      ZIO.accessM[(Any, Cache)] {
-        case (_, cache) =>
-          cache
-            .lookup(request)
-            .foldM(
-              _ =>
-                for {
-                  ref <- Ref.make(Option.empty[Either[E, B]])
-                  _   <- cache.insert(request, ref)
-                } yield Result.blocked(
-                  BlockedRequestMap(dataSource, BlockedRequest(request, ref)),
-                  ZQuery {
-                    ref.get.flatMap {
-                      case None    => ZIO.die(QueryFailure(dataSource, request))
-                      case Some(b) => ZIO.succeedNow(Result.fromEither(b))
-                    }
-                  }
-                ),
-              ref =>
-                ref.get.map {
-                  case Some(b) => Result.fromEither(b)
-                  case None =>
-                    Result.blocked(
-                      BlockedRequestMap.empty,
-                      ZQuery {
-                        ref.get.flatMap {
-                          case None    => ZIO.die(QueryFailure(dataSource, request))
-                          case Some(b) => ZIO.succeedNow(Result.fromEither(b))
-                        }
-                      }
-                    )
-                }
-            )
+      Ref.make(Option.empty[Either[E, B]]).map { ref =>
+        Result.blocked(
+          BlockedRequests.single(dataSource, BlockedRequest(request, ref)),
+          Continue(request, dataSource, ref)
+        )
       }
     }
 
@@ -462,7 +463,7 @@ object ZQuery {
   /**
    * Performs a query for each element in a collection, collecting the results
    * into a collection of failed results and a collection of successful
-   * results. Requests will be executed sequentially and will not be batched.
+   * results. Requests will be executed sequentially and will be pipelined.
    */
   def partitionM[R, E, A, B](
     as: Iterable[A]
@@ -472,7 +473,7 @@ object ZQuery {
   /**
    * Performs a query for each element in a collection, collecting the results
    * into a collection of failed results and a collection of successful
-   * results. All requests will be batched.
+   * results. Requests will be executed in parallel and will be batched.
    */
   def partitionMPar[R, E, A, B](
     as: Iterable[A]
