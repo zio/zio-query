@@ -1,4 +1,4 @@
-# ZQuery
+# ZIO Query
 
 | CI | Release | Snapshot | Discord |
 | --- | --- | --- | --- |
