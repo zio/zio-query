@@ -1,9 +1,10 @@
-package zio.query
+package zio.query.internal
 
 import scala.annotation.tailrec
 
 import zio.ZIO
-import zio.query.BlockedRequests._
+import zio.query.internal.BlockedRequests._
+import zio.query.{ DataSource, DataSourceFunction }
 
 /**
  * `BlockedRequests` captures a collection of blocked requests as a data
