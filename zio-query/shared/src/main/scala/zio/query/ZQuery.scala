@@ -168,7 +168,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, Cache), Nothin
    */
   final def optional: ZQuery[R, E, Option[A]] =
     foldCauseM(
-      QueryFailure.strip(_).fold[ZQuery[R, E, Option[A]]](ZQuery.none)(ZQuery.halt(_)),
+      _.stripSomeDefects { case _: QueryFailure => () }.fold[ZQuery[R, E, Option[A]]](ZQuery.none)(ZQuery.halt(_)),
       ZQuery.some(_)
     )
 
