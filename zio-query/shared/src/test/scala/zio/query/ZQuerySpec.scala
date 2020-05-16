@@ -5,7 +5,7 @@ import zio.test.Assertion._
 import zio.test.TestAspect.{ after, nonFlaky, silent }
 import zio.test._
 import zio.test.environment.{ TestConsole, TestEnvironment }
-import zio.{ console, Has, Promise, Ref, ZIO, ZLayer }
+import zio.{ console, Chunk, Has, Promise, Ref, ZIO, ZLayer }
 
 object ZQuerySpec extends ZIOBaseSpec {
 
@@ -201,7 +201,7 @@ object ZQuerySpec extends ZIOBaseSpec {
             ref.get
           val identifier: String =
             "CacheDataSource"
-          def runAll(requests: Iterable[Iterable[CacheRequest[Any]]]): ZIO[Any, Nothing, CompletedRequestMap] =
+          def runAll(requests: Chunk[Chunk[CacheRequest[Any]]]): ZIO[Any, Nothing, CompletedRequestMap] =
             ref.update(requests.map(_.toSet).toList :: _) *>
               ZIO
                 .foreach(requests) { requests =>

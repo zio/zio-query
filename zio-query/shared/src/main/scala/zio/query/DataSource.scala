@@ -1,6 +1,6 @@
 package zio.query
 
-import zio.{ NeedsEnv, ZIO }
+import zio.{ Chunk, NeedsEnv, ZIO }
 
 /**
  * A `DataSource[R, A]` is capable of executing requests of type `A` that
@@ -9,12 +9,12 @@ import zio.{ NeedsEnv, ZIO }
  * Data sources must implement the method `runAll` which takes an
  * colletion of requests and returns an effect with a
  * `CompletedRequestMap` containing a mapping from requests to results. The
- * type of the collections of requests is an `Iterable[Iterable[A]]`. The outer
- * `Iterable` describes sets of requests that must be performed sequentially
- * while the requests in each inner `Iterable` can be performed in parallel.
- * Because `runAll` is parameterized on a collection of requests rather than a
- * single request, data sources have the ability to introspect on all the
- * requests being executed and optimize the query.
+ * type of the collections of requests is a `Chunk[Chunk[A]]`. The outer
+ * `Chunk` describes sets of requests that must be performed sequentially while
+ * the requests in each inner `Chunk` can be performed in parallel. Because
+ * `runAll` is parameterized on a collection of requests rather than a single
+ * request, data sources have the ability to introspect on all the requests
+ * being executed and optimize the query.
  *
  * Data sources will typically be parameterized on a subtype of `Request[A]`,
  * though that is not strictly necessarily as long as the data source can map
@@ -33,11 +33,11 @@ trait DataSource[-R, -A] { self =>
   val identifier: String
 
   /**
-   * Execute a collection of requests. The outer `Iterable` represents batches
-   * of requests that must be performed sequentially. The inner `Iterable`
+   * Execute a collection of requests. The outer `Chunk` represents batches
+   * of requests that must be performed sequentially. The inner `Chunk`
    * represents a batch of requests that may be performed in parallel.
    */
-  def runAll(requests: Iterable[Iterable[A]]): ZIO[R, Nothing, CompletedRequestMap]
+  def runAll(requests: Chunk[Chunk[A]]): ZIO[R, Nothing, CompletedRequestMap]
 
   /**
    * Returns a new data source that executes requests of type `B` using the
@@ -47,7 +47,7 @@ trait DataSource[-R, -A] { self =>
   final def contramap[B](f: Described[B => A]): DataSource[R, B] =
     new DataSource[R, B] {
       val identifier = s"${self.identifier}.contramap(${f.description})"
-      def runAll(requests: Iterable[Iterable[B]]): ZIO[R, Nothing, CompletedRequestMap] =
+      def runAll(requests: Chunk[Chunk[B]]): ZIO[R, Nothing, CompletedRequestMap] =
         self.runAll(requests.map(_.map(f.value)))
     }
 
@@ -59,8 +59,8 @@ trait DataSource[-R, -A] { self =>
   final def contramapM[R1 <: R, B](f: Described[B => ZIO[R1, Nothing, A]]): DataSource[R1, B] =
     new DataSource[R1, B] {
       val identifier = s"${self.identifier}.contramapM(${f.description})"
-      def runAll(requests: Iterable[Iterable[B]]): ZIO[R1, Nothing, CompletedRequestMap] =
-        ZIO.foreach(requests)(ZIO.foreachPar(_)(f.value).map(_.toSet)).flatMap(self.runAll)
+      def runAll(requests: Chunk[Chunk[B]]): ZIO[R1, Nothing, CompletedRequestMap] =
+        ZIO.foreach(requests)(ZIO.foreachPar(_)(f.value)).flatMap(self.runAll)
     }
 
   /**
@@ -73,17 +73,17 @@ trait DataSource[-R, -A] { self =>
   )(f: Described[C => Either[A, B]]): DataSource[R1, C] =
     new DataSource[R1, C] {
       val identifier = s"${self.identifier}.eitherWith(${that.identifier})(${f.description})"
-      def runAll(requests: Iterable[Iterable[C]]): ZIO[R1, Nothing, CompletedRequestMap] =
+      def runAll(requests: Chunk[Chunk[C]]): ZIO[R1, Nothing, CompletedRequestMap] =
         ZIO
           .foreach(requests) { requests =>
-            val (as, bs) = requests.foldLeft((List.empty[A], List.empty[B])) {
+            val (as, bs) = requests.foldLeft[(Chunk[A], Chunk[B])]((Chunk.empty, Chunk.empty)) {
               case ((as, bs), c) =>
                 f.value(c) match {
-                  case Left(a)  => (a :: as, bs)
-                  case Right(b) => (as, b :: bs)
+                  case Left(a)  => (as + a, bs)
+                  case Right(b) => (as, bs + b)
                 }
             }
-            self.runAll(List(as)).zipWithPar(that.runAll(List(bs)))(_ ++ _)
+            self.runAll(Chunk(as)).zipWithPar(that.runAll(Chunk(bs)))(_ ++ _)
           }
           .map(_.foldLeft(CompletedRequestMap.empty)(_ ++ _))
 
@@ -108,7 +108,7 @@ trait DataSource[-R, -A] { self =>
   final def provideSome[R0](f: Described[R0 => R])(implicit ev: NeedsEnv[R]): DataSource[R0, A] =
     new DataSource[R0, A] {
       val identifier = s"${self.identifier}.provideSome(${f.description})"
-      def runAll(requests: Iterable[Iterable[A]]): ZIO[R0, Nothing, CompletedRequestMap] =
+      def runAll(requests: Chunk[Chunk[A]]): ZIO[R0, Nothing, CompletedRequestMap] =
         self.runAll(requests).provideSome(f.value)
     }
 
@@ -123,8 +123,8 @@ object DataSource {
    * batches but does not pipeline queries that must be performed sequentially.
    */
   trait Batched[-R, -A] extends DataSource[R, A] {
-    def run(requests: Iterable[A]): ZIO[R, Nothing, CompletedRequestMap]
-    final def runAll(requests: Iterable[Iterable[A]]): ZIO[R, Nothing, CompletedRequestMap] =
+    def run(requests: Chunk[A]): ZIO[R, Nothing, CompletedRequestMap]
+    final def runAll(requests: Chunk[Chunk[A]]): ZIO[R, Nothing, CompletedRequestMap] =
       ZIO.foreach(requests)(run).map(_.foldLeft(CompletedRequestMap.empty)(_ ++ _))
   }
 
@@ -134,10 +134,10 @@ object DataSource {
      * Constructs a data source from a function taking a collection of requests
      * and returning a `CompletedRequestMap`.
      */
-    def make[R, A](name: String)(f: Iterable[A] => ZIO[R, Nothing, CompletedRequestMap]): DataSource[R, A] =
+    def make[R, A](name: String)(f: Chunk[A] => ZIO[R, Nothing, CompletedRequestMap]): DataSource[R, A] =
       new DataSource.Batched[R, A] {
         val identifier: String = name
-        def run(requests: Iterable[A]): ZIO[R, Nothing, CompletedRequestMap] =
+        def run(requests: Chunk[A]): ZIO[R, Nothing, CompletedRequestMap] =
           f(requests)
       }
   }
@@ -150,7 +150,7 @@ object DataSource {
   )(f: A => B)(implicit ev: A <:< Request[Nothing, B]): DataSource[Any, A] =
     new DataSource.Batched[Any, A] {
       val identifier: String = name
-      def run(requests: Iterable[A]): ZIO[Any, Nothing, CompletedRequestMap] =
+      def run(requests: Chunk[A]): ZIO[Any, Nothing, CompletedRequestMap] =
         ZIO.succeedNow(requests.foldLeft(CompletedRequestMap.empty)((map, k) => map.insert(k)(Right(f(k)))))
     }
 
@@ -162,7 +162,7 @@ object DataSource {
    */
   def fromFunctionBatched[A, B](
     name: String
-  )(f: Iterable[A] => Iterable[B])(implicit ev: A <:< Request[Nothing, B]): DataSource[Any, A] =
+  )(f: Chunk[A] => Chunk[B])(implicit ev: A <:< Request[Nothing, B]): DataSource[Any, A] =
     fromFunctionBatchedM(name)(as => ZIO.succeedNow(f(as)))
 
   /**
@@ -173,10 +173,10 @@ object DataSource {
    */
   def fromFunctionBatchedM[R, E, A, B](
     name: String
-  )(f: Iterable[A] => ZIO[R, E, Iterable[B]])(implicit ev: A <:< Request[E, B]): DataSource[R, A] =
+  )(f: Chunk[A] => ZIO[R, E, Chunk[B]])(implicit ev: A <:< Request[E, B]): DataSource[R, A] =
     new DataSource.Batched[R, A] {
       val identifier: String = name
-      def run(requests: Iterable[A]): ZIO[R, Nothing, CompletedRequestMap] =
+      def run(requests: Chunk[A]): ZIO[R, Nothing, CompletedRequestMap] =
         f(requests)
           .fold(
             e => requests.map((_, Left(e))),
@@ -195,7 +195,7 @@ object DataSource {
    */
   def fromFunctionBatchedOption[A, B](
     name: String
-  )(f: Iterable[A] => Iterable[Option[B]])(implicit ev: A <:< Request[Nothing, B]): DataSource[Any, A] =
+  )(f: Chunk[A] => Chunk[Option[B]])(implicit ev: A <:< Request[Nothing, B]): DataSource[Any, A] =
     fromFunctionBatchedOptionM(name)(as => ZIO.succeedNow(f(as)))
 
   /**
@@ -206,10 +206,10 @@ object DataSource {
    */
   def fromFunctionBatchedOptionM[R, E, A, B](
     name: String
-  )(f: Iterable[A] => ZIO[R, E, Iterable[Option[B]]])(implicit ev: A <:< Request[E, B]): DataSource[R, A] =
+  )(f: Chunk[A] => ZIO[R, E, Chunk[Option[B]]])(implicit ev: A <:< Request[E, B]): DataSource[R, A] =
     new DataSource.Batched[R, A] {
       val identifier: String = name
-      def run(requests: Iterable[A]): ZIO[R, Nothing, CompletedRequestMap] =
+      def run(requests: Chunk[A]): ZIO[R, Nothing, CompletedRequestMap] =
         f(requests)
           .fold(
             e => requests.map((_, Left(e))),
@@ -229,7 +229,7 @@ object DataSource {
    */
   def fromFunctionBatchedWith[A, B](
     name: String
-  )(f: Iterable[A] => Iterable[B], g: B => Request[Nothing, B])(
+  )(f: Chunk[A] => Chunk[B], g: B => Request[Nothing, B])(
     implicit ev: A <:< Request[Nothing, B]
   ): DataSource[Any, A] =
     fromFunctionBatchedWithM(name)(as => ZIO.succeedNow(f(as)), g)
@@ -243,12 +243,12 @@ object DataSource {
    */
   def fromFunctionBatchedWithM[R, E, A, B](
     name: String
-  )(f: Iterable[A] => ZIO[R, E, Iterable[B]], g: B => Request[E, B])(
+  )(f: Chunk[A] => ZIO[R, E, Chunk[B]], g: B => Request[E, B])(
     implicit ev: A <:< Request[E, B]
   ): DataSource[R, A] =
     new DataSource.Batched[R, A] {
       val identifier: String = name
-      def run(requests: Iterable[A]): ZIO[R, Nothing, CompletedRequestMap] =
+      def run(requests: Chunk[A]): ZIO[R, Nothing, CompletedRequestMap] =
         f(requests)
           .fold(
             e => requests.map(a => (ev(a), Left(e))),
@@ -267,7 +267,7 @@ object DataSource {
   )(f: A => ZIO[R, E, B])(implicit ev: A <:< Request[E, B]): DataSource[R, A] =
     new DataSource.Batched[R, A] {
       val identifier: String = name
-      def run(requests: Iterable[A]): ZIO[R, Nothing, CompletedRequestMap] =
+      def run(requests: Chunk[A]): ZIO[R, Nothing, CompletedRequestMap] =
         ZIO
           .foreachPar(requests)(a => f(a).either.map((a, _)))
           .map(_.foldLeft(CompletedRequestMap.empty) { case (map, (k, v)) => map.insert(k)(v) })
@@ -291,7 +291,7 @@ object DataSource {
   )(f: A => ZIO[R, E, Option[B]])(implicit ev: A <:< Request[E, B]): DataSource[R, A] =
     new DataSource.Batched[R, A] {
       val identifier: String = name
-      def run(requests: Iterable[A]): ZIO[R, Nothing, CompletedRequestMap] =
+      def run(requests: Chunk[A]): ZIO[R, Nothing, CompletedRequestMap] =
         ZIO
           .foreachPar(requests)(a => f(a).either.map((a, _)))
           .map(_.foldLeft(CompletedRequestMap.empty) {
@@ -303,10 +303,10 @@ object DataSource {
    * Constructs a data source from a function taking a collection of requests
    * and returning a `CompletedRequestMap`.
    */
-  def make[R, A](name: String)(f: Iterable[Iterable[A]] => ZIO[R, Nothing, CompletedRequestMap]): DataSource[R, A] =
+  def make[R, A](name: String)(f: Chunk[Chunk[A]] => ZIO[R, Nothing, CompletedRequestMap]): DataSource[R, A] =
     new DataSource[R, A] {
       val identifier: String = name
-      def runAll(requests: Iterable[Iterable[A]]): ZIO[R, Nothing, CompletedRequestMap] =
+      def runAll(requests: Chunk[Chunk[A]]): ZIO[R, Nothing, CompletedRequestMap] =
         f(requests)
     }
 }
