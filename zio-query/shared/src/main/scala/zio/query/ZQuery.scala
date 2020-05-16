@@ -79,17 +79,17 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, Cache), Nothin
     zip(that)
 
   /**
+   * A symbolic alias for `flatMap`.
+   */
+  final def >>=[R1 <: R, E1 >: E, B](f: A => ZQuery[R1, E1, B]): ZQuery[R1, E1, B] =
+    flatMap(f)
+
+  /**
    * Returns a query whose failure and success channels have been mapped by the
    * specified pair of functions, `f` and `g`.
    */
   final def bimap[E1, B](f: E => E1, g: A => B)(implicit ev: CanFail[E]): ZQuery[R, E1, B] =
     foldM(e => ZQuery.fail(f(e)), a => ZQuery.succeed(g(a)))
-
-  /**
-   * A symbolic alias for `flatMap`.
-   */
-  final def >>=[R1 <: R, E1 >: E, B](f: A => ZQuery[R1, E1, B]): ZQuery[R1, E1, B] =
-    flatMap(f)
 
   /**
    * Returns a query whose failure and success have been lifted into an
@@ -124,15 +124,6 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, Cache), Nothin
     foldM(e => ZQuery.succeed(failure(e)), a => ZQuery.succeed(success(a)))
 
   /**
-   * Recovers from errors by accepting one query to execute for the case of an
-   * error, and one query to execute for the case of success.
-   */
-  final def foldM[R1 <: R, E1, B](failure: E => ZQuery[R1, E1, B], success: A => ZQuery[R1, E1, B])(
-    implicit ev: CanFail[E]
-  ): ZQuery[R1, E1, B] =
-    foldCauseM(_.failureOrCause.fold(failure, ZQuery.halt(_)), success)
-
-  /**
    * A more powerful version of `foldM` that allows recovering from any type
    * of failure except interruptions.
    */
@@ -149,6 +140,15 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, Cache), Nothin
         }
       )
     }
+
+  /**
+   * Recovers from errors by accepting one query to execute for the case of an
+   * error, and one query to execute for the case of success.
+   */
+  final def foldM[R1 <: R, E1, B](failure: E => ZQuery[R1, E1, B], success: A => ZQuery[R1, E1, B])(
+    implicit ev: CanFail[E]
+  ): ZQuery[R1, E1, B] =
+    foldCauseM(_.failureOrCause.fold(failure, ZQuery.halt(_)), success)
 
   /**
    * Maps the specified function over the successful result of this query.
@@ -287,13 +287,6 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, Cache), Nothin
 
   /**
    * Returns a query that models the execution of this query and the specified
-   * query sequentially, returning the result of the specified query.
-   */
-  final def zipRight[R1 <: R, E1 >: E, B](that: ZQuery[R1, E1, B]): ZQuery[R1, E1, B] =
-    zipWith(that)((_, b) => b)
-
-  /**
-   * Returns a query that models the execution of this query and the specified
    * query in parallel, combining their results into a tuple.
    */
   final def zipPar[R1 <: R, E1 >: E, B](that: ZQuery[R1, E1, B]): ZQuery[R1, E1, (A, B)] =
@@ -312,6 +305,13 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, Cache), Nothin
    */
   final def zipParRight[R1 <: R, E1 >: E, B](that: ZQuery[R1, E1, B]): ZQuery[R1, E1, B] =
     zipWithPar(that)((_, b) => b)
+
+  /**
+   * Returns a query that models the execution of this query and the specified
+   * query sequentially, returning the result of the specified query.
+   */
+  final def zipRight[R1 <: R, E1 >: E, B](that: ZQuery[R1, E1, B]): ZQuery[R1, E1, B] =
+    zipWith(that)((_, b) => b)
 
   /**
    * Returns a query that models the execution of this query and the specified
@@ -386,7 +386,8 @@ object ZQuery {
   /**
    * Accesses the whole environment of the query.
    */
-  def environment[R]: ZQuery[R, Nothing, R] = ZQuery.fromEffect(ZIO.environment[R])
+  def environment[R]: ZQuery[R, Nothing, R] =
+    ZQuery.fromEffect(ZIO.environment)
 
   /**
    * Constructs a query that fails with the specified error.

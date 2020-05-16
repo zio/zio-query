@@ -9,34 +9,37 @@ import zio.{ CanFail, Cause, NeedsEnv }
  * result may either by done with a value `A`, blocked on a set of requests
  * to data sources that require an environment `R`, or failed with an `E`.
  */
-private[query] sealed trait Result[-R, +E, +A] {
+private[query] sealed trait Result[-R, +E, +A] { self =>
 
   /**
    * Folds over the successful or failed result.
    */
-  final def fold[B](failure: E => B, success: A => B)(implicit ev: CanFail[E]): Result[R, Nothing, B] = this match {
-    case Blocked(br, c) => blocked(br, c.fold(failure, success))
-    case Done(a)        => done(success(a))
-    case Fail(e)        => e.failureOrCause.fold(e => done(failure(e)), c => fail(c))
-  }
+  final def fold[B](failure: E => B, success: A => B)(implicit ev: CanFail[E]): Result[R, Nothing, B] =
+    self match {
+      case Blocked(br, c) => blocked(br, c.fold(failure, success))
+      case Done(a)        => done(success(a))
+      case Fail(e)        => e.failureOrCause.fold(e => done(failure(e)), c => fail(c))
+    }
 
   /**
    * Maps the specified function over the successful value of this result.
    */
-  final def map[B](f: A => B): Result[R, E, B] = this match {
-    case Blocked(br, c) => blocked(br, c.map(f))
-    case Done(a)        => done(f(a))
-    case Fail(e)        => fail(e)
-  }
+  final def map[B](f: A => B): Result[R, E, B] =
+    self match {
+      case Blocked(br, c) => blocked(br, c.map(f))
+      case Done(a)        => done(f(a))
+      case Fail(e)        => fail(e)
+    }
 
   /**
    * Maps the specified function over the failed value of this result.
    */
-  final def mapError[E1](f: E => E1)(implicit ev: CanFail[E]): Result[R, E1, A] = this match {
-    case Blocked(br, c) => blocked(br, c.mapError(f))
-    case Done(a)        => done(a)
-    case Fail(e)        => fail(e.map(f))
-  }
+  final def mapError[E1](f: E => E1)(implicit ev: CanFail[E]): Result[R, E1, A] =
+    self match {
+      case Blocked(br, c) => blocked(br, c.mapError(f))
+      case Done(a)        => done(a)
+      case Fail(e)        => fail(e.map(f))
+    }
 
   /**
    * Provides this result with its required environment.
@@ -47,11 +50,12 @@ private[query] sealed trait Result[-R, +E, +A] {
   /**
    * Provides this result with part of its required environment.
    */
-  final def provideSome[R0](f: Described[R0 => R])(implicit ev: NeedsEnv[R]): Result[R0, E, A] = this match {
-    case Blocked(br, c) => blocked(br.mapDataSources(DataSourceAspect.provideSome(f)), c.provideSome(f))
-    case Done(a)        => done(a)
-    case Fail(e)        => fail(e)
-  }
+  final def provideSome[R0](f: Described[R0 => R])(implicit ev: NeedsEnv[R]): Result[R0, E, A] =
+    self match {
+      case Blocked(br, c) => blocked(br.mapDataSources(DataSourceAspect.provideSome(f)), c.provideSome(f))
+      case Done(a)        => done(a)
+      case Fail(e)        => fail(e)
+    }
 }
 
 private[query] object Result {

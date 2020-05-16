@@ -2,6 +2,8 @@ import BuildHelper._
 import explicitdeps.ExplicitDepsPlugin.autoImport.moduleFilterRemoveValue
 import sbtcrossproject.CrossPlugin.autoImport.crossProject
 
+name := "zio-query"
+
 inThisBuild(
   List(
     organization := "dev.zio",

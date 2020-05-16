@@ -93,9 +93,10 @@ trait DataSource[-R, -A] { self =>
 
     }
 
-  override final def equals(that: Any): Boolean = that match {
-    case that: DataSource[_, _] => this.identifier == that.identifier
-  }
+  override final def equals(that: Any): Boolean =
+    that match {
+      case that: DataSource[_, _] => this.identifier == that.identifier
+    }
 
   override final def hashCode: Int =
     identifier.hashCode
