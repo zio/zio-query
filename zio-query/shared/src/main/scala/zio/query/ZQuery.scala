@@ -197,7 +197,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, Cache), Nothin
    */
   final def provideCustomLayer[E1 >: E, R1 <: Has[_]](
     layer: Described[ZLayer[ZEnv, E1, R1]]
-  )(implicit ev: ZEnv with R1 <:< R, tagged: Tagged[R1]): ZQuery[ZEnv, E1, A] =
+  )(implicit ev: ZEnv with R1 <:< R, tag: Tag[R1]): ZQuery[ZEnv, E1, A] =
     provideSomeLayer(layer)
 
   /**
@@ -496,7 +496,7 @@ object ZQuery {
   final class ProvideSomeLayer[R0 <: Has[_], -R, +E, +A](private val self: ZQuery[R, E, A]) extends AnyVal {
     def apply[E1 >: E, R1 <: Has[_]](
       layer: Described[ZLayer[R0, E1, R1]]
-    )(implicit ev1: R0 with R1 <:< R, ev2: NeedsEnv[R], tagged: Tagged[R1]): ZQuery[R0, E1, A] =
+    )(implicit ev1: R0 with R1 <:< R, ev2: NeedsEnv[R], tag: Tag[R1]): ZQuery[R0, E1, A] =
       self.provideLayer[E1, R0, R0 with R1](Described(ZLayer.identity[R0] ++ layer.value, layer.description))
   }
 
