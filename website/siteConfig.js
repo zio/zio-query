@@ -21,8 +21,8 @@ const users = [
 ];
 
 const siteConfig = {
-  title: 'zio-query',
-  tagline: 'TODO: Tagline',
+  title: 'ZIO Query',
+  tagline: 'Add efficient pipelining, batching, and caching to any data source',
   url: 'https://zio.github.io',
   baseUrl: '/zio-query/',
 

@@ -8,7 +8,7 @@ import zio.query.internal.{ BlockedRequest, BlockedRequests, Continue, Result }
 /**
  * A `ZQuery[R, E, A]` is a purely functional description of an effectual query
  * that may contain requests from one or more data sources, requires an
- * environment `R`, may fail with an `E`, and may succeed with an `A`.
+ * environment `R`, and may fail with an `E` or succeed with an `A`.
  *
  * Requests that can be performed in parallel, as expressed by `zipWithPar` and
  * combinators derived from it, will automatically be batched. Requests that

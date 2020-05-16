@@ -95,13 +95,13 @@ class Index extends React.Component {
             <div
                 className="productShowcaseSection paddingBottom"
                 style={{textAlign: 'center'}}>
-                <h2>Welcome to zio-query</h2>
+                <h2>Welcome to ZIO Query</h2>
                 <MarkdownBlock>
-                    TODO: Tagline
+                    ZIO Query helps you dramatically reduce load on data sources and improve performance.
                 </MarkdownBlock>
 
                 <MarkdownBlock>
-                    TODO: Long description (paragraph)
+                    Compared with Fetch, ZIO Query supports pipelining, supports response types that depend on request types, does not require higher-kinded types and implicits, supports ZIO environment and statically typed errors, and has no dependencies except for ZIO.
                 </MarkdownBlock>
             </div>
         );
@@ -110,16 +110,16 @@ class Index extends React.Component {
             <Block layout="fourColumn">
                 {[
                     {
-                        content: 'TODO: Content 1',
-                        image: `${baseUrl}img/undraw_tweetstorm.svg`,
-                        imageAlign: 'top',
-                        title: 'TODO: Title 1',
+                        content: 'ZIO Query detects parts of composite queries that can be combined together for fewer individual requests to the data source',
+                        title: 'Pipelining',
                     },
                     {
-                        content: 'TODO: Content 2',
-                        image: `${baseUrl}img/undraw_operating_system.svg`,
-                        imageAlign: 'top',
-                        title: 'TODO: Title 2',
+                        content: 'ZIO Query detects parts of composite queries that can be executed in parallel without changing the semantics of the query',
+                        title: 'Batching',
+                    },
+                    {
+                        content: 'ZIO Query can transparently cache read queries to minimize the cost of fetching the same item repeatedly in the scope of a query',
+                        title: 'Caching',
                     },
                 ]}
             </Block>

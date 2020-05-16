@@ -3,18 +3,16 @@ package zio.query
 import zio.{ Chunk, NeedsEnv, ZIO }
 
 /**
- * A `DataSource[R, A]` is capable of executing requests of type `A` that
- * require an environment `R`.
+ * A `DataSource[R, A]` requires an environment `R` and is capable of executing
+ * requests of type `A`.
  *
- * Data sources must implement the method `runAll` which takes an
- * colletion of requests and returns an effect with a
- * `CompletedRequestMap` containing a mapping from requests to results. The
- * type of the collections of requests is a `Chunk[Chunk[A]]`. The outer
- * `Chunk` describes sets of requests that must be performed sequentially while
- * the requests in each inner `Chunk` can be performed in parallel. Because
- * `runAll` is parameterized on a collection of requests rather than a single
- * request, data sources have the ability to introspect on all the requests
- * being executed and optimize the query.
+ * Data sources must implement the method `runAll` which takes a collection of
+ * requests and returns an effect with a `CompletedRequestMap` containing a
+ * mapping from requests to results. The type of the collection of requests is
+ * a `Chunk[Chunk[A]]`. The outer `Chunk` represents batches of requests that
+ * must be performed sequentially. The inner `Chunk` represents a batch of
+ * requests that can be performed in parallel. This allows data sources to
+ * introspect on all the requests being executed and optimize the query.
  *
  * Data sources will typically be parameterized on a subtype of `Request[A]`,
  * though that is not strictly necessarily as long as the data source can map
@@ -35,7 +33,7 @@ trait DataSource[-R, -A] { self =>
   /**
    * Execute a collection of requests. The outer `Chunk` represents batches
    * of requests that must be performed sequentially. The inner `Chunk`
-   * represents a batch of requests that may be performed in parallel.
+   * represents a batch of requests that can be performed in parallel.
    */
   def runAll(requests: Chunk[Chunk[A]]): ZIO[R, Nothing, CompletedRequestMap]
 
@@ -125,8 +123,9 @@ trait DataSource[-R, -A] { self =>
 object DataSource {
 
   /**
-   * A data source that batches queries that can be performed in parallel in
-   * batches but does not pipeline queries that must be performed sequentially.
+   * A data source that executes requests that can be performed in parallel in
+   * batches but does not further optimize batches of requests that must be
+   * performed sequentially.
    */
   trait Batched[-R, -A] extends DataSource[R, A] {
     def run(requests: Chunk[A]): ZIO[R, Nothing, CompletedRequestMap]
