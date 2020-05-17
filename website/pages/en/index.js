@@ -97,11 +97,11 @@ class Index extends React.Component {
                 style={{textAlign: 'center'}}>
                 <h2>Welcome to ZIO Query</h2>
                 <MarkdownBlock>
-                    ZIO Query helps you dramatically reduce load on data sources and improve performance.
+                    ZIO Query helps you dramatically reduce load on data sources and improve performance
                 </MarkdownBlock>
 
                 <MarkdownBlock>
-                    Compared with Fetch, ZIO Query supports pipelining, supports response types that depend on request types, does not require higher-kinded types and implicits, supports ZIO environment and statically typed errors, and has no dependencies except for ZIO.
+                    Compared with Fetch, ZIO Query supports pipelining, supports response types that depend on request types, does not require higher-kinded types and implicits, supports ZIO environment and statically typed errors, and has no dependencies except for ZIO
                 </MarkdownBlock>
             </div>
         );
