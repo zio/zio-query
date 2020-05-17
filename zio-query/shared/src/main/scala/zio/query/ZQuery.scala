@@ -85,6 +85,12 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, Cache), Nothin
     flatMap(f)
 
   /**
+   * Maps the success value of this query to the specified constant value.
+   */
+  final def as[B](b: => B): ZQuery[R, E, B] =
+    map(_ => b)
+
+  /**
    * Returns a query whose failure and success channels have been mapped by the
    * specified pair of functions, `f` and `g`.
    */
