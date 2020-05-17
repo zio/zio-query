@@ -44,7 +44,7 @@ lazy val root = project
 
 lazy val zioQuery = crossProject(JSPlatform, JVMPlatform)
   .in(file("zio-query"))
-  .settings(stdSettings("zioQuery"))
+  .settings(stdSettings("zio-query"))
   .settings(crossProjectSettings)
   .settings(buildInfoSettings("zio.query"))
   .settings(
