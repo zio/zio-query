@@ -17,7 +17,7 @@ ZIO Query helps you dramatically reduce load on data sources and improve perform
 Compared with Fetch, ZIO Query supports pipelining, supports response types that depend on request types, does not require higher-kinded types and implicits, supports ZIO environment and statically typed errors, and has no dependencies except for ZIO.
 
 # Documentation
-[zio-query Microsite](https://zio.github.io/zio-query/)
+[ZIO Query Microsite](https://zio.github.io/zio-query/)
 
 # Contributing
 [Documentation for contributors](https://zio.github.io/zio-query/docs/about/about_contributing)
