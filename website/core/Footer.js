@@ -53,8 +53,8 @@ class Footer extends React.Component {
                     <div>
                         <h5>Additional resources</h5>
                         <a
-                            href="/zio-query/api/index.html">
-                            Scaladoc of zio-query
+                            href="https://javadoc.io/doc/dev.zio/zio-query_2.12/latest/index.html">
+                            Scaladoc of ZIO Query
                         </a>
                     </div>
                 </section>

@@ -33,7 +33,7 @@ const siteConfig = {
   headerLinks: [
     {doc: 'overview/overview_index', label: 'Overview'},
     {doc: 'usecases/usecases_index', label: 'Use Cases'},
-    {href: 'api/index.html', label: 'API'},
+    {href: 'https://javadoc.io/doc/dev.zio/zio-query_2.12/latest/index.html', label: 'API'},
     {doc: 'about/about_index', label: 'About'}
   ],
 
