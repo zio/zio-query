@@ -40,7 +40,7 @@ trait DataSource[-R, -A] { self =>
   /**
    * Syntax for adding aspects.
    */
-  def @@[R1](aspect: DataSourceAspect[R, R1]): DataSource[R1, A] =
+  def @@[Out[+_]](aspect: DataSourceAspect.Aux[R, Out]): DataSource[Out[R], A] =
     aspect(self)
 
   /**

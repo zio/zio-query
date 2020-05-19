@@ -1,65 +1,75 @@
 package zio.query
 
-/**
- * A `DataSourceAspect[R, R1]` is a universally quantified function from
- * values of type `DataSource[R, A]` to values of type `DataSource[R1, A]` for
- * all types `A`. This is used internally by the library to describe functions
- * for transforming data sources that do not change the type of requests that a
- * data source is able to execute.
- */
-trait DataSourceAspect[+R, -R1] { self =>
+import zio.{ Chunk, ZIO }
 
-  def apply[A](dataSource: DataSource[R, A]): DataSource[R1, A]
+trait DataSourceAspect[+R] {
+  type Out[+_]
 
-  /**
-   * A symbolic alias for `compose`.
-   */
-  final def <<<[R0](that: DataSourceAspect[R0, R]): DataSourceAspect[R0, R1] =
-    self compose that
-
-  /**
-   * A symbolic alias for `andThen`.
-   */
-  final def >>>[R2](that: DataSourceAspect[R1, R2]): DataSourceAspect[R, R2] =
-    self andThen that
-
-  /**
-   * Creates a new data source aspect by applying this data source aspect
-   * followed by that data source aspect.
-   */
-  final def andThen[R2](that: DataSourceAspect[R1, R2]): DataSourceAspect[R, R2] =
-    new DataSourceAspect[R, R2] {
-      def apply[A](dataSource: DataSource[R, A]): DataSource[R2, A] =
-        that(self(dataSource))
-    }
-
-  /**
-   * Creates a new data source aspect by applying that data source aspect
-   * followed by this data source aspect.
-   */
-  final def compose[R0](that: DataSourceAspect[R0, R]): DataSourceAspect[R0, R1] =
-    new DataSourceAspect[R0, R1] {
-      def apply[A](dataSource: DataSource[R0, A]): DataSource[R1, A] =
-        self(that(dataSource))
-    }
+  def apply[R1 >: R, A](dataSource: DataSource[R1, A]): DataSource[Out[R1], A]
 }
 
 object DataSourceAspect {
 
-  /**
-   * A data source aspect that provides a data source with its required
-   * environment.
-   */
-  def provide[R](r: Described[R]): DataSourceAspect[R, Any] =
-    provideSome(Described(_ => r.value, s"_ => ${r.description}"))
+  type Aux[+R, Out0[+_]] = DataSourceAspect[R] { type Out[A] = Out0[A] }
 
-  /**
-   * A data source aspect that provides a data sources with part of its
-   * required environment.
-   */
-  def provideSome[R, R1](f: Described[R1 => R]): DataSourceAspect[R, R1] =
-    new DataSourceAspect[R, R1] {
-      def apply[A](dataSource: DataSource[R, A]): DataSource[R1, A] =
+  def around[R0, A0](before: Described[ZIO[R0, Nothing, A0]])(
+    after: Described[A0 => ZIO[R0, Nothing, Any]]
+  ): DataSourceAspect.Aux[Nothing, ({ type lambda[+x] = R0 with x })#lambda] =
+    new DataSourceAspect[Nothing] {
+      type Out[+A] = R0 with A
+      def apply[R, A](dataSource: DataSource[R, A]): DataSource[R0 with R, A] =
+        new DataSource[R0 with R, A] {
+          val identifier = s"${dataSource.identifier} @@ around(${before.description})(${after.description})"
+          def runAll(requests: Chunk[Chunk[A]]): ZIO[R0 with R, Nothing, CompletedRequestMap] =
+            before.value.bracket(after.value)(_ => dataSource.runAll(requests))
+        }
+    }
+
+  def provide[R](r: Described[R]): DataSourceAspect.Aux[R, ({ type lambda[+x] = Any })#lambda] =
+    new DataSourceAspect[R] {
+      type Out[+A] = Any
+      def apply[R1 >: R, A](dataSource: DataSource[R1, A]): DataSource[Any, A] =
+        dataSource.provide(r)
+    }
+
+  def provideSome[R0, R](f: Described[R0 => R]): DataSourceAspect.Aux[R, ({ type lambda[+x] = R0 })#lambda] =
+    new DataSourceAspect[R] {
+      type Out[+A] = R0
+      def apply[R1 >: R, A](dataSource: DataSource[R1, A]): DataSource[R0, A] =
         dataSource.provideSome(f)
     }
+
+  implicit class AndThenSyntax[R, Out0[+_]](self: DataSourceAspect.Aux[R, Out0]) {
+
+    def >>>[Out1[+_]](
+      that: DataSourceAspect.Aux[Out0[R], Out1]
+    ): DataSourceAspect.Aux[R, ({ type lambda[+x] = Out1[Out0[x]] })#lambda] =
+      andThen(that)
+
+    def andThen[Out1[+_]](
+      that: DataSourceAspect.Aux[Out0[R], Out1]
+    ): DataSourceAspect.Aux[R, ({ type lambda[+x] = Out1[Out0[x]] })#lambda] =
+      new DataSourceAspect[R] {
+        type Out[+A] = Out1[Out0[A]]
+        def apply[R1 >: R, A](dataSource: DataSource[R1, A]): DataSource[Out[R1], A] =
+          that(self(dataSource))
+      }
+  }
+
+  implicit class ComposeSyntax[R, Out0[+_], Out1[+_]](self: DataSourceAspect.Aux[Out0[R], Out1]) {
+
+    def <<<(
+      that: DataSourceAspect.Aux[R, Out0]
+    ): DataSourceAspect.Aux[R, ({ type lambda[+x] = Out1[Out0[x]] })#lambda] =
+      compose(that)
+
+    def compose(
+      that: DataSourceAspect.Aux[R, Out0]
+    ): DataSourceAspect.Aux[R, ({ type lambda[+x] = Out1[Out0[x]] })#lambda] =
+      new DataSourceAspect[R] {
+        type Out[+A] = Out1[Out0[A]]
+        def apply[R1 >: R, A](dataSource: DataSource[R1, A]): DataSource[Out[R1], A] =
+          self(that(dataSource))
+      }
+  }
 }

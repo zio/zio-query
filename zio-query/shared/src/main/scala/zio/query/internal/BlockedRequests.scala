@@ -34,7 +34,7 @@ private[query] sealed trait BlockedRequests[-R] { self =>
    * can change the environment type of data sources but must preserve the
    * request type of each data source.
    */
-  final def mapDataSources[R1](f: DataSourceAspect[R, R1]): BlockedRequests[R1] =
+  final def mapDataSources[Out[+_]](f: DataSourceAspect.Aux[R, Out]): BlockedRequests[Out[R]] =
     self match {
       case Empty          => Empty
       case Both(l, r)     => Both(l.mapDataSources(f), r.mapDataSources(f))
