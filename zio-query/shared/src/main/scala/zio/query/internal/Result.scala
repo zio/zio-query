@@ -32,6 +32,16 @@ private[query] sealed trait Result[-R, +E, +A] { self =>
     }
 
   /**
+   * Transforms all data sources with the specified data source aspect.
+   */
+  def mapDataSources[R1 <: R](f: DataSourceAspect[R1]): Result[R1, E, A] =
+    self match {
+      case Blocked(br, c) => Result.blocked(br.mapDataSources(f), c.mapDataSources(f))
+      case Done(a)        => Result.done(a)
+      case Fail(e)        => Result.fail(e)
+    }
+
+  /**
    * Maps the specified function over the failed value of this result.
    */
   final def mapError[E1](f: E => E1)(implicit ev: CanFail[E]): Result[R, E1, A] =
@@ -52,7 +62,7 @@ private[query] sealed trait Result[-R, +E, +A] { self =>
    */
   final def provideSome[R0](f: Described[R0 => R])(implicit ev: NeedsEnv[R]): Result[R0, E, A] =
     self match {
-      case Blocked(br, c) => blocked(br.mapDataSources(DataSourceAspect.provideSome(f)), c.provideSome(f))
+      case Blocked(br, c) => blocked(br.provideSome(f), c.provideSome(f))
       case Done(a)        => done(a)
       case Fail(e)        => fail(e)
     }

@@ -1,7 +1,7 @@
 package zio.query.internal
 
+import zio.query._
 import zio.query.internal.Continue._
-import zio.query.{ Cache, DataSource, Described, QueryFailure, Request, ZQuery }
 import zio.{ CanFail, Cause, IO, NeedsEnv, Ref, ZIO }
 
 /**
@@ -20,8 +20,9 @@ private[query] sealed trait Continue[-R, +E, +A] { self =>
    */
   final def fold[B](failure: E => B, success: A => B)(implicit ev: CanFail[E]): Continue[R, Nothing, B] =
     self match {
-      case Get(query)    => get(query.fold(failure, success))
       case Effect(query) => effect(query.fold(failure, success))
+      case Get(io)       => get(io.fold(failure, success))
+
     }
 
   /**
@@ -32,17 +33,28 @@ private[query] sealed trait Continue[-R, +E, +A] { self =>
     success: A => ZQuery[R1, E1, B]
   ): Continue[R1, E1, B] =
     self match {
-      case Get(io)       => effect(ZQuery.fromEffect(io).foldCauseM(failure, success))
       case Effect(query) => effect(query.foldCauseM(failure, success))
+      case Get(io)       => effect(ZQuery.fromEffect(io).foldCauseM(failure, success))
     }
 
   /**
    * Purely maps over the success type of this continuation.
    */
-  def map[B](f: A => B): Continue[R, E, B] =
+  final def map[B](f: A => B): Continue[R, E, B] =
     self match {
-      case Get(io)       => get(io.map(f))
       case Effect(query) => effect(query.map(f))
+      case Get(io)       => get(io.map(f))
+
+    }
+
+  /**
+   * Transforms all data sources with the specified data source aspect.
+   */
+  final def mapDataSources[R1 <: R](f: DataSourceAspect[R1]): Continue[R1, E, A] =
+    self match {
+      case Effect(query) => effect(query.mapDataSources(f))
+      case Get(io)       => get(io)
+
     }
 
   /**
@@ -50,59 +62,61 @@ private[query] sealed trait Continue[-R, +E, +A] { self =>
    */
   final def mapError[E1](f: E => E1)(implicit ev: CanFail[E]): Continue[R, E1, A] =
     self match {
-      case Get(io)       => get(io.mapError(f))
       case Effect(query) => effect(query.mapError(f))
+      case Get(io)       => get(io.mapError(f))
+
     }
 
   /**
    * Effectually maps over the success type of this continuation.
    */
-  def mapM[R1 <: R, E1 >: E, B](f: A => ZQuery[R1, E1, B]): Continue[R1, E1, B] =
+  final def mapM[R1 <: R, E1 >: E, B](f: A => ZQuery[R1, E1, B]): Continue[R1, E1, B] =
     self match {
-      case Get(io)       => effect(ZQuery.fromEffect(io).flatMap(f))
       case Effect(query) => effect(query.flatMap(f))
+      case Get(io)       => effect(ZQuery.fromEffect(io).flatMap(f))
     }
 
   /**
    * Purely contramaps over the environment type of this continuation.
    */
-  def provideSome[R0](f: Described[R0 => R])(implicit ev: NeedsEnv[R]): Continue[R0, E, A] =
+  final def provideSome[R0](f: Described[R0 => R])(implicit ev: NeedsEnv[R]): Continue[R0, E, A] =
     self match {
-      case Get(io)       => get(io)
       case Effect(query) => effect(query.provideSome(f))
+      case Get(io)       => get(io)
+
     }
 
   /**
    * Runs this continuation..
    */
-  def runCache(cache: Cache): ZIO[R, E, A] =
+  final def runCache(cache: Cache): ZIO[R, E, A] =
     self match {
-      case Get(io)       => io
       case Effect(query) => query.runCache(cache)
+      case Get(io)       => io
     }
 
   /**
    * Combines this continuation with that continuation using the specified
    * function, in sequence.
    */
-  def zipWith[R1 <: R, E1 >: E, B, C](that: Continue[R1, E1, B])(f: (A, B) => C): Continue[R1, E1, C] =
+  final def zipWith[R1 <: R, E1 >: E, B, C](that: Continue[R1, E1, B])(f: (A, B) => C): Continue[R1, E1, C] =
     (self, that) match {
-      case (Get(l), Get(r))       => get(l.zipWith(r)(f))
-      case (Get(l), Effect(r))    => effect(ZQuery.fromEffect(l).zipWith(r)(f))
-      case (Effect(l), Get(r))    => effect(l.zipWith(ZQuery.fromEffect(r))(f))
       case (Effect(l), Effect(r)) => effect(l.zipWith(r)(f))
+      case (Effect(l), Get(r))    => effect(l.zipWith(ZQuery.fromEffect(r))(f))
+      case (Get(l), Effect(r))    => effect(ZQuery.fromEffect(l).zipWith(r)(f))
+      case (Get(l), Get(r))       => get(l.zipWith(r)(f))
     }
 
   /**
    * Combines this continuation with that continuation using the specified
    * function, in parallel.
    */
-  def zipWithPar[R1 <: R, E1 >: E, B, C](that: Continue[R1, E1, B])(f: (A, B) => C): Continue[R1, E1, C] =
+  final def zipWithPar[R1 <: R, E1 >: E, B, C](that: Continue[R1, E1, B])(f: (A, B) => C): Continue[R1, E1, C] =
     (self, that) match {
-      case (Get(l), Get(r))       => get(l.zipWithPar(r)(f))
-      case (Get(l), Effect(r))    => effect(ZQuery.fromEffect(l).zipWithPar(r)(f))
-      case (Effect(l), Get(r))    => effect(l.zipWithPar(ZQuery.fromEffect(r))(f))
       case (Effect(l), Effect(r)) => effect(l.zipWithPar(r)(f))
+      case (Effect(l), Get(r))    => effect(l.zipWithPar(ZQuery.fromEffect(r))(f))
+      case (Get(l), Effect(r))    => effect(ZQuery.fromEffect(l).zipWithPar(r)(f))
+      case (Get(l), Get(r))       => get(l.zipWithPar(r)(f))
     }
 
 }

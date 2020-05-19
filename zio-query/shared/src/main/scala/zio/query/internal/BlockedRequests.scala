@@ -4,7 +4,7 @@ import scala.annotation.tailrec
 
 import zio.ZIO
 import zio.query.internal.BlockedRequests._
-import zio.query.{ DataSource, DataSourceAspect }
+import zio.query.{ DataSource, DataSourceAspect, Described }
 
 /**
  * `BlockedRequests` captures a collection of blocked requests as a data
@@ -34,12 +34,23 @@ private[query] sealed trait BlockedRequests[-R] { self =>
    * can change the environment type of data sources but must preserve the
    * request type of each data source.
    */
-  final def mapDataSources[R1](f: DataSourceAspect[R, R1]): BlockedRequests[R1] =
+  final def mapDataSources[R1 <: R](f: DataSourceAspect[R1]): BlockedRequests[R1] =
     self match {
       case Empty          => Empty
       case Both(l, r)     => Both(l.mapDataSources(f), r.mapDataSources(f))
       case Then(l, r)     => Then(l.mapDataSources(f), r.mapDataSources(f))
       case Single(ds, br) => Single(f(ds), br)
+    }
+
+  /**
+   * Provides each data source with part of its required environment.
+   */
+  final def provideSome[R0](f: Described[R0 => R]): BlockedRequests[R0] =
+    self match {
+      case Empty          => Empty
+      case Both(l, r)     => Both(l.provideSome(f), r.provideSome(f))
+      case Then(l, r)     => Then(l.provideSome(f), r.provideSome(f))
+      case Single(ds, br) => Single(ds.provideSome(f), br)
     }
 
   /**

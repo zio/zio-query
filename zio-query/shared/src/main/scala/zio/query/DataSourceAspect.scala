@@ -1,65 +1,51 @@
 package zio.query
 
-/**
- * A `DataSourceAspect[R, R1]` is a universally quantified function from
- * values of type `DataSource[R, A]` to values of type `DataSource[R1, A]` for
- * all types `A`. This is used internally by the library to describe functions
- * for transforming data sources that do not change the type of requests that a
- * data source is able to execute.
- */
-trait DataSourceAspect[+R, -R1] { self =>
+import zio.{ Chunk, ZIO }
 
-  def apply[A](dataSource: DataSource[R, A]): DataSource[R1, A]
+/**
+ * A `DataSourceAspect` is an aspect that can be weaved into queries. You can
+ * think of an aspect as a polymorphic function, capable of transforming one
+ * data source into another, possibly enlarging the environment type.
+ */
+trait DataSourceAspect[-R] { self =>
 
   /**
-   * A symbolic alias for `compose`.
+   * Applies the aspect to a data source.
    */
-  final def <<<[R0](that: DataSourceAspect[R0, R]): DataSourceAspect[R0, R1] =
-    self compose that
+  def apply[R1 <: R, A](dataSource: DataSource[R1, A]): DataSource[R1, A]
 
   /**
    * A symbolic alias for `andThen`.
    */
-  final def >>>[R2](that: DataSourceAspect[R1, R2]): DataSourceAspect[R, R2] =
-    self andThen that
+  final def >>>[R1 <: R](that: DataSourceAspect[R1]): DataSourceAspect[R1] =
+    andThen(that)
 
   /**
-   * Creates a new data source aspect by applying this data source aspect
-   * followed by that data source aspect.
+   * Returns a new aspect that represents the sequential composition of this
+   * aspect with the specified one.
    */
-  final def andThen[R2](that: DataSourceAspect[R1, R2]): DataSourceAspect[R, R2] =
-    new DataSourceAspect[R, R2] {
-      def apply[A](dataSource: DataSource[R, A]): DataSource[R2, A] =
+  final def andThen[R1 <: R](that: DataSourceAspect[R1]): DataSourceAspect[R1] =
+    new DataSourceAspect[R1] {
+      def apply[R2 <: R1, A](dataSource: DataSource[R2, A]): DataSource[R2, A] =
         that(self(dataSource))
-    }
-
-  /**
-   * Creates a new data source aspect by applying that data source aspect
-   * followed by this data source aspect.
-   */
-  final def compose[R0](that: DataSourceAspect[R0, R]): DataSourceAspect[R0, R1] =
-    new DataSourceAspect[R0, R1] {
-      def apply[A](dataSource: DataSource[R0, A]): DataSource[R1, A] =
-        self(that(dataSource))
     }
 }
 
 object DataSourceAspect {
 
   /**
-   * A data source aspect that provides a data source with its required
-   * environment.
+   * A data source aspect that executes requests between two effects, `before`
+   * and `after`, where the result of `before` can be used by `after`.
    */
-  def provide[R](r: Described[R]): DataSourceAspect[R, Any] =
-    provideSome(Described(_ => r.value, s"_ => ${r.description}"))
-
-  /**
-   * A data source aspect that provides a data sources with part of its
-   * required environment.
-   */
-  def provideSome[R, R1](f: Described[R1 => R]): DataSourceAspect[R, R1] =
-    new DataSourceAspect[R, R1] {
-      def apply[A](dataSource: DataSource[R, A]): DataSource[R1, A] =
-        dataSource.provideSome(f)
+  def around[R, A](
+    before: Described[ZIO[R, Nothing, A]]
+  )(after: Described[A => ZIO[R, Nothing, Any]]): DataSourceAspect[R] =
+    new DataSourceAspect[R] {
+      def apply[R1 <: R, A](dataSource: DataSource[R1, A]): DataSource[R1, A] =
+        new DataSource[R, A] {
+          val identifier = s"${dataSource.identifier} @@ around(${before.description})(${after.description})"
+          def runAll(requests: Chunk[Chunk[A]]): ZIO[R, Nothing, CompletedRequestMap] =
+            before.value.bracket(after.value)(_ => runAll(requests))
+        }
     }
 }
