@@ -21,7 +21,7 @@ private[query] sealed trait Continue[-R, +E, +A] { self =>
   final def fold[B](failure: E => B, success: A => B)(implicit ev: CanFail[E]): Continue[R, Nothing, B] =
     self match {
       case Effect(query) => effect(query.fold(failure, success))
-      case Get(io)    => get(io.fold(failure, success))
+      case Get(io)       => get(io.fold(failure, success))
 
     }
 

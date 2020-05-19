@@ -42,6 +42,9 @@ private[query] sealed trait BlockedRequests[-R] { self =>
       case Single(ds, br) => Single(f(ds), br)
     }
 
+  /**
+   * Provides each data source with part of its required environment.
+   */
   final def provideSome[R0](f: Described[R0 => R]): BlockedRequests[R0] =
     self match {
       case Empty          => Empty
