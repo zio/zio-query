@@ -369,6 +369,21 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, Cache), Nothin
 object ZQuery {
 
   /**
+   * Accesses the environment of the effect.
+   * {{{
+   * val portNumber = effect.access(_.config.portNumber)
+   * }}}
+   */
+  final def access[R]: AccessPartiallyApplied[R] =
+    new AccessPartiallyApplied[R]
+
+  /**
+   * Effectfully accesses the environment of the effect.
+   */
+  final def accessM[R]: AccessMPartiallyApplied[R] =
+    new AccessMPartiallyApplied[R]
+
+  /**
    * Collects a collection of queries into a query returning a collection of
    * their results. Requests will be executed sequentially and will be
    * pipelined.
@@ -526,4 +541,14 @@ object ZQuery {
           b => (es, b :: bs)
         )
     }
+
+  final class AccessPartiallyApplied[R](private val dummy: Boolean = true) extends AnyVal {
+    def apply[A](f: R => A): ZQuery[R, Nothing, A] =
+      environment[R].map(f)
+  }
+
+  final class AccessMPartiallyApplied[R](private val dummy: Boolean = true) extends AnyVal {
+    def apply[E, A](f: R => ZQuery[R, E, A]): ZQuery[R, E, A] =
+      environment[R].flatMap(f)
+  }
 }
