@@ -17,14 +17,14 @@ trait DataSourceAspect[-R] { self =>
   /**
    * A symbolic alias for `andThen`.
    */
-  def >>>[R1 <: R](that: DataSourceAspect[R1]): DataSourceAspect[R1] =
+  final def >>>[R1 <: R](that: DataSourceAspect[R1]): DataSourceAspect[R1] =
     andThen(that)
 
   /**
    * Returns a new aspect that represents the sequential composition of this
    * aspect with the specified one.
    */
-  def andThen[R1 <: R](that: DataSourceAspect[R1]): DataSourceAspect[R1] =
+  final def andThen[R1 <: R](that: DataSourceAspect[R1]): DataSourceAspect[R1] =
     new DataSourceAspect[R1] {
       def apply[R2 <: R1, A](dataSource: DataSource[R2, A]): DataSource[R2, A] =
         that(self(dataSource))

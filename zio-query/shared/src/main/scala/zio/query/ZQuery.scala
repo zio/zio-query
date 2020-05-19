@@ -45,7 +45,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, Cache), Nothin
   /**
    * Syntax for adding aspects.
    */
-  def @@[R1 <: R](aspect: DataSourceAspect[R1]): ZQuery[R1, E, A] =
+  final def @@[R1 <: R](aspect: DataSourceAspect[R1]): ZQuery[R1, E, A] =
     mapDataSources(aspect)
 
   /**
@@ -171,7 +171,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, Cache), Nothin
   /**
    * Transforms all data sources with the specified data source aspect.
    */
-  def mapDataSources[R1 <: R](f: DataSourceAspect[R1]): ZQuery[R1, E, A] =
+  final def mapDataSources[R1 <: R](f: DataSourceAspect[R1]): ZQuery[R1, E, A] =
     ZQuery(step.map(_.mapDataSources(f)))
 
   /**
