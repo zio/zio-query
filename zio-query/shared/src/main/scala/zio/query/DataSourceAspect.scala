@@ -10,7 +10,7 @@ import zio.{ Chunk, ZIO }
 trait DataSourceAspect[-R] { self =>
 
   /**
-   * Applies the aspect to some a data source.
+   * Applies the aspect to a data source.
    */
   def apply[R1 <: R, A](dataSource: DataSource[R1, A]): DataSource[R1, A]
 
