@@ -74,13 +74,7 @@ trait DataSource[-R, -A] { self =>
       def runAll(requests: Chunk[Chunk[C]]): ZIO[R1, Nothing, CompletedRequestMap] =
         ZIO
           .foreach(requests) { requests =>
-            val (as, bs) = requests.foldLeft[(Chunk[A], Chunk[B])]((Chunk.empty, Chunk.empty)) {
-              case ((as, bs), c) =>
-                f.value(c) match {
-                  case Left(a)  => (as + a, bs)
-                  case Right(b) => (as, bs + b)
-                }
-            }
+            val (as, bs) = requests.partitionMap(f.value)
             self.runAll(Chunk(as)).zipWithPar(that.runAll(Chunk(bs)))(_ ++ _)
           }
           .map(_.foldLeft(CompletedRequestMap.empty)(_ ++ _))
