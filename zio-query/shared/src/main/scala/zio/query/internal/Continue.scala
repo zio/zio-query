@@ -1,7 +1,7 @@
 package zio.query.internal
 
+import zio.query._
 import zio.query.internal.Continue._
-import zio.query.{ Cache, DataSource, Described, QueryFailure, Request, ZQuery }
 import zio.{ CanFail, Cause, IO, NeedsEnv, Ref, ZIO }
 
 /**
@@ -43,6 +43,15 @@ private[query] sealed trait Continue[-R, +E, +A] { self =>
     self match {
       case Get(io)       => get(io.map(f))
       case Effect(query) => effect(query.map(f))
+    }
+
+  /**
+   * Transforms all data sources with the specified data source aspect.
+   */
+  def mapDataSources[R1 <: R](f: DataSourceAspect[R1]): Continue[R1, E, A] =
+    self match {
+      case Get(io)       => get(io)
+      case Effect(query) => effect(query.mapDataSources(f))
     }
 
   /**

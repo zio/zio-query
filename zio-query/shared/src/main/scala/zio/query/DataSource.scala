@@ -38,12 +38,6 @@ trait DataSource[-R, -A] { self =>
   def runAll(requests: Chunk[Chunk[A]]): ZIO[R, Nothing, CompletedRequestMap]
 
   /**
-   * Syntax for adding aspects.
-   */
-  def @@[R0 <: R1, R1 <: R](aspect: DataSourceAspect[R0, R1]): DataSource[R1, A] =
-    aspect(self)
-
-  /**
    * Returns a new data source that executes requests of type `B` using the
    * specified function to transform `B` requests into requests that this data
    * source can execute.

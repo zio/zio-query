@@ -2,20 +2,31 @@ package zio.query
 
 import zio.{ Chunk, ZIO }
 
-trait DataSourceAspect[+LowerR, -UpperR] { self =>
+/**
+ * A `DataSourceAspect` is an aspect that can be weaved into queries. You can
+ * think of an aspect as a polymorphic function, capable of transforming one
+ * data source into another, possibly enlarging the environment type.
+ */
+trait DataSourceAspect[-R] { self =>
 
-  def apply[R >: LowerR <: UpperR, A](dataSource: DataSource[R, A]): DataSource[R, A]
+  /**
+   * Applies the aspect to some a data source.
+   */
+  def apply[R1 <: R, A](dataSource: DataSource[R1, A]): DataSource[R1, A]
 
-  def >>>[LowerR1 >: LowerR, UpperR1 <: UpperR](
-    that: DataSourceAspect[LowerR1, UpperR1]
-  ): DataSourceAspect[LowerR1, UpperR1] =
+  /**
+   * A symbolic alias for `andThen`.
+   */
+  def >>>[R1 <: R](that: DataSourceAspect[R1]): DataSourceAspect[R1] =
     andThen(that)
 
-  def andThen[LowerR1 >: LowerR, UpperR1 <: UpperR](
-    that: DataSourceAspect[LowerR1, UpperR1]
-  ): DataSourceAspect[LowerR1, UpperR1] =
-    new DataSourceAspect[LowerR1, UpperR1] {
-      def apply[R >: LowerR1 <: UpperR1, A](dataSource: DataSource[R, A]): DataSource[R, A] =
+  /**
+   * Returns a new aspect that represents the sequential composition of this
+   * aspect with the specified one.
+   */
+  def andThen[R1 <: R](that: DataSourceAspect[R1]): DataSourceAspect[R1] =
+    new DataSourceAspect[R1] {
+      def apply[R2 <: R1, A](dataSource: DataSource[R2, A]): DataSource[R2, A] =
         that(self(dataSource))
     }
 }
@@ -26,11 +37,11 @@ object DataSourceAspect {
    * A data source aspect that executes requests between two effects, `before`
    * and `after`, where the result of `before` can be used by `after`.
    */
-  def around[R0, A0](
-    before: Described[ZIO[R0, Nothing, A0]]
-  )(after: Described[A0 => ZIO[R0, Nothing, Any]]): DataSourceAspect[Nothing, R0] =
-    new DataSourceAspect[Nothing, R0] {
-      def apply[R <: R0, A](dataSource: DataSource[R, A]): DataSource[R, A] =
+  def around[R, A](
+    before: Described[ZIO[R, Nothing, A]]
+  )(after: Described[A => ZIO[R, Nothing, Any]]): DataSourceAspect[R] =
+    new DataSourceAspect[R] {
+      def apply[R1 <: R, A](dataSource: DataSource[R1, A]): DataSource[R1, A] =
         new DataSource[R, A] {
           val identifier = s"${dataSource.identifier} @@ around(${before.description})(${after.description})"
           def runAll(requests: Chunk[Chunk[A]]): ZIO[R, Nothing, CompletedRequestMap] =

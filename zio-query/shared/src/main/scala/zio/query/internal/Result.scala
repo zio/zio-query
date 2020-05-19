@@ -1,7 +1,7 @@
 package zio.query.internal
 
 import zio.query.internal.Result._
-import zio.query.Described
+import zio.query.{ DataSourceAspect, Described }
 import zio.{ CanFail, Cause, NeedsEnv }
 
 /**
@@ -29,6 +29,16 @@ private[query] sealed trait Result[-R, +E, +A] { self =>
       case Blocked(br, c) => blocked(br, c.map(f))
       case Done(a)        => done(f(a))
       case Fail(e)        => fail(e)
+    }
+
+  /**
+   * Transforms all data sources with the specified data source aspect.
+   */
+  def mapDataSources[R1 <: R](f: DataSourceAspect[R1]): Result[R1, E, A] =
+    self match {
+      case Blocked(br, c) => Result.blocked(br.mapDataSources(f), c.mapDataSources(f))
+      case Done(a)        => Result.done(a)
+      case Fail(e)        => Result.fail(e)
     }
 
   /**

@@ -43,6 +43,12 @@ import zio.query.internal.{ BlockedRequest, BlockedRequests, Continue, Result }
 final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, Cache), Nothing, Result[R, E, A]]) { self =>
 
   /**
+   * Syntax for adding aspects.
+   */
+  def @@[R1 <: R](aspect: DataSourceAspect[R1]): ZQuery[R1, E, A] =
+    mapDataSources(aspect)
+
+  /**
    * A symbolic alias for `zipParRight`.
    */
   final def &>[R1 <: R, E1 >: E, B](that: ZQuery[R1, E1, B]): ZQuery[R1, E1, B] =
@@ -161,6 +167,12 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, Cache), Nothin
    */
   final def map[B](f: A => B): ZQuery[R, E, B] =
     ZQuery(step.map(_.map(f)))
+
+  /**
+   * Transforms all data sources with the specified data source aspect.
+   */
+  def mapDataSources[R1 <: R](f: DataSourceAspect[R1]): ZQuery[R1, E, A] =
+    ZQuery(step.map(_.mapDataSources(f)))
 
   /**
    * Maps the specified function over the failed result of this query.
