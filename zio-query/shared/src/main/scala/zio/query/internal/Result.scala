@@ -1,7 +1,7 @@
 package zio.query.internal
 
 import zio.query.internal.Result._
-import zio.query.{ DataSourceAspect, Described }
+import zio.query.Described
 import zio.{ CanFail, Cause, NeedsEnv }
 
 /**
@@ -52,7 +52,7 @@ private[query] sealed trait Result[-R, +E, +A] { self =>
    */
   final def provideSome[R0](f: Described[R0 => R])(implicit ev: NeedsEnv[R]): Result[R0, E, A] =
     self match {
-      case Blocked(br, c) => blocked(br.mapDataSources(DataSourceAspect.provideSome(f)), c.provideSome(f))
+      case Blocked(br, c) => blocked(br.provideSome(f), c.provideSome(f))
       case Done(a)        => done(a)
       case Fail(e)        => fail(e)
     }
