@@ -105,6 +105,18 @@ trait DataSource[-R, -A] { self =>
         self.runAll(requests).provideSome(f.value)
     }
 
+  /**
+   * Returns a new data source that executes requests by sending them to this
+   * data source and that data source, returning the results from the first
+   * data source to complete and safely interrupting the loser.
+   */
+  final def race[R1 <: R, A1 <: A](that: DataSource[R1, A1]): DataSource[R1, A1] =
+    new DataSource[R1, A1] {
+      val identifier = s"${self.identifier}.race(${that.identifier})"
+      def runAll(requests: Chunk[Chunk[A1]]): ZIO[R1, Nothing, CompletedRequestMap] =
+        self.runAll(requests).race(that.runAll(requests))
+    }
+
   override final def toString: String =
     identifier
 }
@@ -302,5 +314,15 @@ object DataSource {
       val identifier: String = name
       def runAll(requests: Chunk[Chunk[A]]): ZIO[R, Nothing, CompletedRequestMap] =
         f(requests)
+    }
+
+  /**
+   * A data source that never executes requests.
+   */
+  val never: DataSource[Any, Any] =
+    new DataSource[Any, Any] {
+      val identifier = "never"
+      def runAll(requests: Chunk[Chunk[Any]]): ZIO[Any, Nothing, CompletedRequestMap] =
+        ZIO.never
     }
 }
