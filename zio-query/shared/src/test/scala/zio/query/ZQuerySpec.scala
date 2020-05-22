@@ -122,6 +122,13 @@ object ZQuerySpec extends ZIOBaseSpec {
           .run
         assertM(effect)(equalTo(705082704))
       } @@ TestAspect.ignore,
+      testM("data sources can be raced") {
+        for {
+          promise <- Promise.make[Nothing, Unit]
+          _       <- raceQuery(promise).run
+          _       <- promise.await
+        } yield assertCompletes
+      },
       testM("max batch size") {
         val query = getAllUserNames @@ maxBatchSize(3)
         for {
@@ -167,11 +174,8 @@ object ZQuerySpec extends ZIOBaseSpec {
 
   case object NeverRequest extends Request[Nothing, Nothing]
 
-  val neverDataSource: DataSource[Any, NeverRequest.type] =
-    DataSource.fromFunctionM("never")(_ => ZIO.never)
-
   val neverQuery: ZQuery[Any, Nothing, Nothing] =
-    ZQuery.fromRequest(NeverRequest)(neverDataSource)
+    ZQuery.fromRequest(NeverRequest)(DataSource.never)
 
   final case class SucceedRequest(promise: Promise[Nothing, Unit]) extends Request[Nothing, Unit]
 
@@ -182,6 +186,12 @@ object ZQuerySpec extends ZIOBaseSpec {
 
   def succeedQuery(promise: Promise[Nothing, Unit]): ZQuery[Any, Nothing, Unit] =
     ZQuery.fromRequest(SucceedRequest(promise))(succeedDataSource)
+
+  val raceDataSource: DataSource[Any, SucceedRequest] =
+    DataSource.never.race(succeedDataSource)
+
+  def raceQuery(promise: Promise[Nothing, Unit]): ZQuery[Any, Nothing, Unit] =
+    ZQuery.fromRequest(SucceedRequest(promise))(raceDataSource)
 
   sealed trait CacheRequest[+A] extends Request[Nothing, A]
 

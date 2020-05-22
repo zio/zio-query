@@ -3,7 +3,7 @@ package zio.query
 import zio._
 import zio.clock._
 import zio.duration._
-import zio.query.internal.{ BlockedRequest, BlockedRequests, Continue, Result }
+import zio.query.internal._
 
 /**
  * A `ZQuery[R, E, A]` is a purely functional description of an effectual query
@@ -40,7 +40,7 @@ import zio.query.internal.{ BlockedRequest, BlockedRequests, Continue, Result }
  * Concise Data Access" by Simon Marlow, Louis Brandy, Jonathan Coens, and Jon
  * Purdy. [[http://simonmar.github.io/bib/papers/haxl-icfp14.pdf]]
  */
-final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, Cache), Nothing, Result[R, E, A]]) { self =>
+final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext), Nothing, Result[R, E, A]]) { self =>
 
   /**
    * Syntax for adding aspects.
@@ -225,7 +225,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, Cache), Nothin
     layer: Described[ZLayer[R0, E1, R1]]
   )(implicit ev1: R1 <:< R, ev2: NeedsEnv[R]): ZQuery[R0, E1, A] =
     ZQuery {
-      layer.value.build.provideSome[(R0, Cache)](_._1).run.use {
+      layer.value.build.provideSome[(R0, QueryContext)](_._1).run.use {
         case Exit.Failure(e) => ZIO.succeedNow(Result.fail(e))
         case Exit.Success(r) => self.provide(Described(r, layer.description)).step
       }
@@ -255,7 +255,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, Cache), Nothin
    * cache.
    */
   final def runCache(cache: Cache): ZIO[R, E, A] =
-    step.provideSome[R]((_, cache)).flatMap {
+    step.provideSome[R]((_, QueryContext(cache))).flatMap {
       case Result.Blocked(br, c) => br.run *> c.runCache(cache)
       case Result.Done(a)        => ZIO.succeedNow(a)
       case Result.Fail(e)        => ZIO.halt(e)
@@ -459,7 +459,7 @@ object ZQuery {
   def fromRequest[R, E, A, B](
     request: A
   )(dataSource: DataSource[R, A])(implicit ev: A <:< Request[E, B]): ZQuery[R, E, B] =
-    ZQuery(ZIO.accessM(_._2.getOrElseUpdate(request, dataSource)))
+    ZQuery(ZIO.accessM(_._2.cache.getOrElseUpdate(request, dataSource)))
 
   /**
    * Constructs a query from a request and a data source but does not apply
@@ -537,7 +537,7 @@ object ZQuery {
   /**
    * Constructs a query from an effect that returns a result.
    */
-  private def apply[R, E, A](step: ZIO[(R, Cache), Nothing, Result[R, E, A]]): ZQuery[R, E, A] =
+  private def apply[R, E, A](step: ZIO[(R, QueryContext), Nothing, Result[R, E, A]]): ZQuery[R, E, A] =
     new ZQuery(step)
 
   /**
