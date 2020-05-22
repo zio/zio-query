@@ -1,6 +1,7 @@
 package zio.query
 
 import zio.console.Console
+import zio.query.DataSourceAspect._
 import zio.test.Assertion._
 import zio.test.TestAspect.{ after, nonFlaky, silent }
 import zio.test._
@@ -127,6 +128,14 @@ object ZQuerySpec extends ZIOBaseSpec {
           _       <- raceQuery(promise).run
           _       <- promise.await
         } yield assertCompletes
+      },
+      testM("max batch size") {
+        val query = getAllUserNames @@ maxBatchSize(3)
+        for {
+          result <- query.run
+          log    <- TestConsole.output
+        } yield assert(result)(hasSameElements(userNames.values)) &&
+          assert(log)(hasSize(equalTo(10)))
       }
     ) @@ silent
 

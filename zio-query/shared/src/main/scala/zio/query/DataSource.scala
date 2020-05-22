@@ -38,6 +38,19 @@ trait DataSource[-R, -A] { self =>
   def runAll(requests: Chunk[Chunk[A]]): ZIO[R, Nothing, CompletedRequestMap]
 
   /**
+   * Returns a data source that executes at most `n` requests in parallel.
+   */
+  def batchN(n: Int): DataSource[R, A] =
+    new DataSource[R, A] {
+      val identifier = s"${self}.batchN($n)"
+      def runAll(requests: Chunk[Chunk[A]]): ZIO[R, Nothing, CompletedRequestMap] =
+        if (n < 1)
+          ZIO.die(new IllegalArgumentException("batchN: n must be at least 1"))
+        else
+          self.runAll(requests.foldLeft[Chunk[Chunk[A]]](Chunk.empty)(_ ++ _.grouped(n)))
+    }
+
+  /**
    * Returns a new data source that executes requests of type `B` using the
    * specified function to transform `B` requests into requests that this data
    * source can execute.

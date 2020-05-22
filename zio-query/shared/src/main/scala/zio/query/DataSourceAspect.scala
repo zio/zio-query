@@ -48,4 +48,14 @@ object DataSourceAspect {
             before.value.bracket(after.value)(_ => runAll(requests))
         }
     }
+
+  /**
+   * A data source aspect that limits data sources to executing at most `n`
+   * requests in parallel.
+   */
+  def maxBatchSize(n: Int): DataSourceAspect[Any] =
+    new DataSourceAspect[Any] {
+      def apply[R, A](dataSource: DataSource[R, A]): DataSource[R, A] =
+        dataSource.batchN(n)
+    }
 }
