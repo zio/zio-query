@@ -136,6 +136,12 @@ object ZQuerySpec extends ZIOBaseSpec {
           log    <- TestConsole.output
         } yield assert(result)(hasSameElements(userNames.values)) &&
           assert(log)(hasSize(equalTo(10)))
+      },
+      testM("multiple data sources do not prevent batching") {
+        for {
+          _   <- ZQuery.collectAllPar(List(getFoo, getBar)).run
+          log <- TestConsole.output
+        } yield assert(log)(hasSize(equalTo(2)))
       }
     ) @@ silent
 
@@ -171,6 +177,16 @@ object ZQuerySpec extends ZIOBaseSpec {
       userIds   <- getAllUserIds
       userNames <- ZQuery.foreachPar(userIds)(getUserNameById)
     } yield userNames
+
+  case object GetFoo extends Request[Nothing, String]
+  val getFoo: ZQuery[Console, Nothing, String] = ZQuery.fromRequest(GetFoo)(
+    DataSource.fromFunctionM("foo")(_ => console.putStrLn("Running foo query") *> ZIO.effectTotal("foo"))
+  )
+
+  case object GetBar extends Request[Nothing, String]
+  val getBar: ZQuery[Console, Nothing, String] = ZQuery.fromRequest(GetBar)(
+    DataSource.fromFunctionM("bar")(_ => console.putStrLn("Running bar query") *> ZIO.effectTotal("bar"))
+  )
 
   case object NeverRequest extends Request[Nothing, Nothing]
 
