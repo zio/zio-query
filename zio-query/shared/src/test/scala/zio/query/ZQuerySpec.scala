@@ -121,7 +121,7 @@ object ZQuerySpec extends ZIOBaseSpec {
           }
           .run
         assertM(effect)(equalTo(705082704))
-      } @@ TestAspect.ignore,
+      },
       testM("data sources can be raced") {
         for {
           promise <- Promise.make[Nothing, Unit]
@@ -142,6 +142,25 @@ object ZQuerySpec extends ZIOBaseSpec {
           _   <- ZQuery.collectAllPar(List(getFoo, getBar)).run
           log <- TestConsole.output
         } yield assert(log)(hasSize(equalTo(2)))
+      },
+      testM("efficiency of large queries") {
+        val query = for {
+          users <- ZQuery.fromEffect(
+                    ZIO.succeed(
+                      List.tabulate(Sources.totalCount)(id => User(id, "user name", id, id))
+                    )
+                  )
+          richUsers <- ZQuery.foreachPar(users) { user =>
+                        Sources
+                          .getPayment(user.paymentId)
+                          .zipPar(Sources.getAddress(user.addressId))
+                          .map {
+                            case (payment, address) =>
+                              (user, payment, address)
+                          }
+                      }
+        } yield richUsers.size
+        assertM(query.run)(equalTo(Sources.totalCount))
       }
     ) @@ silent
 
@@ -277,5 +296,46 @@ object ZQuerySpec extends ZIOBaseSpec {
 
     val log: ZIO[Cache, Nothing, List[List[Set[CacheRequest[Any]]]]] =
       ZIO.accessM(_.get.log)
+  }
+
+  case class Bearer(value: String)
+
+  case class User(id: Int, name: String, addressId: Int, paymentId: Int)
+  case class Address(id: Int, street: String)
+  case class Payment(id: Int, name: String)
+
+  object Sources {
+
+    val totalCount = 15000
+
+    case class GetPayment(id: Int) extends Request[Nothing, Payment]
+    val paymentSource: DataSource[Any, GetPayment] =
+      DataSource.fromFunctionBatchedOptionM("PaymentSource") { requests: Chunk[GetPayment] =>
+        ZIO
+          .succeed(
+            List.tabulate(totalCount)(Payment(_, "payment name"))
+          )
+          .map { payments =>
+            requests.map(req => payments.find(_.id == req.id))
+          }
+      }
+
+    def getPayment(id: Int): UQuery[Payment] =
+      ZQuery.fromRequest(GetPayment(id))(paymentSource)
+
+    case class GetAddress(id: Int) extends Request[Nothing, Address]
+    val addressSource: DataSource[Any, GetAddress] =
+      DataSource.fromFunctionBatchedOptionM("AddressSource") { requests: Chunk[GetAddress] =>
+        ZIO
+          .succeed(
+            List.tabulate(totalCount)(Address(_, "street"))
+          )
+          .map { addresses =>
+            requests.map(req => addresses.find(_.id == req.id))
+          }
+      }
+
+    def getAddress(id: Int): UQuery[Address] =
+      ZQuery.fromRequest(GetAddress(id))(addressSource)
   }
 }
