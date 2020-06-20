@@ -3,7 +3,7 @@ package zio.query
 import zio.console.Console
 import zio.query.DataSourceAspect._
 import zio.test.Assertion._
-import zio.test.TestAspect.{ after, nonFlaky, silent }
+import zio.test.TestAspect.{ after, nonFlaky, silent, timed }
 import zio.test._
 import zio.test.environment.{ TestConsole, TestEnvironment }
 import zio.{ console, Chunk, Has, Promise, Ref, ZIO, ZLayer }
@@ -162,7 +162,7 @@ object ZQuerySpec extends ZIOBaseSpec {
         } yield richUsers.size
         assertM(query.run)(equalTo(Sources.totalCount))
       }
-    ) @@ silent
+    ) @@ silent @@ timed
 
   val userIds: List[Int]          = (1 to 26).toList
   val userNames: Map[Int, String] = userIds.zip(('a' to 'z').map(_.toString)).toMap
