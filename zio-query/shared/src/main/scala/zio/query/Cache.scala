@@ -48,7 +48,7 @@ object Cache {
   private final class Impl(private val state: Ref[Map[Any, Any]]) extends Cache {
 
     def get[E, A](request: Request[E, A]): IO[Unit, Ref[Option[Either[E, A]]]] =
-      state.get.map(_.get(request).asInstanceOf[Option[Ref[Option[Either[E, A]]]]]).get
+      state.get.map(_.get(request).asInstanceOf[Option[Ref[Option[Either[E, A]]]]]).get.orElseFail(())
 
     def put[E, A](request: Request[E, A], result: Ref[Option[Either[E, A]]]): UIO[Unit] =
       state.update(_ + (request -> result)).unit
