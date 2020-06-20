@@ -63,7 +63,10 @@ private[query] sealed trait BlockedRequests[-R] { self =>
         ZIO.foreachPar_(requestsByDataSource.toIterable) {
           case (dataSource, sequential) =>
             for {
-              completedRequests <- dataSource.runAll(sequential.map(_.map(_.request)))
+              completedRequests <- dataSource.runAll(
+                                    zio.Chunk
+                                      .fromIterable(sequential.map(x => zio.Chunk.fromIterable(x.map(_.request))))
+                                  )
               _ <- ZIO.foreach_(sequential) { parallel =>
                     ZIO.foreach_(parallel) { blockedRequest =>
                       blockedRequest.result.set(completedRequests.lookup(blockedRequest.request))
