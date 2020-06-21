@@ -22,14 +22,15 @@ inThisBuild(
     pgpSecretRing := file("/tmp/secret.asc"),
     scmInfo := Some(
       ScmInfo(url("https://github.com/zio/zio-query/"), "scm:git:git@github.com:zio/zio-query.git")
-    )
+    ),
+    resolvers += "Sonatype OSS Snapshots" at "https://oss.sonatype.org/content/repositories/snapshots"
   )
 )
 
 addCommandAlias("fmt", "all scalafmtSbt scalafmt test:scalafmt")
 addCommandAlias("check", "all scalafmtSbtCheck scalafmtCheck test:scalafmtCheck")
 
-val zioVersion = "1.0.0-RC21"
+val zioVersion = "1.0.0-RC20+69-221eadee-SNAPSHOT"
 
 lazy val root = project
   .in(file("."))
