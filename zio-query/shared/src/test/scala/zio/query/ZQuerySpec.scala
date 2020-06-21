@@ -308,31 +308,21 @@ object ZQuerySpec extends ZIOBaseSpec {
 
     val totalCount = 15000
 
+    val paymentData: Map[Int, Payment] = List.tabulate(totalCount)(i => i -> Payment(i, "payment name")).toMap
     case class GetPayment(id: Int) extends Request[Nothing, Payment]
     val paymentSource: DataSource[Any, GetPayment] =
       DataSource.fromFunctionBatchedOptionM("PaymentSource") { requests: Chunk[GetPayment] =>
-        ZIO
-          .succeed(
-            List.tabulate(totalCount)(Payment(_, "payment name"))
-          )
-          .map { payments =>
-            requests.map(req => payments.find(_.id == req.id))
-          }
+        ZIO.effectTotal(requests.map(req => paymentData.get(req.id)))
       }
 
     def getPayment(id: Int): UQuery[Payment] =
       ZQuery.fromRequest(GetPayment(id))(paymentSource)
 
+    val addressData: Map[Int, Address] = List.tabulate(totalCount)(i => i -> Address(i, "street")).toMap
     case class GetAddress(id: Int) extends Request[Nothing, Address]
     val addressSource: DataSource[Any, GetAddress] =
       DataSource.fromFunctionBatchedOptionM("AddressSource") { requests: Chunk[GetAddress] =>
-        ZIO
-          .succeed(
-            List.tabulate(totalCount)(Address(_, "street"))
-          )
-          .map { addresses =>
-            requests.map(req => addresses.find(_.id == req.id))
-          }
+        ZIO.effectTotal(requests.map(req => addressData.get(req.id)))
       }
 
     def getAddress(id: Int): UQuery[Address] =

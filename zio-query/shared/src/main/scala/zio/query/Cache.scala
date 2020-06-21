@@ -17,7 +17,7 @@ trait Cache {
    * in the cache but has not been executed yet, or `Ref(Some(value))` if the
    * request has been executed.
    */
-  def get[E, A](request: Request[E, A]): IO[Option[Nothing], Ref[Option[Either[E, A]]]]
+  def get[E, A](request: Request[E, A]): IO[Unit, Ref[Option[Either[E, A]]]]
 
   /**
    * Inserts a request and a `Ref` that will contain the result of the request
@@ -47,8 +47,8 @@ object Cache {
 
   private final class Impl(private val state: Ref[Map[Any, Any]]) extends Cache {
 
-    def get[E, A](request: Request[E, A]): IO[Option[Nothing], Ref[Option[Either[E, A]]]] =
-      state.get.map(_.get(request).asInstanceOf[Option[Ref[Option[Either[E, A]]]]]).get
+    def get[E, A](request: Request[E, A]): IO[Unit, Ref[Option[Either[E, A]]]] =
+      state.get.map(_.get(request).asInstanceOf[Option[Ref[Option[Either[E, A]]]]]).get.orElseFail(())
 
     def put[E, A](request: Request[E, A], result: Ref[Option[Either[E, A]]]): UIO[Unit] =
       state.update(_ + (request -> result)).unit
