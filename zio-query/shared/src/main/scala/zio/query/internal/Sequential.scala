@@ -1,5 +1,6 @@
 package zio.query.internal
 
+import zio.Chunk
 import zio.query.DataSource
 
 /**
@@ -7,7 +8,7 @@ import zio.query.DataSource
  * requests from those data sources that must be executed sequentially.
  */
 private[query] final class Sequential[-R](
-  private val map: Map[DataSource[Any, Any], Vector[Vector[BlockedRequest[Any]]]]
+  private val map: Map[DataSource[Any, Any], Chunk[Chunk[BlockedRequest[Any]]]]
 ) { self =>
 
   /**
@@ -20,7 +21,7 @@ private[query] final class Sequential[-R](
     new Sequential(
       that.map.foldLeft(self.map) {
         case (map, (k, v)) =>
-          map + (k -> map.get(k).fold[Vector[Vector[BlockedRequest[Any]]]](Vector.empty)(_ ++ v))
+          map + (k -> map.get(k).fold[Chunk[Chunk[BlockedRequest[Any]]]](Chunk.empty)(_ ++ v))
       }
     )
 
@@ -42,6 +43,6 @@ private[query] final class Sequential[-R](
    * sequentially to an `Iterable` containing mappings from data sources to
    * batches of requests from those data sources.
    */
-  def toIterable: Iterable[(DataSource[R, Any], Vector[Vector[BlockedRequest[Any]]])] =
+  def toIterable: Iterable[(DataSource[R, Any], Chunk[Chunk[BlockedRequest[Any]]])] =
     map
 }
