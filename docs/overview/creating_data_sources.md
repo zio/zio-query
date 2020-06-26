@@ -6,9 +6,9 @@ title: "Creating Data Sources"
 To construct a `ZQuery` that executes a request, you first need to create a `DataSource`. A `DataSource[R, A]` requires an environment `R` and is capable of executing requests of type `A`. It is defined in terms of:
 
 - an `identifier` that uniquely identifies the data source
-- an effectual function `runAll` from a `Chunk[Chunk[A]]` of requests to a `CompletedRequestMap` of requests and results
+- an effectual function `runAll` from a `Vector[Vector[A]]` of requests to a `CompletedRequestMap` of requests and results
 
-The outer `Chunk` represents batches of requests that must be performed sequentially. The inner `Chunk` represents a batch of requests that can be performed in parallel. This allows data sources to introspect on all the requests being executed and optimize the query.
+The outer `Vector` represents batches of requests that must be performed sequentially. The inner `Vector` represents a batch of requests that can be performed in parallel. This allows data sources to introspect on all the requests being executed and optimize the query.
 
 ```scala mdoc:invisible
 import zio._
@@ -28,7 +28,7 @@ Now let's build the corresponding `DataSource`. We will create a `Batched` data 
 ```scala mdoc:silent
 lazy val UserDataSource = new DataSource.Batched[Any, GetUserName] {
   val identifier: String = ???
-  def run(requests: Chunk[GetUserName]): ZIO[Any, Nothing, CompletedRequestMap] = ???
+  def run(requests: Vector[GetUserName]): ZIO[Any, Nothing, CompletedRequestMap] = ???
 }
 ```
 
@@ -41,7 +41,7 @@ val identifier: String = "UserDataSource"
 We will define two different behaviors depending on whether we receive a single request or multiple requests at once. For each request, we need to insert into the result map a value of type `Either` (`Left` for an error and `Right` for a success).
 
 ```scala mdoc:silent
-def run(requests: Chunk[GetUserName]): ZIO[Any, Nothing, CompletedRequestMap] = {
+def run(requests: Vector[GetUserName]): ZIO[Any, Nothing, CompletedRequestMap] = {
   val resultMap = CompletedRequestMap.empty
   requests.toList match {
     case request :: Nil =>
