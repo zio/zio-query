@@ -1,5 +1,7 @@
 package zio.query
 
+import scala.collection.mutable.Builder
+
 import zio._
 import zio.clock._
 import zio.duration._
@@ -400,14 +402,18 @@ object ZQuery {
    * their results. Requests will be executed sequentially and will be
    * pipelined.
    */
-  def collectAll[R, E, A](as: Iterable[ZQuery[R, E, A]]): ZQuery[R, E, List[A]] =
+  def collectAll[R, E, A, Collection[+Element] <: Iterable[Element]](
+    as: Collection[ZQuery[R, E, A]]
+  )(implicit bf: BuildFrom[Collection[ZQuery[R, E, A]], A, Collection[A]]): ZQuery[R, E, Collection[A]] =
     foreach(as)(identity)
 
   /**
    * Collects a collection of queries into a query returning a collection of
    * their results. Requests will be executed in parallel and will be batched.
    */
-  def collectAllPar[R, E, A](as: Iterable[ZQuery[R, E, A]]): ZQuery[R, E, List[A]] =
+  def collectAllPar[R, E, A, Collection[+Element] <: Iterable[Element]](
+    as: Collection[ZQuery[R, E, A]]
+  )(implicit bf: BuildFrom[Collection[ZQuery[R, E, A]], A, Collection[A]]): ZQuery[R, E, Collection[A]] =
     foreachPar(as)(identity)
 
   /**
@@ -433,16 +439,26 @@ object ZQuery {
    * into a query returning a collection of their results. Requests will be
    * executed sequentially and will be pipelined.
    */
-  def foreach[R, E, A, B](as: Iterable[A])(f: A => ZQuery[R, E, B]): ZQuery[R, E, List[B]] =
-    as.foldRight[ZQuery[R, E, List[B]]](ZQuery.succeed(Nil))((a, bs) => f(a).zipWith(bs)(_ :: _))
+  def foreach[R, E, A, B, Collection[+Element] <: Iterable[Element]](
+    as: Collection[A]
+  )(f: A => ZQuery[R, E, B])(implicit bf: BuildFrom[Collection[A], B, Collection[B]]): ZQuery[R, E, Collection[B]] =
+    as.foldLeft[ZQuery[R, E, Builder[B, Collection[B]]]](ZQuery.succeed(bf.newBuilder(as)))((bs, a) =>
+        bs.zipWith(f(a))(_ += _)
+      )
+      .map(_.result())
 
   /**
    * Performs a query for each element in a collection, collecting the results
    * into a query returning a collection of their results. Requests will be
    * executed in parallel and will be batched.
    */
-  def foreachPar[R, E, A, B](as: Iterable[A])(f: A => ZQuery[R, E, B]): ZQuery[R, E, List[B]] =
-    as.foldRight[ZQuery[R, E, List[B]]](ZQuery.succeed(Nil))((a, bs) => f(a).zipWithPar(bs)(_ :: _))
+  def foreachPar[R, E, A, B, Collection[+Element] <: Iterable[Element]](
+    as: Collection[A]
+  )(f: A => ZQuery[R, E, B])(implicit bf: BuildFrom[Collection[A], B, Collection[B]]): ZQuery[R, E, Collection[B]] =
+    as.foldLeft[ZQuery[R, E, Builder[B, Collection[B]]]](ZQuery.succeed(bf.newBuilder(as)))((bs, a) =>
+        bs.zipWithPar(f(a))(_ += _)
+      )
+      .map(_.result())
 
   /**
    * Constructs a query from an effect.
@@ -502,7 +518,7 @@ object ZQuery {
    */
   def partitionM[R, E, A, B](
     as: Iterable[A]
-  )(f: A => ZQuery[R, E, B])(implicit ev: CanFail[E]): ZQuery[R, Nothing, (List[E], List[B])] =
+  )(f: A => ZQuery[R, E, B])(implicit ev: CanFail[E]): ZQuery[R, Nothing, (Iterable[E], Iterable[B])] =
     ZQuery.foreach(as)(f(_).either).map(partitionMap(_)(identity))
 
   /**
@@ -512,7 +528,7 @@ object ZQuery {
    */
   def partitionMPar[R, E, A, B](
     as: Iterable[A]
-  )(f: A => ZQuery[R, E, B])(implicit ev: CanFail[E]): ZQuery[R, Nothing, (List[E], List[B])] =
+  )(f: A => ZQuery[R, E, B])(implicit ev: CanFail[E]): ZQuery[R, Nothing, (Iterable[E], Iterable[B])] =
     ZQuery.foreachPar(as)(f(_).either).map(partitionMap(_)(identity))
 
   /**
@@ -543,16 +559,17 @@ object ZQuery {
   /**
    * Partitions the elements of a collection using the specified function.
    */
-  private def partitionMap[E, A, B](
-    as: Iterable[A]
-  )(f: A => Either[E, B])(implicit ev: CanFail[E]): (List[E], List[B]) =
-    as.foldRight((List.empty[E], List.empty[B])) {
-      case (a, (es, bs)) =>
-        f(a).fold(
-          e => (e :: es, bs),
-          b => (es, b :: bs)
-        )
+  private def partitionMap[A, B, C](as: Iterable[A])(f: A => Either[B, C]): (Iterable[B], Iterable[C]) = {
+    val bs = ChunkBuilder.make[B]()
+    val cs = ChunkBuilder.make[C]()
+    as.foreach { a =>
+      f(a) match {
+        case Left(b)  => bs += b
+        case Right(c) => cs += c
+      }
     }
+    (bs.result(), cs.result())
+  }
 
   final class AccessPartiallyApplied[R](private val dummy: Boolean = true) extends AnyVal {
     def apply[A](f: R => A): ZQuery[R, Nothing, A] =
