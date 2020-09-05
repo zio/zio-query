@@ -114,9 +114,9 @@ private[query] sealed trait Continue[-R, +E, +A] { self =>
   final def zipWithPar[R1 <: R, E1 >: E, B, C](that: Continue[R1, E1, B])(f: (A, B) => C): Continue[R1, E1, C] =
     (self, that) match {
       case (Effect(l), Effect(r)) => effect(l.zipWithPar(r)(f))
-      case (Effect(l), Get(r))    => effect(l.zipWithPar(ZQuery.fromEffect(r))(f))
-      case (Get(l), Effect(r))    => effect(ZQuery.fromEffect(l).zipWithPar(r)(f))
-      case (Get(l), Get(r))       => get(l.zipWithPar(r)(f))
+      case (Effect(l), Get(r))    => effect(l.zipWith(ZQuery.fromEffect(r))(f))
+      case (Get(l), Effect(r))    => effect(ZQuery.fromEffect(l).zipWith(r)(f))
+      case (Get(l), Get(r))       => get(l.zipWith(r)(f))
     }
 
 }

@@ -442,10 +442,17 @@ object ZQuery {
   def foreach[R, E, A, B, Collection[+Element] <: Iterable[Element]](
     as: Collection[A]
   )(f: A => ZQuery[R, E, B])(implicit bf: BuildFrom[Collection[A], B, Collection[B]]): ZQuery[R, E, Collection[B]] =
-    as.foldLeft[ZQuery[R, E, Builder[B, Collection[B]]]](ZQuery.succeed(bf.newBuilder(as)))((bs, a) =>
-        bs.zipWith(f(a))(_ += _)
-      )
-      .map(_.result())
+    if (as.isEmpty) ZQuery.succeed(bf.newBuilder(as).result)
+    else {
+      val iterator                                         = as.iterator
+      var builder: ZQuery[R, E, Builder[B, Collection[B]]] = null
+      while (iterator.hasNext) {
+        val a = iterator.next()
+        if (builder eq null) builder = f(a).map(bf.newBuilder(as) += _)
+        else builder = builder.zipWith(f(a))(_ += _)
+      }
+      builder.map(_.result())
+    }
 
   /**
    * Performs a query for each element in a collection, collecting the results
@@ -455,10 +462,17 @@ object ZQuery {
   def foreachPar[R, E, A, B, Collection[+Element] <: Iterable[Element]](
     as: Collection[A]
   )(f: A => ZQuery[R, E, B])(implicit bf: BuildFrom[Collection[A], B, Collection[B]]): ZQuery[R, E, Collection[B]] =
-    as.foldLeft[ZQuery[R, E, Builder[B, Collection[B]]]](ZQuery.succeed(bf.newBuilder(as)))((bs, a) =>
-        bs.zipWithPar(f(a))(_ += _)
-      )
-      .map(_.result())
+    if (as.isEmpty) ZQuery.succeed(bf.newBuilder(as).result)
+    else {
+      val iterator                                         = as.iterator
+      var builder: ZQuery[R, E, Builder[B, Collection[B]]] = null
+      while (iterator.hasNext) {
+        val a = iterator.next()
+        if (builder eq null) builder = f(a).map(bf.newBuilder(as) += _)
+        else builder = builder.zipWithPar(f(a))(_ += _)
+      }
+      builder.map(_.result())
+    }
 
   /**
    * Constructs a query from an effect.
