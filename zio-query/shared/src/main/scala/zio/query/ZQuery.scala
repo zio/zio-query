@@ -258,7 +258,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
    */
   final def runCache(cache: Cache): ZIO[R, E, A] =
     step.provideSome[R]((_, QueryContext(cache))).flatMap {
-      case Result.Blocked(br, c) => br.run *> c.runCache(cache)
+      case Result.Blocked(br, c) => br.run(cache) *> c.runCache(cache)
       case Result.Done(a)        => ZIO.succeedNow(a)
       case Result.Fail(e)        => ZIO.halt(e)
     }

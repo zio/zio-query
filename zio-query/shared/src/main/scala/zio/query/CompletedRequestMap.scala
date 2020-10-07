@@ -15,6 +15,12 @@ final class CompletedRequestMap private (private val map: Map[Any, Either[Any, A
     new CompletedRequestMap(self.map ++ that.map)
 
   /**
+   * Returns whether a result exists for the specified request.
+   */
+  def contains(request: Any): Boolean =
+    map.contains(request)
+
+  /**
    * Appends the specified result to the completed requests map.
    */
   def insert[E, A](request: Request[E, A])(result: Either[E, A]): CompletedRequestMap =
@@ -35,6 +41,12 @@ final class CompletedRequestMap private (private val map: Map[Any, Either[Any, A
    */
   def lookup[E, A](request: Request[E, A]): Option[Either[E, A]] =
     map.get(request).asInstanceOf[Option[Either[E, A]]]
+
+  /**
+   * Collects all requests in a set.
+   */
+  def requests: Set[Request[Any, Any]] =
+    map.keySet.asInstanceOf[Set[Request[Any, Any]]]
 
   override def toString: String =
     s"CompletedRequestMap(${map.mkString(", ")})"
