@@ -75,8 +75,8 @@ object ZQuerySpec extends ZIOBaseSpec {
         testM("arbitrary effects are executed in order") {
           for {
             ref    <- Ref.make(List.empty[Int])
-            query1 = ZQuery.fromEffect(ref.update(1 :: _))
-            query2 = ZQuery.fromEffect(ref.update(2 :: _))
+            query1  = ZQuery.fromEffect(ref.update(1 :: _))
+            query2  = ZQuery.fromEffect(ref.update(2 :: _))
             _      <- (query1 *> query2).run
             result <- ref.get
           } yield assert(result)(equalTo(List(2, 1)))
@@ -100,7 +100,7 @@ object ZQuerySpec extends ZIOBaseSpec {
         testM("short circuits on failure") {
           for {
             ref    <- Ref.make(true)
-            query  = ZQuery.fail("fail") *> ZQuery.fromEffect(ref.set(false))
+            query   = ZQuery.fail("fail") *> ZQuery.fromEffect(ref.set(false))
             _      <- query.run.ignore
             result <- ref.get
           } yield assert(result)(isTrue)
@@ -146,19 +146,18 @@ object ZQuerySpec extends ZIOBaseSpec {
       testM("efficiency of large queries") {
         val query = for {
           users <- ZQuery.fromEffect(
-                    ZIO.succeed(
-                      List.tabulate(Sources.totalCount)(id => User(id, "user name", id, id))
-                    )
-                  )
+                     ZIO.succeed(
+                       List.tabulate(Sources.totalCount)(id => User(id, "user name", id, id))
+                     )
+                   )
           richUsers <- ZQuery.foreachPar(users) { user =>
-                        Sources
-                          .getPayment(user.paymentId)
-                          .zipPar(Sources.getAddress(user.addressId))
-                          .map {
-                            case (payment, address) =>
-                              (user, payment, address)
-                          }
-                      }
+                         Sources
+                           .getPayment(user.paymentId)
+                           .zipPar(Sources.getAddress(user.addressId))
+                           .map { case (payment, address) =>
+                             (user, payment, address)
+                           }
+                       }
         } yield richUsers.size
         assertM(query.run)(equalTo(Sources.totalCount))
       },
@@ -224,8 +223,8 @@ object ZQuerySpec extends ZIOBaseSpec {
   final case class SucceedRequest(promise: Promise[Nothing, Unit]) extends Request[Nothing, Unit]
 
   val succeedDataSource: DataSource[Any, SucceedRequest] =
-    DataSource.fromFunctionM("succeed") {
-      case SucceedRequest(promise) => promise.succeed(()).unit
+    DataSource.fromFunctionM("succeed") { case SucceedRequest(promise) =>
+      promise.succeed(()).unit
     }
 
   def succeedQuery(promise: Promise[Nothing, Unit]): ZQuery[Any, Nothing, Unit] =
@@ -274,8 +273,8 @@ object ZQuerySpec extends ZIOBaseSpec {
                       case GetAll          => cache.get
                       case Put(key, value) => cache.update(_ + (key -> value))
                     }
-                    .map(requests.zip(_).foldLeft(CompletedRequestMap.empty) {
-                      case (map, (k, v)) => map.insert(k)(Right(v))
+                    .map(requests.zip(_).foldLeft(CompletedRequestMap.empty) { case (map, (k, v)) =>
+                      map.insert(k)(Right(v))
                     })
                 }
                 .map(_.foldLeft(CompletedRequestMap.empty)(_ ++ _))
@@ -376,18 +375,17 @@ object ZQuerySpec extends ZIOBaseSpec {
       if (all.nonEmpty) {
         backendGetAll.map { allItems =>
           allItems
-            .foldLeft(CompletedRequestMap.empty) {
-              case (result, (id, value)) =>
-                result.insert(Req.Get(id))(Right(value))
+            .foldLeft(CompletedRequestMap.empty) { case (result, (id, value)) =>
+              result.insert(Req.Get(id))(Right(value))
             }
             .insert(Req.GetAll)(Right(allItems))
         }
       } else {
         for {
           items <- backendGetSome(oneByOne.flatMap {
-                    case Req.GetAll  => Chunk.empty
-                    case Req.Get(id) => Chunk(id)
-                  })
+                     case Req.GetAll  => Chunk.empty
+                     case Req.Get(id) => Chunk(id)
+                   })
         } yield oneByOne.foldLeft(CompletedRequestMap.empty) {
           case (result, Req.GetAll) => result
           case (result, req @ Req.Get(id)) =>

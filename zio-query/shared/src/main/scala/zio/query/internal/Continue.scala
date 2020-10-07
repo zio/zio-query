@@ -127,8 +127,8 @@ private[query] object Continue {
    * Constructs a continuation from a request, a data source, and a `Ref` that
    * will contain the result of the request when it is executed.
    */
-  def apply[R, E, A, B](request: A, dataSource: DataSource[R, A], ref: Ref[Option[Either[E, B]]])(
-    implicit ev: A <:< Request[E, B]
+  def apply[R, E, A, B](request: A, dataSource: DataSource[R, A], ref: Ref[Option[Either[E, B]]])(implicit
+    ev: A <:< Request[E, B]
   ): Continue[R, E, B] =
     Continue.get {
       ref.get.flatMap {

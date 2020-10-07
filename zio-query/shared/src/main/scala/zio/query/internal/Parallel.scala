@@ -17,9 +17,8 @@ private[query] final class Parallel[-R](private val map: Map[DataSource[Any, Any
    */
   def ++[R1 <: R](that: Parallel[R1]): Parallel[R1] =
     new Parallel(
-      self.map.foldLeft(that.map) {
-        case (map, (k, v)) =>
-          map + (k -> map.get(k).fold[Chunk[BlockedRequest[Any]]](v)(_ ++ v))
+      self.map.foldLeft(that.map) { case (map, (k, v)) =>
+        map + (k -> map.get(k).fold[Chunk[BlockedRequest[Any]]](v)(_ ++ v))
       }
     )
 

@@ -144,11 +144,10 @@ object DataSource {
   trait Batched[-R, -A] extends DataSource[R, A] {
     def run(requests: Chunk[A]): ZIO[R, Nothing, CompletedRequestMap]
     final def runAll(requests: Chunk[Chunk[A]]): ZIO[R, Nothing, CompletedRequestMap] =
-      ZIO.foldLeft(requests)(CompletedRequestMap.empty) {
-        case (completedRequestMap, requests) =>
-          val newRequests = requests.filterNot(completedRequestMap.contains)
-          if (newRequests.isEmpty) ZIO.succeedNow(completedRequestMap)
-          else run(newRequests).map(completedRequestMap ++ _)
+      ZIO.foldLeft(requests)(CompletedRequestMap.empty) { case (completedRequestMap, requests) =>
+        val newRequests = requests.filterNot(completedRequestMap.contains)
+        if (newRequests.isEmpty) ZIO.succeedNow(completedRequestMap)
+        else run(newRequests).map(completedRequestMap ++ _)
       }
   }
 
@@ -206,8 +205,8 @@ object DataSource {
             e => requests.map((_, Left(e))),
             bs => requests.zip(bs.map(Right(_)))
           )
-          .map(_.foldLeft(CompletedRequestMap.empty) {
-            case (map, (k, v)) => map.insert(k)(v)
+          .map(_.foldLeft(CompletedRequestMap.empty) { case (map, (k, v)) =>
+            map.insert(k)(v)
           })
     }
 
@@ -239,8 +238,8 @@ object DataSource {
             e => requests.map((_, Left(e))),
             bs => requests.zip(bs.map(Right(_)))
           )
-          .map(_.foldLeft(CompletedRequestMap.empty) {
-            case (map, (k, v)) => map.insertOption(k)(v)
+          .map(_.foldLeft(CompletedRequestMap.empty) { case (map, (k, v)) =>
+            map.insertOption(k)(v)
           })
     }
 
@@ -253,8 +252,8 @@ object DataSource {
    */
   def fromFunctionBatchedWith[A, B](
     name: String
-  )(f: Chunk[A] => Chunk[B], g: B => Request[Nothing, B])(
-    implicit ev: A <:< Request[Nothing, B]
+  )(f: Chunk[A] => Chunk[B], g: B => Request[Nothing, B])(implicit
+    ev: A <:< Request[Nothing, B]
   ): DataSource[Any, A] =
     fromFunctionBatchedWithM(name)(as => ZIO.succeedNow(f(as)), g)
 
@@ -267,8 +266,8 @@ object DataSource {
    */
   def fromFunctionBatchedWithM[R, E, A, B](
     name: String
-  )(f: Chunk[A] => ZIO[R, E, Chunk[B]], g: B => Request[E, B])(
-    implicit ev: A <:< Request[E, B]
+  )(f: Chunk[A] => ZIO[R, E, Chunk[B]], g: B => Request[E, B])(implicit
+    ev: A <:< Request[E, B]
   ): DataSource[R, A] =
     new DataSource.Batched[R, A] {
       val identifier: String = name
@@ -278,8 +277,8 @@ object DataSource {
             e => requests.map(a => (ev(a), Left(e))),
             bs => bs.map(b => (g(b), Right(b)))
           )
-          .map(_.foldLeft(CompletedRequestMap.empty) {
-            case (map, (k, v)) => map.insert(k)(v)
+          .map(_.foldLeft(CompletedRequestMap.empty) { case (map, (k, v)) =>
+            map.insert(k)(v)
           })
     }
 
@@ -318,8 +317,8 @@ object DataSource {
       def run(requests: Chunk[A]): ZIO[R, Nothing, CompletedRequestMap] =
         ZIO
           .foreachPar(requests)(a => f(a).either.map((a, _)))
-          .map(_.foldLeft(CompletedRequestMap.empty) {
-            case (map, (k, v)) => map.insertOption(k)(v)
+          .map(_.foldLeft(CompletedRequestMap.empty) { case (map, (k, v)) =>
+            map.insertOption(k)(v)
           })
     }
 
