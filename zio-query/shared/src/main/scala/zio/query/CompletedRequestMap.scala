@@ -35,6 +35,9 @@ final class CompletedRequestMap private (private val map: Map[Any, Either[Any, A
    */
   def lookup[E, A](request: Request[E, A]): Option[Either[E, A]] =
     map.get(request).asInstanceOf[Option[Either[E, A]]]
+
+  override def toString: String =
+    s"CompletedRequestMap(${map.mkString(", ")})"
 }
 
 object CompletedRequestMap {
