@@ -144,7 +144,12 @@ object DataSource {
   trait Batched[-R, -A] extends DataSource[R, A] {
     def run(requests: Chunk[A]): ZIO[R, Nothing, CompletedRequestMap]
     final def runAll(requests: Chunk[Chunk[A]]): ZIO[R, Nothing, CompletedRequestMap] =
-      ZIO.foreach(requests)(run).map(_.foldLeft(CompletedRequestMap.empty)(_ ++ _))
+      ZIO.foldLeft(requests)(CompletedRequestMap.empty) {
+        case (completedRequestMap, requests) =>
+          val newRequests = requests.filterNot(completedRequestMap.contains)
+          if (newRequests.isEmpty) ZIO.succeedNow(completedRequestMap)
+          else run(newRequests).map(completedRequestMap ++ _)
+      }
   }
 
   object Batched {

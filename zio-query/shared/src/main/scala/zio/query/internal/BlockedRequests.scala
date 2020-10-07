@@ -2,9 +2,9 @@ package zio.query.internal
 
 import scala.annotation.tailrec
 
-import zio.ZIO
+import zio.{ Ref, ZIO }
 import zio.query.internal.BlockedRequests._
-import zio.query.{ DataSource, DataSourceAspect, Described }
+import zio.query.{ Cache, DataSource, DataSourceAspect, Described }
 
 /**
  * `BlockedRequests` captures a collection of blocked requests as a data
@@ -57,17 +57,20 @@ private[query] sealed trait BlockedRequests[-R] { self =>
    * Executes all requests, submitting requests to each data source in
    * parallel.
    */
-  val run: ZIO[R, Nothing, Unit] =
+  def run(cache: Cache): ZIO[R, Nothing, Unit] =
     ZIO.effectSuspendTotal {
       ZIO.foreach_(BlockedRequests.flatten(self)) { requestsByDataSource =>
         ZIO.foreachPar_(requestsByDataSource.toIterable) {
           case (dataSource, sequential) =>
             for {
               completedRequests <- dataSource.runAll(sequential.map(_.map(_.request)))
-              _ <- ZIO.foreach_(sequential) { parallel =>
-                    ZIO.foreach_(parallel) { blockedRequest =>
-                      blockedRequest.result.set(completedRequests.lookup(blockedRequest.request))
-                    }
+              blockedRequests   = sequential.flatten
+              leftovers         = completedRequests.requests -- blockedRequests.map(_.request)
+              _ <- ZIO.foreach_(blockedRequests) { blockedRequest =>
+                    blockedRequest.result.set(completedRequests.lookup(blockedRequest.request))
+                  }
+              _ <- ZIO.foreach_(leftovers) { request =>
+                    Ref.make(completedRequests.lookup(request)).flatMap(cache.put(request, _))
                   }
             } yield ()
         }

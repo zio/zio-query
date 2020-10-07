@@ -161,6 +161,15 @@ object ZQuerySpec extends ZIOBaseSpec {
                       }
         } yield richUsers.size
         assertM(query.run)(equalTo(Sources.totalCount))
+      },
+      testM("data sources can return additional results") {
+        val getSome = ZQuery.foreachPar(List(3, 4))(get).map(_.toSet)
+        val query   = getAll *> getSome
+        for {
+          result <- query.run
+          output <- TestConsole.output
+        } yield assert(result)(equalTo(Set("c", "d"))) &&
+          assert(output)(equalTo(Vector("getAll called\n")))
       }
     ) @@ silent
 
@@ -328,4 +337,73 @@ object ZQuerySpec extends ZIOBaseSpec {
     def getAddress(id: Int): UQuery[Address] =
       ZQuery.fromRequest(GetAddress(id))(addressSource)
   }
+
+  val testData: Map[Int, String] = Map(
+    1 -> "a",
+    2 -> "b",
+    3 -> "c",
+    4 -> "d"
+  )
+
+  def backendGetAll: ZIO[Console, Nothing, Map[Int, String]] =
+    for {
+      _ <- console.putStrLn("getAll called")
+    } yield testData
+
+  def backendGetSome(ids: Chunk[Int]): ZIO[Console, Nothing, Map[Int, String]] =
+    for {
+      _ <- console.putStrLn(s"getSome ${ids.mkString(", ")} called")
+    } yield ids.flatMap { id =>
+      testData.get(id).map(v => id -> v)
+    }.toMap
+
+  sealed trait DataSourceErrors
+  case class NotFound(id: Int) extends DataSourceErrors
+
+  sealed trait Req[+A] extends Request[DataSourceErrors, A]
+  object Req {
+    case object GetAll            extends Req[Map[Int, String]]
+    final case class Get(id: Int) extends Req[String]
+  }
+
+  val ds: DataSource.Batched[Console, Req[_]] = new DataSource.Batched[Console, Req[_]] {
+    override def run(requests: Chunk[Req[_]]): ZIO[Console, Nothing, CompletedRequestMap] = {
+      val (all, oneByOne) = requests.partition {
+        case Req.GetAll => true
+        case Req.Get(_) => false
+      }
+
+      if (all.nonEmpty) {
+        backendGetAll.map { allItems =>
+          allItems
+            .foldLeft(CompletedRequestMap.empty) {
+              case (result, (id, value)) =>
+                result.insert(Req.Get(id))(Right(value))
+            }
+            .insert(Req.GetAll)(Right(allItems))
+        }
+      } else {
+        for {
+          items <- backendGetSome(oneByOne.flatMap {
+                    case Req.GetAll  => Chunk.empty
+                    case Req.Get(id) => Chunk(id)
+                  })
+        } yield oneByOne.foldLeft(CompletedRequestMap.empty) {
+          case (result, Req.GetAll) => result
+          case (result, req @ Req.Get(id)) =>
+            items.get(id) match {
+              case Some(value) => result.insert(req)(Right(value))
+              case None        => result.insert(req)(Left(NotFound(id)))
+            }
+        }
+      }
+    }
+
+    override val identifier: String = "test"
+  }
+
+  def getAll: ZQuery[Console, DataSourceErrors, Map[Int, String]] =
+    ZQuery.fromRequest(Req.GetAll)(ds)
+  def get(id: Int): ZQuery[Console, DataSourceErrors, String] =
+    ZQuery.fromRequest(Req.Get(id))(ds)
 }
