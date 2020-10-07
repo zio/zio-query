@@ -24,8 +24,8 @@ private[query] sealed trait BlockedRequest[+A] {
 
 private[query] object BlockedRequest {
 
-  def apply[E, A, B](request0: A, result0: Ref[Option[Either[E, B]]])(
-    implicit ev: A <:< Request[E, B]
+  def apply[E, A, B](request0: A, result0: Ref[Option[Either[E, B]]])(implicit
+    ev: A <:< Request[E, B]
   ): BlockedRequest[A] =
     new BlockedRequest[A] {
       type Failure = E

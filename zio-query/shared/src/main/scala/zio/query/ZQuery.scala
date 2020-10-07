@@ -147,7 +147,8 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
   ): ZQuery[R1, E1, B] =
     ZQuery {
       step.foldCauseM(
-        failure(_).step, {
+        failure(_).step,
+        {
           case Result.Blocked(br, c) => ZIO.succeedNow(Result.blocked(br, c.foldCauseM(failure, success)))
           case Result.Done(a)        => success(a).step
           case Result.Fail(e)        => failure(e).step
@@ -159,8 +160,8 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
    * Recovers from errors by accepting one query to execute for the case of an
    * error, and one query to execute for the case of success.
    */
-  final def foldM[R1 <: R, E1, B](failure: E => ZQuery[R1, E1, B], success: A => ZQuery[R1, E1, B])(
-    implicit ev: CanFail[E]
+  final def foldM[R1 <: R, E1, B](failure: E => ZQuery[R1, E1, B], success: A => ZQuery[R1, E1, B])(implicit
+    ev: CanFail[E]
   ): ZQuery[R1, E1, B] =
     foldCauseM(_.failureOrCause.fold(failure, ZQuery.halt(_)), success)
 

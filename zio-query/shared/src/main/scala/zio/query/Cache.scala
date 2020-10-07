@@ -32,8 +32,8 @@ trait Cache {
    * the previous request. If the request has been executed returns a result
    * that is done.
    */
-  private[query] def getOrElseUpdate[R, E, A, B](request: A, dataSource: DataSource[R, A])(
-    implicit ev: A <:< Request[E, B]
+  private[query] def getOrElseUpdate[R, E, A, B](request: A, dataSource: DataSource[R, A])(implicit
+    ev: A <:< Request[E, B]
   ): UIO[Result[R, E, B]]
 }
 
@@ -53,8 +53,8 @@ object Cache {
     def put[E, A](request: Request[E, A], result: Ref[Option[Either[E, A]]]): UIO[Unit] =
       state.update(_ + (request -> result)).unit
 
-    private[query] def getOrElseUpdate[R, E, A, B](request: A, dataSource: DataSource[R, A])(
-      implicit ev: A <:< Request[E, B]
+    private[query] def getOrElseUpdate[R, E, A, B](request: A, dataSource: DataSource[R, A])(implicit
+      ev: A <:< Request[E, B]
     ): UIO[Result[R, E, B]] =
       Ref.make(Option.empty[Either[E, B]]).flatMap { ref =>
         state.modify { map =>

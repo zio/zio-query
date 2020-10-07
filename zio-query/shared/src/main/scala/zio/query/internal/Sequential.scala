@@ -19,9 +19,8 @@ private[query] final class Sequential[-R](
    */
   def ++[R1 <: R](that: Sequential[R1]): Sequential[R1] =
     new Sequential(
-      that.map.foldLeft(self.map) {
-        case (map, (k, v)) =>
-          map + (k -> map.get(k).fold[Chunk[Chunk[BlockedRequest[Any]]]](Chunk.empty)(_ ++ v))
+      that.map.foldLeft(self.map) { case (map, (k, v)) =>
+        map + (k -> map.get(k).fold[Chunk[Chunk[BlockedRequest[Any]]]](Chunk.empty)(_ ++ v))
       }
     )
 
