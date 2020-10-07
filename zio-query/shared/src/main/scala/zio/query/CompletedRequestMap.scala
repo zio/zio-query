@@ -47,6 +47,9 @@ final class CompletedRequestMap private (private val map: Map[Any, Either[Any, A
    */
   def requests: Set[Request[Any, Any]] =
     map.keySet.asInstanceOf[Set[Request[Any, Any]]]
+
+  override def toString: String =
+    s"CompletedRequestMap(${map.mkString(", ")})"
 }
 
 object CompletedRequestMap {
