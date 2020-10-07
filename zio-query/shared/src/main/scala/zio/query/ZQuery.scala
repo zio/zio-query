@@ -501,7 +501,22 @@ object ZQuery {
   def fromRequest[R, E, A, B](
     request: A
   )(dataSource: DataSource[R, A])(implicit ev: A <:< Request[E, B]): ZQuery[R, E, B] =
-    ZQuery(ZIO.accessM(_._2.cache.getOrElseUpdate(request, dataSource)))
+    ZQuery {
+      ZIO.accessM[(R, QueryContext)](_._2.cache.lookup(request)).flatMap {
+        case Left(ref) =>
+          UIO.succeedNow(
+            Result.blocked(
+              BlockedRequests.single(dataSource, BlockedRequest(request, ref)),
+              Continue(request, dataSource, ref)
+            )
+          )
+        case Right(ref) =>
+          ref.get.map {
+            case None    => Result.blocked(BlockedRequests.empty, Continue(request, dataSource, ref))
+            case Some(b) => Result.fromEither(b)
+          }
+      }
+    }
 
   /**
    * Constructs a query from a request and a data source but does not apply
