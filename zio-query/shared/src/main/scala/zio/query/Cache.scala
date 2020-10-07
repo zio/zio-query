@@ -1,6 +1,5 @@
 package zio.query
 
-import zio.query.internal.{ BlockedRequest, BlockedRequests, Continue, Result }
 import zio.{ IO, Ref, UIO }
 
 /**
@@ -20,21 +19,21 @@ trait Cache {
   def get[E, A](request: Request[E, A]): IO[Unit, Ref[Option[Either[E, A]]]]
 
   /**
+   * Looks up a request in the cache. If the request is not in the cache
+   * returns a `Left` with a `Ref` that can be set with a `Some` to complete
+   * the request. If the request is in the cache returns a `Right` with a `Ref`
+   * that either contains `Some` with a result if the request has been executed
+   * or `None` if the request has not been executed yet.
+   */
+  def lookup[R, E, A, B](request: A)(implicit
+    ev: A <:< Request[E, B]
+  ): UIO[Either[Ref[Option[Either[E, B]]], Ref[Option[Either[E, B]]]]]
+
+  /**
    * Inserts a request and a `Ref` that will contain the result of the request
    * when it is executed into the cache.
    */
   def put[E, A](request: Request[E, A], result: Ref[Option[Either[E, A]]]): UIO[Unit]
-
-  /**
-   * Looks up a request in the cache. If the request is not in the cache
-   * returns a result that is blocked on the request. If the request is in the
-   * cache but has not been executed yet returns a result that is blocked on
-   * the previous request. If the request has been executed returns a result
-   * that is done.
-   */
-  private[query] def getOrElseUpdate[R, E, A, B](request: A, dataSource: DataSource[R, A])(implicit
-    ev: A <:< Request[E, B]
-  ): UIO[Result[R, E, B]]
 }
 
 object Cache {
@@ -43,39 +42,26 @@ object Cache {
    * Constructs an empty cache.
    */
   val empty: UIO[Cache] =
-    Ref.make(Map.empty[Any, Any]).map(new Impl(_))
+    Ref.make(Map.empty[Any, Any]).map(new Default(_))
 
-  private final class Impl(private val state: Ref[Map[Any, Any]]) extends Cache {
+  private final class Default(private val state: Ref[Map[Any, Any]]) extends Cache {
 
     def get[E, A](request: Request[E, A]): IO[Unit, Ref[Option[Either[E, A]]]] =
       state.get.map(_.get(request).asInstanceOf[Option[Ref[Option[Either[E, A]]]]]).get.orElseFail(())
 
-    def put[E, A](request: Request[E, A], result: Ref[Option[Either[E, A]]]): UIO[Unit] =
-      state.update(_ + (request -> result)).unit
-
-    private[query] def getOrElseUpdate[R, E, A, B](request: A, dataSource: DataSource[R, A])(implicit
+    def lookup[R, E, A, B](request: A)(implicit
       ev: A <:< Request[E, B]
-    ): UIO[Result[R, E, B]] =
+    ): UIO[Either[Ref[Option[Either[E, B]]], Ref[Option[Either[E, B]]]]] =
       Ref.make(Option.empty[Either[E, B]]).flatMap { ref =>
         state.modify { map =>
           map.get(request) match {
             case None      => (Left(ref), map + (request -> ref))
             case Some(ref) => (Right(ref.asInstanceOf[Ref[Option[Either[E, B]]]]), map)
           }
-        }.flatMap {
-          case Left(ref) =>
-            UIO.succeedNow(
-              Result.blocked(
-                BlockedRequests.single(dataSource, BlockedRequest(request, ref)),
-                Continue(request, dataSource, ref)
-              )
-            )
-          case Right(ref) =>
-            ref.get.map {
-              case None    => Result.blocked(BlockedRequests.empty, Continue(request, dataSource, ref))
-              case Some(b) => Result.fromEither(b)
-            }
         }
       }
+
+    def put[E, A](request: Request[E, A], result: Ref[Option[Either[E, A]]]): UIO[Unit] =
+      state.update(_ + (request -> result)).unit
   }
 }
