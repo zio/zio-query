@@ -275,6 +275,17 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
     } yield (cache, a)
 
   /**
+   * Extracts the optional value or fails with the given error `e`.
+   */
+  final def someOrFail[B, E1 >: E](e: => E1)(implicit ev: A <:< Option[B]): ZQuery[R, E1, B] =
+    self.flatMap { a =>
+      ev(a) match {
+        case Some(b) => ZQuery.succeed(b)
+        case None    => ZQuery.fail(e)
+      }
+    }
+
+  /**
    * Summarizes a query by computing some value before and after execution,
    * and then combining the values to produce a summary, together with the
    * result of execution.
