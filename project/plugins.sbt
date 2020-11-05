@@ -11,4 +11,4 @@ addSbtPlugin("com.geirsson"                      % "sbt-ci-release"            %
 addSbtPlugin("com.github.cb372"                  % "sbt-explicit-dependencies" % "0.2.15")
 addSbtPlugin("com.thoughtworks.sbt-api-mappings" % "sbt-api-mappings"          % "3.0.0")
 addSbtPlugin("ch.epfl.lamp"                      % "sbt-dotty"                 % "0.4.5")
-addSbtPlugin("ch.epfl.scala"                     % "sbt-scalafix"              % "0.9.21")
+addSbtPlugin("ch.epfl.scala"                     % "sbt-scalafix"              % "0.9.23")
