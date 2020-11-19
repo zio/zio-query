@@ -495,17 +495,34 @@ object ZQuery {
   def foreachPar[R, E, A, B, Collection[+Element] <: Iterable[Element]](
     as: Collection[A]
   )(f: A => ZQuery[R, E, B])(implicit bf: BuildFrom[Collection[A], B, Collection[B]]): ZQuery[R, E, Collection[B]] =
-    if (as.isEmpty) ZQuery.succeed(bf.newBuilder(as).result)
-    else {
-      val iterator                                         = as.iterator
-      var builder: ZQuery[R, E, Builder[B, Collection[B]]] = null
-      while (iterator.hasNext) {
-        val a = iterator.next()
-        if (builder eq null) builder = f(a).map(bf.newBuilder(as) += _)
-        else builder = builder.zipWithPar(f(a))(_ += _)
-      }
-      builder.map(_.result())
-    }
+    new ZQuery(cb => {
+      val n     = as.size
+      val array = Array.ofDim[Result[R, E, B]](n)
+      for {
+        ref     <- Ref.make(0)
+        promise <- Promise.make[Nothing, Unit]
+        _ <- ZIO.foreach_(as.zipWithIndex) { case (a, i) =>
+               f(a).start { result =>
+                 ZIO.succeedNow(array(i) = result) *>
+                   promise.succeed(()).whenM(ref.updateAndGet(_ + 1).map(_ == n))
+               }
+             }
+        _ <- promise.await
+        _ <- {
+          val list = array.toList
+          val result = list match {
+            case _ :: _ => Result.reduceAllPar(list)
+            case _      => Result.done(List.empty)
+          }
+          val collection = result.map { bs =>
+            val builder = bf.newBuilder(as)
+            builder ++= bs
+            builder.result()
+          }
+          cb(collection)
+        }
+      } yield ()
+    })
 
   /**
    * Constructs a query from an effect.
