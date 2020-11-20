@@ -2,7 +2,7 @@ package zio.query.internal
 
 import zio.query._
 import zio.query.internal.Continue._
-import zio.{ CanFail, Cause, IO, NeedsEnv, Ref, ZIO }
+import zio._
 
 /**
  * A `Continue[R, E, A]` models a continuation of a blocked request that
@@ -87,12 +87,12 @@ private[query] sealed trait Continue[-R, +E, +A] { self =>
     }
 
   /**
-   * Runs this continuation..
+   * Runs this continuation with the specified callback.
    */
-  final def runCache(cache: Cache): ZIO[R, E, A] =
+  final def runCacheWith(cache: Cache)(cb: Exit[E, A] => UIO[Any]): URIO[R, Any] =
     self match {
-      case Effect(query) => query.runCache(cache)
-      case Get(io)       => io
+      case Effect(query) => query.runCacheWith(cache)(cb)
+      case Get(io)       => io.run.flatMap(cb)
     }
 
   /**

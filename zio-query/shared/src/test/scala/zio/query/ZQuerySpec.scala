@@ -20,8 +20,8 @@ object ZQuerySpec extends ZIOBaseSpec {
       },
       testM("mapError does not prevent batching") {
         import zio.CanFail.canFail
-        val a = getUserNameById(1).zip(getUserNameById(2)).mapError(identity)
-        val b = getUserNameById(3).zip(getUserNameById(4)).mapError(identity)
+        val a = getUserNameById(1).zip(getUserNameById(2)).mapError(e => e)
+        val b = getUserNameById(3).zip(getUserNameById(4)).mapError(e => e)
         for {
           _   <- ZQuery.collectAllPar(List(a, b)).run
           log <- TestConsole.output
@@ -48,7 +48,7 @@ object ZQuerySpec extends ZIOBaseSpec {
       },
       testM("optional converts a query to one that returns its value optionally") {
         for {
-          result <- getUserNameById(27).map(identity).optional.run
+          result <- getUserNameById(27).map(a => a).optional.run
         } yield assert(result)(isNone)
       },
       testM("queries to multiple data sources can be executed in parallel") {
@@ -118,6 +118,97 @@ object ZQuerySpec extends ZIOBaseSpec {
               acc <- query1
               i   <- query2
             } yield acc + i
+          }
+          .run
+        assertM(effect)(equalTo(705082704))
+      },
+      testM("stack safety on right flatMaps") {
+        val effect = (0 to 100000)
+          .map(ZQuery.succeed(_))
+          .foldRight(ZQuery.succeed(0)) { (query1, query2) =>
+            query1.flatMap(a => query2.flatMap(b => ZQuery.succeed(a + b)))
+          }
+          .run
+        assertM(effect)(equalTo(705082704))
+      },
+      testM("stack safety on flatMap blocked") {
+        val effect = (0 to 100000)
+          .map(ZQuery.succeed(_))
+          .foldLeft(getAllUserIds.as(0)) { (query1, query2) =>
+            for {
+              acc <- query1
+              i   <- query2
+            } yield acc + i
+          }
+          .run
+        assertM(effect)(equalTo(705082704))
+      },
+      testM("stack safety on flatMap fail") {
+        val effect = (0 to 100000)
+          .map(ZQuery.succeed(_))
+          .foldLeft(ZQuery.fail("fail")) { (query1, query2) =>
+            for {
+              n <- query1
+              _ <- query2
+            } yield n
+          }
+          .run
+        assertM(effect.run)(anything)
+      },
+      testM("stack safety on repeats maps") {
+        val effect = (0 to 100000)
+          .foldLeft(ZQuery.succeed(0)) { (query, n) =>
+            query.map(_ + n)
+          }
+          .run
+        assertM(effect)(equalTo(705082704))
+      },
+      testM("stack safety on repeats maps 2") {
+        val effect = (0 to 100000)
+          .foldLeft(getAllUserIds.as(0)) { (query, n) =>
+            query.map(_ + n)
+          }
+          .run
+        assertM(effect)(equalTo(705082704))
+      },
+      testM("stack safety on repeats maps 3") {
+        val effect = (0 to 100000)
+          .foldLeft(ZQuery.fail("fail")) { (query, _) =>
+            query.map(a => a)
+          }
+          .run
+        assertM(effect.run)(anything)
+      },
+      testM("stack safety on repeats mapError") {
+        val effect = (0 to 100000)
+          .foldLeft(ZQuery.fail(0)) { (query, n) =>
+            query.mapError(_ + n)
+          }
+          .run
+        assertM(effect.run)(fails(equalTo(705082704)))
+      },
+      testM("stack safety on repeats mapDataSource") {
+        val effect = (0 to 100000)
+          .foldLeft(getAllUserIds) { (query, _) =>
+            query.mapDataSources(DataSourceAspect.identity)
+          }
+          .run
+        assertM(effect)(anything)
+      },
+      testM("stack safety on zipWith") {
+        val effect = (0 to 100000)
+          .map(ZQuery.succeed(_))
+          .foldLeft(ZQuery.succeed(0)) { (query1, query2) =>
+            query1.zipWith(query2)(_ + _)
+          }
+          .run
+        assertM(effect)(equalTo(705082704))
+      },
+      testM("stack safety on zipWith") {
+        val effect = (0 to 100000)
+          .map(ZQuery.succeed(_))
+          .foldRight(ZQuery.succeed(0)) { (query1, query2) =>
+            query1.zipWith(query2)(_ + _)
           }
           .run
         assertM(effect)(equalTo(705082704))

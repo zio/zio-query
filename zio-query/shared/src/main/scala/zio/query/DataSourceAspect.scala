@@ -50,6 +50,15 @@ object DataSourceAspect {
     }
 
   /**
+   * A data source aspect that returns data sources unchanged.
+   */
+  val identity: DataSourceAspect[Any] =
+    new DataSourceAspect[Any] {
+      def apply[R, A](dataSource: DataSource[R, A]): DataSource[R, A] =
+        dataSource
+    }
+
+  /**
    * A data source aspect that limits data sources to executing at most `n`
    * requests in parallel.
    */

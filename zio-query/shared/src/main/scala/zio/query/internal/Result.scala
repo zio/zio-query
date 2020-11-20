@@ -66,6 +66,17 @@ private[query] sealed trait Result[-R, +E, +A] { self =>
       case Done(a)        => done(a)
       case Fail(e)        => fail(e)
     }
+
+  final def zipWithPar[R1 <: R, E1 >: E, B, C](that: Result[R1, E1, B])(f: (A, B) => C): Result[R1, E1, C] =
+    (self, that) match {
+      case (Result.Blocked(br1, c1), Result.Blocked(br2, c2)) => Result.blocked(br1 && br2, c1.zipWithPar(c2)(f))
+      case (Result.Blocked(br, c), Result.Done(b))            => Result.blocked(br, c.map(a => f(a, b)))
+      case (Result.Done(a), Result.Blocked(br, c))            => Result.blocked(br, c.map(b => f(a, b)))
+      case (Result.Done(a), Result.Done(b))                   => Result.done(f(a, b))
+      case (Result.Fail(e1), Result.Fail(e2))                 => Result.fail(Cause.Both(e1, e2))
+      case (Result.Fail(e), _)                                => Result.fail(e)
+      case (_, Result.Fail(e))                                => Result.fail(e)
+    }
 }
 
 private[query] object Result {
