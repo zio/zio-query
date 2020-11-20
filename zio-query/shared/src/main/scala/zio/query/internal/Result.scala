@@ -100,18 +100,6 @@ private[query] object Result {
   def fail[E](cause: Cause[E]): Result[Any, E, Nothing] =
     Fail(cause)
 
-  def reduceAllPar[R, E, A](as: List[Result[R, E, A]]): Result[R, E, List[A]] =
-    as.init.foldRight(as.last.map(List(_))) {
-      case (Result.Blocked(br1, c1), Result.Blocked(br2, c2)) =>
-        Result.blocked(br1 && br2, c1.zipWithPar(c2)(_ :: _))
-      case (Result.Blocked(br, c), Result.Done(b)) => Result.blocked(br, c.map(a => a :: b))
-      case (Result.Done(a), Result.Blocked(br, c)) => Result.blocked(br, c.map(b => a :: b))
-      case (Result.Done(a), Result.Done(b))        => Result.done(a :: b)
-      case (Result.Fail(e1), Result.Fail(e2))      => Result.fail(Cause.Both(e1, e2))
-      case (Result.Fail(e), _)                     => Result.fail(e)
-      case (_, Result.Fail(e))                     => Result.fail(e)
-    }
-
   /**
    * Lifts an `Either` into a result.
    */

@@ -519,17 +519,14 @@ object ZQuery {
       val array = Array.ofDim[Result[R, E, B]](n)
 
       val onDone = ZIO.effectSuspendTotal {
-        val list = array.toList
-        val result = list match {
-          case _ :: _ => Result.reduceAllPar(list)
-          case _      => Result.done(List.empty)
+        var result: Result[R, E, Builder[B, Collection[B]]] = Result.done(bf.newBuilder(as))
+        var i                                               = 0
+        while (i < n) {
+          val a = array(i)
+          result = result.zipWithPar(a)(_ += _)
+          i += 1
         }
-        val collection = result.map { bs =>
-          val builder = bf.newBuilder(as)
-          builder ++= bs
-          builder.result()
-        }
-        cb(collection)
+        cb(result.map(_.result()))
       }
 
       Ref.make(0).flatMap { ref =>
