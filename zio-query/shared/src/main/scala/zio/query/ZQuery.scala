@@ -576,7 +576,7 @@ object ZQuery {
     request: A
   )(dataSource: DataSource[R, A])(implicit ev: A <:< Request[E, B]): ZQuery[R, E, B] =
     ZQuery { cb =>
-      ZIO.accessM[(R, QueryContext)] { case (r, queryContext) =>
+      ZIO.accessM[(R, QueryContext)] { case (_, queryContext) =>
         queryContext.cache.lookup(request).flatMap {
           case Left(ref) =>
             cb {

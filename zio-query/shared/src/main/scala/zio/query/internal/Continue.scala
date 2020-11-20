@@ -1,8 +1,8 @@
 package zio.query.internal
 
+import zio._
 import zio.query._
 import zio.query.internal.Continue._
-import zio._
 
 /**
  * A `Continue[R, E, A]` models a continuation of a blocked request that
