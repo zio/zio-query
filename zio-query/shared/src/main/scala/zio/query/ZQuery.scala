@@ -1,7 +1,5 @@
 package zio.query
 
-import scala.collection.mutable.Builder
-
 import zio._
 import zio.clock._
 import zio.duration._
@@ -496,12 +494,11 @@ object ZQuery {
   )(f: A => ZQuery[R, E, B])(implicit bf: BuildFrom[Collection[A], B, Collection[B]]): ZQuery[R, E, Collection[B]] =
     if (as.isEmpty) ZQuery.succeed(bf.newBuilder(as).result)
     else {
-      val iterator                                         = as.iterator
-      var builder: ZQuery[R, E, Builder[B, Collection[B]]] = null
+      val iterator = as.iterator
+      var builder  = f(iterator.next()).map(bf.newBuilder(as) += _)
       while (iterator.hasNext) {
         val a = iterator.next()
-        if (builder eq null) builder = f(a).map(bf.newBuilder(as) += _)
-        else builder = builder.zipWith(f(a))(_ += _)
+        builder = builder.zipWith(f(a))(_ += _)
       }
       builder.map(_.result())
     }
@@ -514,26 +511,33 @@ object ZQuery {
   def foreachPar[R, E, A, B, Collection[+Element] <: Iterable[Element]](
     as: Collection[A]
   )(f: A => ZQuery[R, E, B])(implicit bf: BuildFrom[Collection[A], B, Collection[B]]): ZQuery[R, E, Collection[B]] =
-    ZQuery { cb =>
-      val n     = as.size
-      val array = Array.ofDim[Result[R, E, B]](n)
-
-      val onDone = ZIO.effectSuspendTotal {
-        var result: Result[R, E, Builder[B, Collection[B]]] = Result.done(bf.newBuilder(as))
-        var i                                               = 0
-        while (i < n) {
-          val a = array(i)
-          result = result.zipWithPar(a)(_ += _)
-          i += 1
-        }
-        cb(result.map(_.result()))
-      }
-
-      Ref.make(0).flatMap { ref =>
-        ZIO.foreach_(as.zipWithIndex) { case (a, i) =>
-          f(a).start { result =>
-            ZIO.succeedNow(array(i) = result) *>
-              onDone.whenM(ref.updateAndGet(_ + 1).map(_ == n))
+    if (as.isEmpty) ZQuery.succeed(bf.newBuilder(as).result)
+    else {
+      val size = as.size
+      ZQuery { cb =>
+        ZIO.effectTotal(Array.ofDim[Result[R, E, B]](size)).zip(Ref.make(size)).flatMap { case (array, ref) =>
+          ZIO.foreach(as.zipWithIndex) { case (a, i) =>
+            f(a).start { result =>
+              ZIO.effectTotal(array(i) = result) *>
+                ref.modify {
+                  case n if n == 1 =>
+                    (
+                      ZIO.effectSuspendTotal {
+                        var builder = array(0).map(bf.newBuilder(as) += _)
+                        var i       = 1
+                        while (i < size) {
+                          val result = array(i)
+                          builder = builder.zipWithPar(result)(_ += _)
+                          i += 1
+                        }
+                        cb(builder.map(_.result()))
+                      },
+                      n - 1
+                    )
+                  case n =>
+                    (ZIO.unit, n - 1)
+                }.flatten
+            }
           }
         }
       }
@@ -559,23 +563,20 @@ object ZQuery {
     request: A
   )(dataSource: DataSource[R, A])(implicit ev: A <:< Request[E, B]): ZQuery[R, E, B] =
     ZQuery { cb =>
-      ZIO
-        .accessM[(R, QueryContext)](_._2.cache.lookup(request))
-        .flatMap {
-          case Left(ref) =>
-            UIO.succeedNow(
-              Result.blocked(
-                BlockedRequests.single(dataSource, BlockedRequest(request, ref)),
-                Continue(request, dataSource, ref)
-              )
+      ZIO.accessM[(R, QueryContext)](_._2.cache.lookup(request)).flatMap {
+        case Left(ref) =>
+          cb {
+            Result.blocked(
+              BlockedRequests.single(dataSource, BlockedRequest(request, ref)),
+              Continue(request, dataSource, ref)
             )
-          case Right(ref) =>
-            ref.get.map {
-              case None    => Result.blocked(BlockedRequests.empty, Continue(request, dataSource, ref))
-              case Some(b) => Result.fromEither(b)
-            }
-        }
-        .flatMap(cb)
+          }
+        case Right(ref) =>
+          ref.get.flatMap {
+            case None    => cb(Result.blocked(BlockedRequests.empty, Continue(request, dataSource, ref)))
+            case Some(b) => cb(Result.fromEither(b))
+          }
+      }
     }
 
   /**
@@ -586,15 +587,14 @@ object ZQuery {
     request: A
   )(dataSource: DataSource[R, A])(implicit ev: A <:< Request[E, B]): ZQuery[R, E, B] =
     ZQuery { cb =>
-      Ref
-        .make(Option.empty[Either[E, B]])
-        .map { ref =>
+      Ref.make(Option.empty[Either[E, B]]).flatMap { ref =>
+        cb {
           Result.blocked(
             BlockedRequests.single(dataSource, BlockedRequest(request, ref)),
             Continue(request, dataSource, ref)
           )
         }
-        .flatMap(cb)
+      }
     }
 
   /**
@@ -661,13 +661,6 @@ object ZQuery {
       }
     }
 
-  final class ProvideSomeLayer[R0 <: Has[_], -R, +E, +A](private val self: ZQuery[R, E, A]) extends AnyVal {
-    def apply[E1 >: E, R1 <: Has[_]](
-      layer: Described[ZLayer[R0, E1, R1]]
-    )(implicit ev1: R0 with R1 <:< R, ev2: NeedsEnv[R], tag: Tag[R1]): ZQuery[R0, E1, A] =
-      self.provideLayer[E1, R0, R0 with R1](Described(ZLayer.identity[R0] ++ layer.value, layer.description))
-  }
-
   /**
    * Constructs a query from a callback that takes a result.
    */
@@ -699,5 +692,12 @@ object ZQuery {
   final class AccessMPartiallyApplied[R](private val dummy: Boolean = true) extends AnyVal {
     def apply[E, A](f: R => ZQuery[R, E, A]): ZQuery[R, E, A] =
       environment[R].flatMap(f)
+  }
+
+  final class ProvideSomeLayer[R0 <: Has[_], -R, +E, +A](private val self: ZQuery[R, E, A]) extends AnyVal {
+    def apply[E1 >: E, R1 <: Has[_]](
+      layer: Described[ZLayer[R0, E1, R1]]
+    )(implicit ev1: R0 with R1 <:< R, ev2: NeedsEnv[R], tag: Tag[R1]): ZQuery[R0, E1, A] =
+      self.provideLayer[E1, R0, R0 with R1](Described(ZLayer.identity[R0] ++ layer.value, layer.description))
   }
 }
