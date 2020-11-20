@@ -87,11 +87,11 @@ private[query] sealed trait Continue[-R, +E, +A] { self =>
     }
 
   /**
-   * Runs this continuation with the specified callback.
+   * Runs this continuation..
    */
-  final def runCacheWith(cache: Cache)(cb: Exit[E, A] => UIO[Any]): URIO[R, Any] =
+  final def runAsync(cache: Cache)(cb: Exit[E, A] => UIO[Any]): URIO[R, Any] =
     self match {
-      case Effect(query) => query.runCacheWith(cache)(cb)
+      case Effect(query) => query.runAsync(cache)(cb)
       case Get(io)       => io.run.flatMap(cb)
     }
 

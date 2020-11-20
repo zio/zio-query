@@ -289,6 +289,18 @@ object ZQuerySpec extends ZIOBaseSpec {
           val query = ZQuery.die(throw t).foldCauseM(cause => ZQuery.succeed(cause), _ => ZQuery.succeed(Cause.empty))
           assertM(query.run)(containsCause(Cause.die(t)))
         }
+      ),
+      suite("provideSome")(
+        testM("stack safety on repeats mapDataSource") {
+          def f(n: Int) = Described((x: Int) => x + n, "")
+          val effect = (0 to 100000)
+            .foldLeft(ZQuery.environment[Int]) { (zio, n) =>
+              zio.provideSome(f(n))
+            }
+            .provide(Described(0, ""))
+            .run
+          assertM(effect)(equalTo(705082704))
+        }
       )
     ) @@ silent
 

@@ -122,10 +122,10 @@ final class ZQuery[-R, +E, +A] private (
    */
   final def flatMap[R1 <: R, E1 >: E, B](f: A => ZQuery[R1, E1, B]): ZQuery[R1, E1, B] =
     ZQuery { cb =>
-      ZIO.accessM { r =>
+      ZIO.accessM { env =>
         self.start {
           case Result.Blocked(br, c) => ZIO.effectSuspendTotal(cb(Result.blocked(br, c.mapM(f))))
-          case Result.Done(a)        => ZIO.effectSuspendTotal(f(a).start(cb).provide(r))
+          case Result.Done(a)        => ZIO.effectSuspendTotal(f(a).start(cb).provide(env))
           case Result.Fail(e)        => ZIO.effectSuspendTotal(cb(Result.fail(e)))
         }
       }
@@ -148,11 +148,11 @@ final class ZQuery[-R, +E, +A] private (
     success: A => ZQuery[R1, E1, B]
   ): ZQuery[R1, E1, B] =
     ZQuery { cb =>
-      ZIO.accessM { r =>
+      ZIO.accessM { env =>
         self.start {
           case Result.Blocked(br, c) => ZIO.effectSuspendTotal(cb(Result.blocked(br, c.foldCauseM(failure, success))))
-          case Result.Done(a)        => ZIO.effectSuspendTotal(success(a).start(cb).provide(r))
-          case Result.Fail(e)        => ZIO.effectSuspendTotal(failure(e).start(cb).provide(r))
+          case Result.Done(a)        => ZIO.effectSuspendTotal(success(a).start(cb).provide(env))
+          case Result.Fail(e)        => ZIO.effectSuspendTotal(failure(e).start(cb).provide(env))
         }
       }
     }
@@ -230,10 +230,12 @@ final class ZQuery[-R, +E, +A] private (
   )(implicit ev1: R1 <:< R, ev2: NeedsEnv[R]): ZQuery[R0, E1, A] =
     ZQuery { cb =>
       ZIO.transplant { graft =>
-        graft(layer.value.build.provideSome[(R0, QueryContext)](_._1).run.use {
-          case Exit.Failure(e) => ZIO.succeedNow(Result.fail(e))
-          case Exit.Success(r) => ZIO.effectSuspendTotal(self.provide(Described(r, layer.description)).start(cb))
-        }).fork
+        graft {
+          layer.value.build.provideSome[(R0, QueryContext)](_._1).run.use {
+            case Exit.Failure(e) => ZIO.effectSuspendTotal(cb(Result.fail(e)))
+            case Exit.Success(r) => ZIO.effectSuspendTotal(self.provide(Described(r, layer.description)).start(cb))
+          }
+        }.fork
       }
     }
 
@@ -242,7 +244,11 @@ final class ZQuery[-R, +E, +A] private (
    */
   final def provideSome[R0](f: Described[R0 => R])(implicit ev: NeedsEnv[R]): ZQuery[R0, E, A] =
     ZQuery { cb =>
-      ZIO.effectSuspendTotal(self.start(result => cb(result.provideSome(f))).provideSome(r => (f.value(r._1), r._2)))
+      ZIO.effectSuspendTotal {
+        self
+          .start(result => ZIO.effectSuspendTotal(cb(result.provideSome(f))))
+          .provideSome { case (r, queryContext) => (f.value(r), queryContext) }
+      }
     }
 
   /**
@@ -259,28 +265,28 @@ final class ZQuery[-R, +E, +A] private (
     runLog.map(_._2)
 
   /**
+   * Returns an effect that models starting this query, providing the query
+   * result to the specified callback.
+   */
+  final def runAsync(cache: Cache)(cb: Exit[E, A] => UIO[Any]): URIO[R, Any] =
+    ZIO.accessM { r =>
+      self.start {
+        case Result.Blocked(br, c) => br.run(cache).provide(r) *> c.runAsync(cache)(cb).provide(r)
+        case Result.Done(a)        => cb(Exit.succeed(a))
+        case Result.Fail(e)        => cb(Exit.halt(e))
+      }.provideSome[R]((_, QueryContext(cache)))
+    }
+
+  /**
    * Returns an effect that models executing this query with the specified
    * cache.
    */
   final def runCache(cache: Cache): ZIO[R, E, A] =
     for {
       promise <- Promise.make[E, A]
-      _       <- runCacheWith(cache)(promise.done)
+      _       <- runAsync(cache)(promise.done)
       value   <- promise.await
     } yield value
-
-  /**
-   * Returns an effect that moedls executing this query with the specified
-   * cache, providing the query result to the specified callback.
-   */
-  final def runCacheWith(cache: Cache)(cb: Exit[E, A] => UIO[Any]): URIO[R, Any] =
-    ZIO.accessM[R] { r =>
-      self.start {
-        case Result.Blocked(br, c) => br.run(cache).provide(r) *> c.runCacheWith(cache)(cb).provide(r)
-        case Result.Done(a)        => cb(Exit.succeed(a))
-        case Result.Fail(e)        => cb(Exit.halt(e))
-      }.provideSome[R]((_, QueryContext(cache)))
-    }
 
   /**
    * Returns an effect that models executing this query, returning the query
@@ -380,16 +386,21 @@ final class ZQuery[-R, +E, +A] private (
               that.start {
                 case Result.Blocked(br2, c2) =>
                   ZIO.effectSuspendTotal(cb(Result.blocked(br1 ++ br2, c1.zipWith(c2)(f))))
-                case Result.Done(b) => ZIO.effectSuspendTotal(cb(Result.blocked(br1, c1.map(a => f(a, b)))))
-                case Result.Fail(e) => ZIO.effectSuspendTotal(cb(Result.fail(e)))
+                case Result.Done(b) =>
+                  ZIO.effectSuspendTotal(cb(Result.blocked(br1, c1.map(a => f(a, b)))))
+                case Result.Fail(e) =>
+                  ZIO.effectSuspendTotal(cb(Result.fail(e)))
               }.provide(r)
             }
           case Result.Done(a) =>
             ZIO.effectSuspendTotal {
               that.start {
-                case Result.Blocked(br, c) => ZIO.effectSuspendTotal(cb(Result.blocked(br, c.map(b => f(a, b)))))
-                case Result.Done(b)        => ZIO.effectSuspendTotal(cb(Result.done(f(a, b))))
-                case Result.Fail(e)        => ZIO.effectSuspendTotal(cb(Result.fail(e)))
+                case Result.Blocked(br, c) =>
+                  ZIO.effectSuspendTotal(cb(Result.blocked(br, c.map(b => f(a, b)))))
+                case Result.Done(b) =>
+                  ZIO.effectSuspendTotal(cb(Result.done(f(a, b))))
+                case Result.Fail(e) =>
+                  ZIO.effectSuspendTotal(cb(Result.fail(e)))
               }.provide(r)
             }
           case Result.Fail(e) =>
@@ -549,7 +560,9 @@ object ZQuery {
   def fromEffect[R, E, A](effect: ZIO[R, E, A]): ZQuery[R, E, A] =
     ZQuery { cb =>
       ZIO.transplant { graft =>
-        graft(effect.foldCause(Result.fail, Result.done).provideSome[(R, QueryContext)](_._1).flatMap(cb)).fork
+        graft {
+          effect.foldCauseM(e => cb(Result.fail(e)), a => cb(Result.done(a))).provideSome[(R, QueryContext)](_._1)
+        }.fork
       }
     }
 
@@ -563,19 +576,21 @@ object ZQuery {
     request: A
   )(dataSource: DataSource[R, A])(implicit ev: A <:< Request[E, B]): ZQuery[R, E, B] =
     ZQuery { cb =>
-      ZIO.accessM[(R, QueryContext)](_._2.cache.lookup(request)).flatMap {
-        case Left(ref) =>
-          cb {
-            Result.blocked(
-              BlockedRequests.single(dataSource, BlockedRequest(request, ref)),
-              Continue(request, dataSource, ref)
-            )
-          }
-        case Right(ref) =>
-          ref.get.flatMap {
-            case None    => cb(Result.blocked(BlockedRequests.empty, Continue(request, dataSource, ref)))
-            case Some(b) => cb(Result.fromEither(b))
-          }
+      ZIO.accessM[(R, QueryContext)] { case (r, queryContext) =>
+        queryContext.cache.lookup(request).flatMap {
+          case Left(ref) =>
+            cb {
+              Result.blocked(
+                BlockedRequests.single(dataSource, BlockedRequest(request, ref)),
+                Continue(request, dataSource, ref)
+              )
+            }
+          case Right(ref) =>
+            ref.get.flatMap {
+              case None    => cb(Result.blocked(BlockedRequests.empty, Continue(request, dataSource, ref)))
+              case Some(b) => cb(Result.fromEither(b))
+            }
+        }
       }
     }
 
