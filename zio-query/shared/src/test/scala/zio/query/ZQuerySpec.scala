@@ -6,7 +6,7 @@ import zio.test.Assertion._
 import zio.test.TestAspect.{ after, nonFlaky, silent }
 import zio.test._
 import zio.test.environment.{ TestConsole, TestEnvironment }
-import zio.{ console, Chunk, Has, Promise, Ref, ZIO, ZLayer }
+import zio.{ console, Cause, Chunk, Has, Promise, Ref, ZIO, ZLayer }
 
 object ZQuerySpec extends ZIOBaseSpec {
 
@@ -260,7 +260,36 @@ object ZQuerySpec extends ZIOBaseSpec {
           output <- TestConsole.output
         } yield assert(result)(equalTo(Set("c", "d"))) &&
           assert(output)(equalTo(Vector("getAll called\n")))
-      }
+      },
+      suite("succeed")(
+        testM("suspends side effects") {
+          val t = new Throwable("die")
+          val query =
+            ZQuery.succeed(throw t).foldCauseM(cause => ZQuery.succeed(cause), _ => ZQuery.succeed(Cause.empty))
+          assertM(query.run)(containsCause(Cause.die(t)))
+        }
+      ),
+      suite("halt")(
+        testM("suspends side effects") {
+          val t     = new Throwable("die")
+          val query = ZQuery.halt(throw t).foldCauseM(cause => ZQuery.succeed(cause), _ => ZQuery.succeed(Cause.empty))
+          assertM(query.run)(containsCause(Cause.die(t)))
+        }
+      ),
+      suite("fail")(
+        testM("suspends side effects") {
+          val t     = new Throwable("die")
+          val query = ZQuery.fail(throw t).foldCauseM(cause => ZQuery.succeed(cause), _ => ZQuery.succeed(Cause.empty))
+          assertM(query.run)(containsCause(Cause.die(t)))
+        }
+      ),
+      suite("die")(
+        testM("suspends side effects") {
+          val t     = new Throwable("die")
+          val query = ZQuery.die(throw t).foldCauseM(cause => ZQuery.succeed(cause), _ => ZQuery.succeed(Cause.empty))
+          assertM(query.run)(containsCause(Cause.die(t)))
+        }
+      )
     ) @@ silent
 
   val userIds: List[Int]          = (1 to 26).toList

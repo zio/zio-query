@@ -472,7 +472,7 @@ object ZQuery {
    * Constructs a query that dies with the specified error.
    */
   def die(t: => Throwable): ZQuery[Any, Nothing, Nothing] =
-    ZQuery(cb => cb(Result.fail(Cause.die(t))))
+    ZQuery.halt(Cause.die(t))
 
   /**
    * Accesses the whole environment of the query.
@@ -484,7 +484,7 @@ object ZQuery {
    * Constructs a query that fails with the specified error.
    */
   def fail[E](error: => E): ZQuery[Any, E, Nothing] =
-    ZQuery(cb => cb(Result.fail(Cause.fail(error))))
+    ZQuery.halt(Cause.fail(error))
 
   /**
    * Performs a query for each element in a collection, collecting the results
@@ -601,7 +601,14 @@ object ZQuery {
    * Constructs a query that fails with the specified cause.
    */
   def halt[E](cause: => Cause[E]): ZQuery[Any, E, Nothing] =
-    ZQuery(cb => cb(Result.fail(cause)))
+    ZQuery { cb =>
+      ZIO.effectSuspendTotalWith { (platform, _) =>
+        cb {
+          try Result.fail(cause)
+          catch { case t if !platform.fatal(t) => Result.fail(Cause.die(t)) }
+        }
+      }
+    }
 
   /**
    * Constructs a query that never completes.
@@ -613,7 +620,7 @@ object ZQuery {
    * Constructs a query that succeds with the empty value.
    */
   val none: ZQuery[Any, Nothing, Option[Nothing]] =
-    succeed(None)
+    ZQuery(cb => cb(Result.done(None)))
 
   /**
    * Performs a query for each element in a collection, collecting the results
@@ -645,7 +652,14 @@ object ZQuery {
    *  Constructs a query that succeeds with the specified value.
    */
   def succeed[A](value: => A): ZQuery[Any, Nothing, A] =
-    ZQuery(cb => cb(Result.done(value)))
+    ZQuery { cb =>
+      ZIO.effectSuspendTotalWith { (platform, _) =>
+        cb {
+          try Result.done(value)
+          catch { case t if !platform.fatal(t) => Result.fail(Cause.die(t)) }
+        }
+      }
+    }
 
   final class ProvideSomeLayer[R0 <: Has[_], -R, +E, +A](private val self: ZQuery[R, E, A]) extends AnyVal {
     def apply[E1 >: E, R1 <: Has[_]](
