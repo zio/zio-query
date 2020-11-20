@@ -68,9 +68,9 @@ private[query] sealed trait Result[-R, +E, +A] { self =>
     }
 
   /**
-    * Zips this result with that result in parallel using the specified
-    * function.
-    */
+   * Zips this result with that result in parallel using the specified
+   * function.
+   */
   final def zipWithPar[R1 <: R, E1 >: E, B, C](that: Result[R1, E1, B])(f: (A, B) => C): Result[R1, E1, C] =
     (self, that) match {
       case (Result.Blocked(br1, c1), Result.Blocked(br2, c2)) => Result.blocked(br1 && br2, c1.zipWithPar(c2)(f))
