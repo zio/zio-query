@@ -1,12 +1,12 @@
 package zio.query
 
+import zio.{ test => _, _ }
 import zio.console.Console
 import zio.query.DataSourceAspect._
+import zio.test._
+import zio.test.environment._
 import zio.test.Assertion._
 import zio.test.TestAspect.{ after, nonFlaky, silent }
-import zio.test._
-import zio.test.environment.{ TestConsole, TestEnvironment }
-import zio.{ console, Cause, Chunk, Has, Promise, Ref, ZIO, ZLayer }
 
 object ZQuerySpec extends ZIOBaseSpec {
 
@@ -15,15 +15,6 @@ object ZQuerySpec extends ZIOBaseSpec {
       testM("N + 1 selects problem") {
         for {
           _   <- getAllUserNames.run
-          log <- TestConsole.output
-        } yield assert(log)(hasSize(equalTo(2)))
-      },
-      testM("mapError does not prevent batching") {
-        import zio.CanFail.canFail
-        val a = getUserNameById(1).zip(getUserNameById(2)).mapError(e => e)
-        val b = getUserNameById(3).zip(getUserNameById(4)).mapError(e => e)
-        for {
-          _   <- ZQuery.collectAllPar(List(a, b)).run
           log <- TestConsole.output
         } yield assert(log)(hasSize(equalTo(2)))
       },
@@ -37,19 +28,6 @@ object ZQuerySpec extends ZIOBaseSpec {
         assert(failure.getMessage)(
           equalTo("Data source UserRequestDataSource did not complete request GetNameById(27).")
         )
-      },
-      testM("timed does not prevent batching") {
-        val a = getUserNameById(1).zip(getUserNameById(2)).timed
-        val b = getUserNameById(3).zip(getUserNameById(4))
-        for {
-          _   <- ZQuery.collectAllPar(List(a, b)).run
-          log <- TestConsole.output
-        } yield assert(log)(hasSize(equalTo(2)))
-      },
-      testM("optional converts a query to one that returns its value optionally") {
-        for {
-          result <- getUserNameById(27).map(a => a).optional.run
-        } yield assert(result)(isNone)
       },
       testM("queries to multiple data sources can be executed in parallel") {
         for {
@@ -65,13 +43,152 @@ object ZQuerySpec extends ZIOBaseSpec {
           _       <- promise.await
         } yield assertCompletes
       },
-      testM("zipPar does not prevent batching") {
-        for {
-          _   <- ZQuery.collectAllPar(List.fill(100)(getAllUserNames)).run
-          log <- TestConsole.output
-        } yield assert(log)(hasSize(equalTo(2)))
-      } @@ nonFlaky,
-      suite("zipPar")(
+      suite("die")(
+        testM("die suspends side effects")(assertSuspends(ZQuery.die))
+      ),
+      suite("fail")(
+        testM("fail suspends side effects")(assertSuspends(ZQuery.fail))
+      ),
+      suite("flatMap")(
+        testM("left stack safety") {
+          val effect = (0 to 100000)
+            .map(ZQuery.succeed(_))
+            .foldLeft(ZQuery.succeed(0)) { (query1, query2) =>
+              query1.flatMap(a => query2.flatMap(b => ZQuery.succeed(a + b)))
+            }
+            .run
+          assertM(effect)(equalTo(705082704))
+        },
+        testM("right stack safety") {
+          val effect = (0 to 100000)
+            .map(ZQuery.succeed(_))
+            .foldRight(ZQuery.succeed(0)) { (query1, query2) =>
+              query1.flatMap(a => query2.flatMap(b => ZQuery.succeed(a + b)))
+            }
+            .run
+          assertM(effect)(equalTo(705082704))
+        },
+        testM("blocked stack safety") {
+          val effect = (0 to 100000)
+            .map(ZQuery.succeed(_))
+            .foldLeft(getAllUserIds.as(0)) { (query1, query2) =>
+              for {
+                acc <- query1
+                i   <- query2
+              } yield acc + i
+            }
+            .run
+          assertM(effect)(equalTo(705082704))
+        },
+        testM("fail stack safety") {
+          val effect = (0 to 100000)
+            .map(ZQuery.succeed(_))
+            .foldLeft(ZQuery.fail("fail")) { (query1, query2) =>
+              for {
+                n <- query1
+                _ <- query2
+              } yield n
+            }
+            .run
+          assertM(effect.run)(anything)
+        }
+      ),
+      suite("halt")(
+        testM("halt suspends side effects")(assertSuspends(ZQuery.halt))
+      ),
+      suite("map")(
+        testM("stack safety") {
+          val effect = (0 to 100000)
+            .foldLeft(ZQuery.succeed(0)) { (query, n) =>
+              query.map(_ + n)
+            }
+            .run
+          assertM(effect)(equalTo(705082704))
+        },
+        testM("blocked stack safety") {
+          val effect = (0 to 100000)
+            .foldLeft(getAllUserIds.as(0)) { (query, n) =>
+              query.map(_ + n)
+            }
+            .run
+          assertM(effect)(equalTo(705082704))
+        },
+        testM("fail stack safety") {
+          val effect = (0 to 100000)
+            .foldLeft(ZQuery.fail("fail")) { (query, _) =>
+              query.map(a => a)
+            }
+            .run
+          assertM(effect.run)(anything)
+        }
+      ),
+      suite("mapDataSource")(
+        testM("stack safety") {
+          val effect = (0 to 100000)
+            .foldLeft(getAllUserIds) { (query, _) =>
+              query.mapDataSources(DataSourceAspect.identity)
+            }
+            .run
+          assertM(effect)(anything)
+        }
+      ),
+      suite("mapError")(
+        testM("does not prevent batching") {
+          import zio.CanFail.canFail
+          val a = getUserNameById(1).zip(getUserNameById(2)).mapError(e => e)
+          val b = getUserNameById(3).zip(getUserNameById(4)).mapError(e => e)
+          for {
+            _   <- ZQuery.collectAllPar(List(a, b)).run
+            log <- TestConsole.output
+          } yield assert(log)(hasSize(equalTo(2)))
+        },
+        testM("stack safety") {
+          val effect = (0 to 100000)
+            .foldLeft(ZQuery.fail(0)) { (query, n) =>
+              query.mapError(_ + n)
+            }
+            .run
+          assertM(effect.run)(fails(equalTo(705082704)))
+        }
+      ),
+      suite("optional")(
+        testM("converts a query to one that returns its value optionally") {
+          for {
+            result <- getUserNameById(27).map(a => a).optional.run
+          } yield assert(result)(isNone)
+        }
+      ),
+      suite("succeed")(
+        testM("suspends side effects")(assertSuspends(ZQuery.succeed))
+      ),
+      suite("timed")(
+        testM("does not prevent batching") {
+          val a = getUserNameById(1).zip(getUserNameById(2)).timed
+          val b = getUserNameById(3).zip(getUserNameById(4))
+          for {
+            _   <- ZQuery.collectAllPar(List(a, b)).run
+            log <- TestConsole.output
+          } yield assert(log)(hasSize(equalTo(2)))
+        }
+      ),
+      suite("zipWith")(
+        testM("stack safety") {
+          val effect = (0 to 100000)
+            .map(ZQuery.succeed(_))
+            .foldLeft(ZQuery.succeed(0)) { (query1, query2) =>
+              query1.zipWith(query2)(_ + _)
+            }
+            .run
+          assertM(effect)(equalTo(705082704))
+        }
+      ),
+      suite("zipWithPar")(
+        testM("does not prevent batching") {
+          for {
+            _   <- ZQuery.collectAllPar(List.fill(100)(getAllUserNames)).run
+            log <- TestConsole.output
+          } yield assert(log)(hasSize(equalTo(2)))
+        } @@ nonFlaky,
         testM("arbitrary effects are executed in order") {
           for {
             ref    <- Ref.make(List.empty[Int])
@@ -108,111 +225,17 @@ object ZQuerySpec extends ZIOBaseSpec {
         testM("does not deduplicate uncached requests") {
           val query = Cache.getAll *> Cache.put(0, 1) *> Cache.getAll
           assertM(query.run)(equalTo(Map(0 -> 1)))
-        } @@ nonFlaky
+        } @@ nonFlaky,
+        testM("stack safety") {
+          val effect = (0 to 100000)
+            .map(ZQuery.succeed(_))
+            .foldRight(ZQuery.succeed(0)) { (query1, query2) =>
+              query1.zipWithPar(query2)(_ + _)
+            }
+            .run
+          assertM(effect)(equalTo(705082704))
+        }
       ).provideCustomLayer(Cache.live),
-      testM("stack safety") {
-        val effect = (0 to 100000)
-          .map(ZQuery.succeed(_))
-          .foldLeft(ZQuery.succeed(0)) { (query1, query2) =>
-            for {
-              acc <- query1
-              i   <- query2
-            } yield acc + i
-          }
-          .run
-        assertM(effect)(equalTo(705082704))
-      },
-      testM("stack safety on right flatMaps") {
-        val effect = (0 to 100000)
-          .map(ZQuery.succeed(_))
-          .foldRight(ZQuery.succeed(0)) { (query1, query2) =>
-            query1.flatMap(a => query2.flatMap(b => ZQuery.succeed(a + b)))
-          }
-          .run
-        assertM(effect)(equalTo(705082704))
-      },
-      testM("stack safety on flatMap blocked") {
-        val effect = (0 to 100000)
-          .map(ZQuery.succeed(_))
-          .foldLeft(getAllUserIds.as(0)) { (query1, query2) =>
-            for {
-              acc <- query1
-              i   <- query2
-            } yield acc + i
-          }
-          .run
-        assertM(effect)(equalTo(705082704))
-      },
-      testM("stack safety on flatMap fail") {
-        val effect = (0 to 100000)
-          .map(ZQuery.succeed(_))
-          .foldLeft(ZQuery.fail("fail")) { (query1, query2) =>
-            for {
-              n <- query1
-              _ <- query2
-            } yield n
-          }
-          .run
-        assertM(effect.run)(anything)
-      },
-      testM("stack safety on repeats maps") {
-        val effect = (0 to 100000)
-          .foldLeft(ZQuery.succeed(0)) { (query, n) =>
-            query.map(_ + n)
-          }
-          .run
-        assertM(effect)(equalTo(705082704))
-      },
-      testM("stack safety on repeats maps 2") {
-        val effect = (0 to 100000)
-          .foldLeft(getAllUserIds.as(0)) { (query, n) =>
-            query.map(_ + n)
-          }
-          .run
-        assertM(effect)(equalTo(705082704))
-      },
-      testM("stack safety on repeats maps 3") {
-        val effect = (0 to 100000)
-          .foldLeft(ZQuery.fail("fail")) { (query, _) =>
-            query.map(a => a)
-          }
-          .run
-        assertM(effect.run)(anything)
-      },
-      testM("stack safety on repeats mapError") {
-        val effect = (0 to 100000)
-          .foldLeft(ZQuery.fail(0)) { (query, n) =>
-            query.mapError(_ + n)
-          }
-          .run
-        assertM(effect.run)(fails(equalTo(705082704)))
-      },
-      testM("stack safety on repeats mapDataSource") {
-        val effect = (0 to 100000)
-          .foldLeft(getAllUserIds) { (query, _) =>
-            query.mapDataSources(DataSourceAspect.identity)
-          }
-          .run
-        assertM(effect)(anything)
-      },
-      testM("stack safety on zipWith") {
-        val effect = (0 to 100000)
-          .map(ZQuery.succeed(_))
-          .foldLeft(ZQuery.succeed(0)) { (query1, query2) =>
-            query1.zipWith(query2)(_ + _)
-          }
-          .run
-        assertM(effect)(equalTo(705082704))
-      },
-      testM("stack safety on zipWith") {
-        val effect = (0 to 100000)
-          .map(ZQuery.succeed(_))
-          .foldRight(ZQuery.succeed(0)) { (query1, query2) =>
-            query1.zipWith(query2)(_ + _)
-          }
-          .run
-        assertM(effect)(equalTo(705082704))
-      },
       testM("data sources can be raced") {
         for {
           promise <- Promise.make[Nothing, Unit]
@@ -260,48 +283,7 @@ object ZQuerySpec extends ZIOBaseSpec {
           output <- TestConsole.output
         } yield assert(result)(equalTo(Set("c", "d"))) &&
           assert(output)(equalTo(Vector("getAll called\n")))
-      },
-      suite("succeed")(
-        testM("suspends side effects") {
-          val t = new Throwable("die")
-          val query =
-            ZQuery.succeed(throw t).foldCauseM(cause => ZQuery.succeed(cause), _ => ZQuery.succeed(Cause.empty))
-          assertM(query.run)(containsCause(Cause.die(t)))
-        }
-      ),
-      suite("halt")(
-        testM("suspends side effects") {
-          val t     = new Throwable("die")
-          val query = ZQuery.halt(throw t).foldCauseM(cause => ZQuery.succeed(cause), _ => ZQuery.succeed(Cause.empty))
-          assertM(query.run)(containsCause(Cause.die(t)))
-        }
-      ),
-      suite("fail")(
-        testM("suspends side effects") {
-          val t     = new Throwable("die")
-          val query = ZQuery.fail(throw t).foldCauseM(cause => ZQuery.succeed(cause), _ => ZQuery.succeed(Cause.empty))
-          assertM(query.run)(containsCause(Cause.die(t)))
-        }
-      ),
-      suite("die")(
-        testM("suspends side effects") {
-          val t     = new Throwable("die")
-          val query = ZQuery.die(throw t).foldCauseM(cause => ZQuery.succeed(cause), _ => ZQuery.succeed(Cause.empty))
-          assertM(query.run)(containsCause(Cause.die(t)))
-        }
-      ),
-      suite("provideSome")(
-        testM("stack safety on repeats mapDataSource") {
-          def f(n: Int) = Described((x: Int) => x + n, "")
-          val effect = (0 to 100000)
-            .foldLeft(ZQuery.environment[Int]) { (zio, n) =>
-              zio.provideSome(f(n))
-            }
-            .provide(Described(0, ""))
-            .run
-          assertM(effect)(equalTo(705082704))
-        }
-      )
+      }
     ) @@ silent
 
   val userIds: List[Int]          = (1 to 26).toList
@@ -536,4 +518,10 @@ object ZQuerySpec extends ZIOBaseSpec {
     ZQuery.fromRequest(Req.GetAll)(ds)
   def get(id: Int): ZQuery[Console, DataSourceErrors, String] =
     ZQuery.fromRequest(Req.Get(id))(ds)
+
+  def assertSuspends(f: (=> Nothing) => ZQuery[Any, Nothing, Nothing]): UIO[TestResult] = {
+    val t     = new Throwable("die")
+    val query = f(throw t).foldCause(cause => cause, _ => Cause.empty)
+    assertM(query.run)(containsCause(Cause.die(t)))
+  }
 }

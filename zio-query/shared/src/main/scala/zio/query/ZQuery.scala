@@ -140,8 +140,15 @@ final class ZQuery[-R, +E, +A] private (
     foldM(e => ZQuery.succeed(failure(e)), a => ZQuery.succeed(success(a)))
 
   /**
+   * A more powerful version of `fold` that allows recovering from any kind of
+   * failure.
+   */
+  final def foldCause[B](failure: Cause[E] => B, success: A => B): ZQuery[R, Nothing, B] =
+    foldCauseM(e => ZQuery.succeed(failure(e)), a => ZQuery.succeed(success(a)))
+
+  /**
    * A more powerful version of `foldM` that allows recovering from any type
-   * of failure except interruptions.
+   * of failure.
    */
   final def foldCauseM[R1 <: R, E1, B](
     failure: Cause[E] => ZQuery[R1, E1, B],
