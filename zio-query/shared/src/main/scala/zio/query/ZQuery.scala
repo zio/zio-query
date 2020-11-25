@@ -322,11 +322,28 @@ final class ZQuery[-R, +E, +A] private (
    * result of execution.
    */
   final def summarized[R1 <: R, E1 >: E, B, C](summary: ZIO[R1, E1, B])(f: (B, B) => C): ZQuery[R1, E1, (C, A)] =
-    for {
-      start <- ZQuery.fromEffect(summary)
-      value <- self
-      end   <- ZQuery.fromEffect(summary)
-    } yield (f(start, end), value)
+    ZQuery { cb =>
+      ZIO.transplant { graft =>
+        graft {
+          ZIO.accessM[(R1, QueryContext)] { case (r, _) =>
+            summary
+              .provide(r)
+              .foldCauseM(
+                e => cb(Result.fail(e)),
+                start =>
+                  self.start { result =>
+                    summary
+                      .provide(r)
+                      .foldCauseM(
+                        e => cb(Result.fail(e)),
+                        end => cb(result.map(value => (f(start, end), value)))
+                      )
+                  }
+              )
+          }
+        }.fork
+      }
+    }
 
   /**
    * Returns a new query that executes this one and times the execution.
@@ -682,6 +699,12 @@ object ZQuery {
         }
       }
     }
+
+  /**
+   *  Constructs a query that succeeds with the specified value.
+   */
+  def succeedNow[A](value: => A): ZQuery[Any, Nothing, A] =
+    ZQuery(cb => cb(Result.done(value)))
 
   /**
    * Constructs a query from a callback that takes a result.
