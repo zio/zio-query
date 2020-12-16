@@ -121,16 +121,11 @@ private[query] sealed trait Continue[-R, +E, +A] { self =>
 
   /**
    * Combines this continuation with that continuation using the specified
-   * function, in parallel.
-   *
-   * Unlike `zipWithPar`, `zipWithParQuery` will not perform arbitrary effects
-   * in parallel but will only batch requests to data sources. If you do not
-   * need to perform arbitrary effects in parallel this can be significantly
-   * more efficient.
+   * function, batching requests to data sources.
    */
-  final def zipWithParQuery[R1 <: R, E1 >: E, B, C](that: Continue[R1, E1, B])(f: (A, B) => C): Continue[R1, E1, C] =
+  final def zipWithBatched[R1 <: R, E1 >: E, B, C](that: Continue[R1, E1, B])(f: (A, B) => C): Continue[R1, E1, C] =
     (self, that) match {
-      case (Effect(l), Effect(r)) => effect(l.zipWithParQuery(r)(f))
+      case (Effect(l), Effect(r)) => effect(l.zipWithBatched(r)(f))
       case (Effect(l), Get(r))    => effect(l.zipWith(ZQuery.fromEffect(r))(f))
       case (Get(l), Effect(r))    => effect(ZQuery.fromEffect(l).zipWith(r)(f))
       case (Get(l), Get(r))       => get(l.zipWith(r)(f))
