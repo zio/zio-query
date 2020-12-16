@@ -108,6 +108,18 @@ object ZQuerySpec extends ZIOBaseSpec {
           } yield assert(result)(equalTo(List(2, 1)))
         } @@ nonFlaky
       ),
+      suite("foreachBatchedPar")(
+        testM("identity") {
+          val smallInts = Gen.small(n => Gen.const(n), 1)
+          val chunks    = Gen.chunkOf(smallInts)
+          checkM(smallInts, chunks) { (n, chunk) =>
+            for {
+              left  <- ZQuery.foreachBatchedParN(n)(chunk)(ZQuery.succeed(_)).run
+              right <- ZQuery.foreach(chunk)(ZQuery.succeed(_)).run
+            } yield assert(left)(equalTo(right))
+          }
+        }
+      ),
       suite("zipPar")(
         testM("queries to multiple data sources can be executed in parallel") {
           for {

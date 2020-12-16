@@ -640,6 +640,11 @@ object ZQuery {
   )(implicit bf: BuildFrom[Collection[ZQuery[R, E, A]], A, Collection[A]]): ZQuery[R, E, Collection[A]] =
     foreachBatched(as)(identity)
 
+  /**
+   * Collects a collection of queries into a query returning a collection of
+   * their results, splitting the collection into `n` groups and performing
+   * each group of queries in parallel, batching all requests to data sources.
+   */
   def collectAllBatchedParN[R, E, A, Collection[+Element] <: Iterable[Element]](n: Int)(
     as: Collection[ZQuery[R, E, A]]
   )(implicit bf: BuildFrom[Collection[ZQuery[R, E, A]], A, Collection[A]]): ZQuery[R, E, Collection[A]] =
@@ -712,12 +717,17 @@ object ZQuery {
       builder.map(_.result())
     }
 
+  /**
+   * Performs a query for each element in a collection, splitting the
+   * collection into `n` groups and performing each group of queries in
+   * parallel, batching all requests to data sources and collecting the
+   * results into a query returning a collection of their results.
+   */
   def foreachBatchedParN[R, E, A, B, Collection[+Element] <: Iterable[Element]](n: Int)(
     as: Collection[A]
   )(f: A => ZQuery[R, E, B])(implicit bf: BuildFrom[Collection[A], B, Collection[B]]): ZQuery[R, E, Collection[B]] = {
-    val size    = (as.size + n - 1) / n
-    val grouped = as.grouped(size).toList
-    foreachPar(grouped)(group => foreachBatched(group)(f)).map { bs =>
+    val groups = split(n)(as)
+    foreachPar(groups)(group => foreachBatched(group)(f)).map { bs =>
       val builder = bf.newBuilder(as)
       bs.foreach(builder ++= _)
       builder.result()
@@ -892,6 +902,43 @@ object ZQuery {
       }
     }
     (bs.result(), cs.result())
+  }
+
+  /**
+   * Splits a collection into `n` groups.
+   */
+  private def split[A](n: Int)(as: Iterable[A]): Iterable[Iterable[A]] = {
+    val size      = as.size
+    val quotient  = size / n
+    val remainder = size % n
+    val iterator  = as.iterator
+    val chunks    = ChunkBuilder.make[Chunk[A]]()
+    var i         = 0
+    while (i < remainder) {
+      val chunk = ChunkBuilder.make[A]
+      var j     = 0
+      while (j <= quotient) {
+        val a = iterator.next()
+        chunk += a
+        j += 1
+      }
+      chunks += chunk.result()
+      i += 1
+    }
+    if (quotient > 0) {
+      while (i < n) {
+        val chunk = ChunkBuilder.make[A]()
+        var j     = 0
+        while (j < quotient) {
+          val a = iterator.next()
+          chunk += a
+          j += 1
+        }
+        chunks += chunk.result()
+        i += 1
+      }
+    }
+    chunks.result()
   }
 
   final class AccessPartiallyApplied[R](private val dummy: Boolean = true) extends AnyVal {
