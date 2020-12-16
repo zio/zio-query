@@ -918,8 +918,7 @@ object ZQuery {
       val chunk = ChunkBuilder.make[A]
       var j     = 0
       while (j <= quotient) {
-        val a = iterator.next()
-        chunk += a
+        chunk += iterator.next()
         j += 1
       }
       chunks += chunk.result()
@@ -930,8 +929,7 @@ object ZQuery {
         val chunk = ChunkBuilder.make[A]()
         var j     = 0
         while (j < quotient) {
-          val a = iterator.next()
-          chunk += a
+          chunk += iterator.next()
           j += 1
         }
         chunks += chunk.result()
