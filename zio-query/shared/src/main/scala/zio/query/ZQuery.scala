@@ -598,8 +598,8 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
   /**
    * Returns a query that models the execution of this query and the specified
    * query in parallel, combining their results with the specified function.
-   * Requests composed with `zipWithPar` or combinators derived from it will
-   * automatically be batched.
+   * Requests composed with `zipWithParQuery` or combinators derived from it
+   * will automatically be batched.
    *
    * Unlike `zipWithPar`, `zipwithParQuery` will not perform arbitrary effects
    * in parallel but will only batch requests to data sources. If you do not
