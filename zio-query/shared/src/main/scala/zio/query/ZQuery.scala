@@ -494,6 +494,18 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
 
   /**
    * Returns a query that models the execution of this query and the specified
+   * query in parallel, combining their results into a tuple.
+   *
+   * Unlike `zipPar`, `zipParQuery` will not perform arbitrary effects in
+   * parallel but will only batch requests to data sources. If you do not need
+   * to perform arbitrary effects in parallel this can be significantly more
+   * efficient.
+   */
+  final def zipParQuery[R1 <: R, E1 >: E, B](that: ZQuery[R1, E1, B]): ZQuery[R1, E1, (A, B)] =
+    zipWithParQuery(that)((_, _))
+
+  /**
+   * Returns a query that models the execution of this query and the specified
    * query in parallel, returning the result of this query.
    */
   final def zipParLeft[R1 <: R, E1 >: E, B](that: ZQuery[R1, E1, B]): ZQuery[R1, E1, A] =
@@ -501,10 +513,34 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
 
   /**
    * Returns a query that models the execution of this query and the specified
+   * query in parallel, returning the result of this query.
+   *
+   * Unlike `zipParLeft`, `zipParLeftQuery` will not perform arbitrary effects
+   * in parallel but will only batch requests to data sources. If you do not
+   * need to perform arbitrary effects in parallel this can be significantly
+   * more efficient.
+   */
+  final def zipParLeftQuery[R1 <: R, E1 >: E, B](that: ZQuery[R1, E1, B]): ZQuery[R1, E1, A] =
+    zipWithParQuery(that)((a, _) => a)
+
+  /**
+   * Returns a query that models the execution of this query and the specified
    * query in parallel, returning the result of the specified query.
    */
   final def zipParRight[R1 <: R, E1 >: E, B](that: ZQuery[R1, E1, B]): ZQuery[R1, E1, B] =
     zipWithPar(that)((_, b) => b)
+
+  /**
+   * Returns a query that models the execution of this query and the specified
+   * query in parallel, returning the result of the specified query.
+   *
+   * Unlike `zipParRight`, `zipParRightQuery` will not perform arbitrary
+   * effects in parallel but will only batch requests to data sources. If you
+   * do not need to perform arbitrary effects in parallel this can be
+   * significantly more efficient.
+   */
+  final def zipParRightQuery[R1 <: R, E1 >: E, B](that: ZQuery[R1, E1, B]): ZQuery[R1, E1, B] =
+    zipWithParQuery(that)((_, b) => b)
 
   /**
    * Returns a query that models the execution of this query and the specified
@@ -558,6 +594,30 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
         case (_, Result.Fail(e))                                => Result.fail(e)
       }
     }
+
+  /**
+   * Returns a query that models the execution of this query and the specified
+   * query in parallel, combining their results with the specified function.
+   * Requests composed with `zipWithPar` or combinators derived from it will
+   * automatically be batched.
+   *
+   * Unlike `zipWithPar`, `zipwithParQuery` will not perform arbitrary effects
+   * in parallel but will only batch requests to data sources. If you do not
+   * need to perform arbitrary effects in parallel this can be significantly
+   * more efficient.
+   */
+  final def zipWithParQuery[R1 <: R, E1 >: E, B, C](that: ZQuery[R1, E1, B])(f: (A, B) => C): ZQuery[R1, E1, C] =
+    ZQuery {
+      self.step.zipWith(that.step) {
+        case (Result.Blocked(br1, c1), Result.Blocked(br2, c2)) => Result.blocked(br1 && br2, c1.zipWithPar(c2)(f))
+        case (Result.Blocked(br, c), Result.Done(b))            => Result.blocked(br, c.map(a => f(a, b)))
+        case (Result.Done(a), Result.Blocked(br, c))            => Result.blocked(br, c.map(b => f(a, b)))
+        case (Result.Done(a), Result.Done(b))                   => Result.done(f(a, b))
+        case (Result.Fail(e1), Result.Fail(e2))                 => Result.fail(Cause.Both(e1, e2))
+        case (Result.Fail(e), _)                                => Result.fail(e)
+        case (_, Result.Fail(e))                                => Result.fail(e)
+      }
+    }
 }
 
 object ZQuery {
@@ -598,6 +658,20 @@ object ZQuery {
     as: Collection[ZQuery[R, E, A]]
   )(implicit bf: BuildFrom[Collection[ZQuery[R, E, A]], A, Collection[A]]): ZQuery[R, E, Collection[A]] =
     foreachPar(as)(identity)
+
+  /**
+   * Collects a collection of queries into a query returning a collection of
+   * their results. Requests will be executed in parallel and will be batched.
+   *
+   * Unlike `collectAllPar`, `collectAllParQuery` will not perform arbitrary
+   * effects in parallel but will only batch requests to data sources. If you
+   * do not need to perform arbitrary effects in parallel this can be
+   * significantly more efficient.
+   */
+  def collectAllParQuery[R, E, A, Collection[+Element] <: Iterable[Element]](
+    as: Collection[ZQuery[R, E, A]]
+  )(implicit bf: BuildFrom[Collection[ZQuery[R, E, A]], A, Collection[A]]): ZQuery[R, E, Collection[A]] =
+    foreachParQuery(as)(identity)
 
   /**
    * Constructs a query that dies with the specified error.
@@ -653,6 +727,52 @@ object ZQuery {
         val a = iterator.next()
         if (builder eq null) builder = f(a).map(bf.newBuilder(as) += _)
         else builder = builder.zipWithPar(f(a))(_ += _)
+      }
+      builder.map(_.result())
+    }
+
+  /**
+   * Performs a query for each element in a collection, collecting the results
+   * into a query returning a collection of their results. Requests will be
+   * executed in parallel and will be batched.
+   *
+   * Queries will be split into `n` groups. Arbitrary effects within each group
+   * will not be performed in parallel but all requests to data source will
+   * still be batched.
+   */
+  def foreachParN[R, E, A, B, Collection[+Element] <: Iterable[Element]](n: Int)(
+    as: Collection[A]
+  )(f: A => ZQuery[R, E, B])(implicit bf: BuildFrom[Collection[A], B, Collection[B]]): ZQuery[R, E, Collection[B]] = {
+    val size    = (as.size + n - 1) / n
+    val grouped = as.grouped(size).toList
+    foreachPar(grouped)(group => foreachParQuery(group)(f)).map { bs =>
+      val builder = bf.newBuilder(as)
+      bs.foreach(builder ++= _)
+      builder.result()
+    }
+  }
+
+  /**
+   * Performs a query for each element in a collection, collecting the results
+   * into a query returning a collection of their results. Requests will be
+   * executed in parallel and will be batched.
+   *
+   * Unlike `foreachPar`, `foreachParQuery` will not perform arbitrary effects
+   * in parallel but will only batch requests to data sources. If you do not
+   * need to perform arbitrary effects in parallel this can be significantly
+   * more efficient.
+   */
+  def foreachParQuery[R, E, A, B, Collection[+Element] <: Iterable[Element]](
+    as: Collection[A]
+  )(f: A => ZQuery[R, E, B])(implicit bf: BuildFrom[Collection[A], B, Collection[B]]): ZQuery[R, E, Collection[B]] =
+    if (as.isEmpty) ZQuery.succeed(bf.newBuilder(as).result)
+    else {
+      val iterator                                         = as.iterator
+      var builder: ZQuery[R, E, Builder[B, Collection[B]]] = null
+      while (iterator.hasNext) {
+        val a = iterator.next()
+        if (builder eq null) builder = f(a).map(bf.newBuilder(as) += _)
+        else builder = builder.zipWithParQuery(f(a))(_ += _)
       }
       builder.map(_.result())
     }

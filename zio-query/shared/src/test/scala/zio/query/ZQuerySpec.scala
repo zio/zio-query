@@ -51,27 +51,7 @@ object ZQuerySpec extends ZIOBaseSpec {
           result <- getUserNameById(27).map(identity).optional.run
         } yield assert(result)(isNone)
       },
-      testM("queries to multiple data sources can be executed in parallel") {
-        for {
-          promise <- Promise.make[Nothing, Unit]
-          _       <- (neverQuery <&> succeedQuery(promise)).run.fork
-          _       <- promise.await
-        } yield assertCompletes
-      },
-      testM("arbitrary effects can be executed in parallel") {
-        for {
-          promise <- Promise.make[Nothing, Unit]
-          _       <- (ZQuery.never <&> ZQuery.fromEffect(promise.succeed(()))).run.fork
-          _       <- promise.await
-        } yield assertCompletes
-      },
-      testM("zipPar does not prevent batching") {
-        for {
-          _   <- ZQuery.collectAllPar(List.fill(100)(getAllUserNames)).run
-          log <- TestConsole.output
-        } yield assert(log)(hasSize(equalTo(2)))
-      } @@ nonFlaky,
-      suite("zipPar")(
+      suite("zip")(
         testM("arbitrary effects are executed in order") {
           for {
             ref    <- Ref.make(List.empty[Int])
@@ -110,6 +90,46 @@ object ZQuerySpec extends ZIOBaseSpec {
           assertM(query.run)(equalTo(Map(0 -> 1)))
         } @@ nonFlaky
       ).provideCustomLayer(Cache.live),
+      suite("zipPar")(
+        testM("queries to multiple data sources can be executed in parallel") {
+          for {
+            promise <- Promise.make[Nothing, Unit]
+            _       <- (neverQuery <&> succeedQuery(promise)).run.fork
+            _       <- promise.await
+          } yield assertCompletes
+        },
+        testM("arbitrary effects can be executed in parallel") {
+          for {
+            promise <- Promise.make[Nothing, Unit]
+            _       <- (ZQuery.never <&> ZQuery.fromEffect(promise.succeed(()))).run.fork
+            _       <- promise.await
+          } yield assertCompletes
+        },
+        testM("does not prevent batching") {
+          for {
+            _   <- ZQuery.collectAllPar(List.fill(100)(getAllUserNames)).run
+            log <- TestConsole.output
+          } yield assert(log)(hasSize(equalTo(2)))
+        } @@ nonFlaky
+      ),
+      suite("zipParQuery")(
+        testM("queries to multiple data sources can be executed in parallel") {
+          for {
+            promise <- Promise.make[Nothing, Unit]
+            _       <- (neverQuery <&> succeedQuery(promise)).run.fork
+            _       <- promise.await
+          } yield assertCompletes
+        },
+        testM("arbitrary effects are executed in order") {
+          for {
+            ref    <- Ref.make(List.empty[Int])
+            query1  = ZQuery.fromEffect(ref.update(1 :: _))
+            query2  = ZQuery.fromEffect(ref.update(2 :: _))
+            _      <- (query1 *> query2).run
+            result <- ref.get
+          } yield assert(result)(equalTo(List(2, 1)))
+        } @@ nonFlaky
+      ),
       testM("stack safety") {
         val effect = (0 to 100000)
           .map(ZQuery.succeed(_))
