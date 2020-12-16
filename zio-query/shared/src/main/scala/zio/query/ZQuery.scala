@@ -480,6 +480,30 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
 
   /**
    * Returns a query that models the execution of this query and the specified
+   * query, batching requests to data sources and combining their results into
+   * a tuple.
+   */
+  final def zipBatched[R1 <: R, E1 >: E, B](that: ZQuery[R1, E1, B]): ZQuery[R1, E1, (A, B)] =
+    zipWithBatched(that)((_, _))
+
+  /**
+   * Returns a query that models the execution of this query and the specified
+   * query, batching requests to data sources and returning the result of this
+   * query.
+   */
+  final def zipBatchedLeft[R1 <: R, E1 >: E, B](that: ZQuery[R1, E1, B]): ZQuery[R1, E1, A] =
+    zipWithBatched(that)((a, _) => a)
+
+  /**
+   * Returns a query that models the execution of this query and the specified
+   * query, batching requests to data sources and returning the result of the
+   * specified query.
+   */
+  final def zipBatchedRight[R1 <: R, E1 >: E, B](that: ZQuery[R1, E1, B]): ZQuery[R1, E1, B] =
+    zipWithBatched(that)((_, b) => b)
+
+  /**
+   * Returns a query that models the execution of this query and the specified
    * query sequentially, returning the result of this query.
    */
   final def zipLeft[R1 <: R, E1 >: E, B](that: ZQuery[R1, E1, B]): ZQuery[R1, E1, A] =
@@ -542,6 +566,23 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
 
   /**
    * Returns a query that models the execution of this query and the specified
+   * query, batching requests to data sources.
+   */
+  final def zipWithBatched[R1 <: R, E1 >: E, B, C](that: ZQuery[R1, E1, B])(f: (A, B) => C): ZQuery[R1, E1, C] =
+    ZQuery {
+      self.step.zipWith(that.step) {
+        case (Result.Blocked(br1, c1), Result.Blocked(br2, c2)) => Result.blocked(br1 && br2, c1.zipWithBatched(c2)(f))
+        case (Result.Blocked(br, c), Result.Done(b))            => Result.blocked(br, c.map(a => f(a, b)))
+        case (Result.Done(a), Result.Blocked(br, c))            => Result.blocked(br, c.map(b => f(a, b)))
+        case (Result.Done(a), Result.Done(b))                   => Result.done(f(a, b))
+        case (Result.Fail(e1), Result.Fail(e2))                 => Result.fail(Cause.Both(e1, e2))
+        case (Result.Fail(e), _)                                => Result.fail(e)
+        case (_, Result.Fail(e))                                => Result.fail(e)
+      }
+    }
+
+  /**
+   * Returns a query that models the execution of this query and the specified
    * query in parallel, combining their results with the specified function.
    * Requests composed with `zipWithPar` or combinators derived from it will
    * automatically be batched.
@@ -592,6 +633,15 @@ object ZQuery {
 
   /**
    * Collects a collection of queries into a query returning a collection of
+   * their results, batching requests to data sources.
+   */
+  def collectAllBatched[R, E, A, Collection[+Element] <: Iterable[Element]](
+    as: Collection[ZQuery[R, E, A]]
+  )(implicit bf: BuildFrom[Collection[ZQuery[R, E, A]], A, Collection[A]]): ZQuery[R, E, Collection[A]] =
+    foreachBatched(as)(identity)
+
+  /**
+   * Collects a collection of queries into a query returning a collection of
    * their results. Requests will be executed in parallel and will be batched.
    */
   def collectAllPar[R, E, A, Collection[+Element] <: Iterable[Element]](
@@ -633,6 +683,26 @@ object ZQuery {
         val a = iterator.next()
         if (builder eq null) builder = f(a).map(bf.newBuilder(as) += _)
         else builder = builder.zipWith(f(a))(_ += _)
+      }
+      builder.map(_.result())
+    }
+
+  /**
+   * Performs a query for each element in a collection, batching requests to
+   * data sources and collecting the results into a query returning a
+   * collection of their results.
+   */
+  def foreachBatched[R, E, A, B, Collection[+Element] <: Iterable[Element]](
+    as: Collection[A]
+  )(f: A => ZQuery[R, E, B])(implicit bf: BuildFrom[Collection[A], B, Collection[B]]): ZQuery[R, E, Collection[B]] =
+    if (as.isEmpty) ZQuery.succeed(bf.newBuilder(as).result)
+    else {
+      val iterator                                         = as.iterator
+      var builder: ZQuery[R, E, Builder[B, Collection[B]]] = null
+      while (iterator.hasNext) {
+        val a = iterator.next()
+        if (builder eq null) builder = f(a).map(bf.newBuilder(as) += _)
+        else builder = builder.zipWithBatched(f(a))(_ += _)
       }
       builder.map(_.result())
     }
