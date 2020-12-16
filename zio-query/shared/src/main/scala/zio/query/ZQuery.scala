@@ -609,7 +609,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
   final def zipWithParQuery[R1 <: R, E1 >: E, B, C](that: ZQuery[R1, E1, B])(f: (A, B) => C): ZQuery[R1, E1, C] =
     ZQuery {
       self.step.zipWith(that.step) {
-        case (Result.Blocked(br1, c1), Result.Blocked(br2, c2)) => Result.blocked(br1 && br2, c1.zipWithPar(c2)(f))
+        case (Result.Blocked(br1, c1), Result.Blocked(br2, c2)) => Result.blocked(br1 && br2, c1.zipWithParQuery(c2)(f))
         case (Result.Blocked(br, c), Result.Done(b))            => Result.blocked(br, c.map(a => f(a, b)))
         case (Result.Done(a), Result.Blocked(br, c))            => Result.blocked(br, c.map(b => f(a, b)))
         case (Result.Done(a), Result.Done(b))                   => Result.done(f(a, b))
