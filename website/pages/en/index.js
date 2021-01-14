@@ -101,7 +101,7 @@ class Index extends React.Component {
                 </MarkdownBlock>
 
                 <MarkdownBlock>
-                    Compared with Fetch, ZIO Query supports pipelining, supports response types that depend on request types, does not require higher-kinded types and implicits, supports ZIO environment and statically typed errors, and has no dependencies except for ZIO
+                    Compared with Fetch, ZIO Query supports response types that depend on request types, does not require higher-kinded types and implicits, supports ZIO environment and statically typed errors, and has no dependencies except for ZIO
                 </MarkdownBlock>
             </div>
         );
