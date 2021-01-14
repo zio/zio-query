@@ -14,7 +14,7 @@ ZIO Query helps you dramatically reduce load on data sources and improve perform
 - **Batching**. ZIO Query detects parts of composite queries that can be executed in parallel without changing the semantics of the query.
 - **Caching**. ZIO Query can transparently cache read queries to minimize the cost of fetching the same item repeatedly in the scope of a query.
 
-Compared with Fetch, ZIO Query supports pipelining, supports response types that depend on request types, does not require higher-kinded types and implicits, supports ZIO environment and statically typed errors, and has no dependencies except for ZIO.
+Compared with Fetch, ZIO Query supports response types that depend on request types, does not require higher-kinded types and implicits, supports ZIO environment and statically typed errors, and has no dependencies except for ZIO.
 
 # Documentation
 [ZIO Query Microsite](https://zio.github.io/zio-query/)
