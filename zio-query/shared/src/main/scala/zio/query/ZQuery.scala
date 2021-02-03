@@ -675,7 +675,7 @@ object ZQuery {
   def foreach[R, E, A, B, Collection[+Element] <: Iterable[Element]](
     as: Collection[A]
   )(f: A => ZQuery[R, E, B])(implicit bf: BuildFrom[Collection[A], B, Collection[B]]): ZQuery[R, E, Collection[B]] =
-    if (as.isEmpty) ZQuery.succeed(bf.newBuilder(as).result)
+    if (as.isEmpty) ZQuery.succeed(bf.newBuilder(as).result())
     else {
       val iterator                                         = as.iterator
       var builder: ZQuery[R, E, Builder[B, Collection[B]]] = null
@@ -695,7 +695,7 @@ object ZQuery {
   def foreachBatched[R, E, A, B, Collection[+Element] <: Iterable[Element]](
     as: Collection[A]
   )(f: A => ZQuery[R, E, B])(implicit bf: BuildFrom[Collection[A], B, Collection[B]]): ZQuery[R, E, Collection[B]] =
-    if (as.isEmpty) ZQuery.succeed(bf.newBuilder(as).result)
+    if (as.isEmpty) ZQuery.succeed(bf.newBuilder(as).result())
     else {
       val iterator                                         = as.iterator
       var builder: ZQuery[R, E, Builder[B, Collection[B]]] = null
@@ -715,7 +715,7 @@ object ZQuery {
   def foreachPar[R, E, A, B, Collection[+Element] <: Iterable[Element]](
     as: Collection[A]
   )(f: A => ZQuery[R, E, B])(implicit bf: BuildFrom[Collection[A], B, Collection[B]]): ZQuery[R, E, Collection[B]] =
-    if (as.isEmpty) ZQuery.succeed(bf.newBuilder(as).result)
+    if (as.isEmpty) ZQuery.succeed(bf.newBuilder(as).result())
     else {
       val iterator                                         = as.iterator
       var builder: ZQuery[R, E, Builder[B, Collection[B]]] = null
