@@ -19,9 +19,9 @@ object ZQuerySpec extends ZIOBaseSpec {
         } yield assert(log)(hasSize(equalTo(2)))
       },
       testM("mapError does not prevent batching") {
-        import zio.CanFail.canFail
-        val a = getUserNameById(1).zip(getUserNameById(2)).mapError(identity)
-        val b = getUserNameById(3).zip(getUserNameById(4)).mapError(identity)
+        implicit val canFail = zio.CanFail
+        val a                = getUserNameById(1).zip(getUserNameById(2)).mapError(identity)
+        val b                = getUserNameById(3).zip(getUserNameById(4)).mapError(identity)
         for {
           _   <- ZQuery.collectAllPar(List(a, b)).run
           log <- TestConsole.output
@@ -339,7 +339,7 @@ object ZQuerySpec extends ZIOBaseSpec {
     val paymentData: Map[Int, Payment] = List.tabulate(totalCount)(i => i -> Payment(i, "payment name")).toMap
     case class GetPayment(id: Int) extends Request[Nothing, Payment]
     val paymentSource: DataSource[Any, GetPayment] =
-      DataSource.fromFunctionBatchedOptionM("PaymentSource") { requests: Chunk[GetPayment] =>
+      DataSource.fromFunctionBatchedOptionM("PaymentSource") { (requests: Chunk[GetPayment]) =>
         ZIO.effectTotal(requests.map(req => paymentData.get(req.id)))
       }
 
@@ -349,7 +349,7 @@ object ZQuerySpec extends ZIOBaseSpec {
     val addressData: Map[Int, Address] = List.tabulate(totalCount)(i => i -> Address(i, "street")).toMap
     case class GetAddress(id: Int) extends Request[Nothing, Address]
     val addressSource: DataSource[Any, GetAddress] =
-      DataSource.fromFunctionBatchedOptionM("AddressSource") { requests: Chunk[GetAddress] =>
+      DataSource.fromFunctionBatchedOptionM("AddressSource") { (requests: Chunk[GetAddress]) =>
         ZIO.effectTotal(requests.map(req => addressData.get(req.id)))
       }
 
