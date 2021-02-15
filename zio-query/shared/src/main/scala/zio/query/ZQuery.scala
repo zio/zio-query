@@ -161,6 +161,15 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
     }
 
   /**
+   * Returns a query that performs the outer query first, followed by the inner
+   * query, yielding the value of the inner query.
+   *
+   * This method can be used to "flatten" nested queries.
+   */
+  final def flatten[R1 <: R, E1 >: E, B](implicit ev: A <:< ZQuery[R1, E1, B]): ZQuery[R1, E1, B] =
+    flatMap(ev)
+
+  /**
    * Folds over the failed or successful result of this query to yield a query
    * that does not fail, but succeeds with the value returned by the left or
    * right function passed to `fold`.
@@ -837,9 +846,6 @@ object ZQuery {
   def succeed[A](value: => A): ZQuery[Any, Nothing, A] =
     ZQuery(ZIO.succeed(Result.done(value)))
 
-  private[zio] def succeedNow[A](value: A): ZQuery[Any, Nothing, A] =
-    ZQuery(ZIO.succeedNow(Result.done(value)))
-
   /**
    * The inverse operation [[ZQuery.sandbox]]
    *
@@ -848,6 +854,22 @@ object ZQuery {
    */
   def unsandbox[R, E, A](v: ZQuery[R, Cause[E], A]): ZQuery[R, E, A] =
     v.mapErrorCause(_.flatten)
+
+  /**
+   * Unwraps a query that is produced by an effect.
+   */
+  def unwrap[R, E, A](zio: ZIO[R, E, ZQuery[R, E, A]]): ZQuery[R, E, A] =
+    ZQuery.fromEffect(zio).flatten
+
+  final class AccessPartiallyApplied[R](private val dummy: Boolean = true) extends AnyVal {
+    def apply[A](f: R => A): ZQuery[R, Nothing, A] =
+      environment[R].map(f)
+  }
+
+  final class AccessMPartiallyApplied[R](private val dummy: Boolean = true) extends AnyVal {
+    def apply[E, A](f: R => ZQuery[R, E, A]): ZQuery[R, E, A] =
+      environment[R].flatMap(f)
+  }
 
   final class ProvideSomeLayer[R0 <: Has[_], -R, +E, +A](private val self: ZQuery[R, E, A]) extends AnyVal {
     def apply[E1 >: E, R1 <: Has[_]](
@@ -877,13 +899,9 @@ object ZQuery {
     (bs.result(), cs.result())
   }
 
-  final class AccessPartiallyApplied[R](private val dummy: Boolean = true) extends AnyVal {
-    def apply[A](f: R => A): ZQuery[R, Nothing, A] =
-      environment[R].map(f)
-  }
-
-  final class AccessMPartiallyApplied[R](private val dummy: Boolean = true) extends AnyVal {
-    def apply[E, A](f: R => ZQuery[R, E, A]): ZQuery[R, E, A] =
-      environment[R].flatMap(f)
-  }
+  /**
+   * Constructs a query that succeeds with the specified value.
+   */
+  private def succeedNow[A](value: A): ZQuery[Any, Nothing, A] =
+    ZQuery(ZIO.succeedNow(Result.done(value)))
 }
