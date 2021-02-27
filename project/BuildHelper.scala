@@ -11,7 +11,7 @@ import scalafix.sbt.ScalafixPlugin.autoImport.scalafixSemanticdb
 
 object BuildHelper {
 
-  private val Scala211 = "2.11.12"
+  private val Scala211 = "2.13.5"
   private val Scala212 = "2.12.13"
   private val Scala213 = "2.13.4"
   val DottyVersion     = "3.0.0-M3"
