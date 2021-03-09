@@ -16,8 +16,6 @@ object BuildHelper {
   private val Scala213 = "2.13.5"
   val DottyVersion     = "3.0.0-RC1"
 
-  val SilencerVersion = "1.7.3"
-
   def buildInfoSettings(packageName: String) =
     Seq(
       buildInfoKeys := Seq[BuildInfoKey](name, version, scalaVersion, sbtVersion, isSnapshot),
@@ -188,18 +186,14 @@ object BuildHelper {
     scalacOptions := stdOptions ++ extraOptions(scalaVersion.value, optimize = !isSnapshot.value),
     libraryDependencies ++= {
       if (isDotty.value)
-        Seq(
-          ("com.github.ghik" % s"silencer-lib_$Scala213" % SilencerVersion % Provided)
-            .withDottyCompat(scalaVersion.value)
-        )
+        Seq("com.github.ghik" % "silencer-lib_2.13.5" % "1.7.3" % Provided)
       else
         Seq(
-          "com.github.ghik" % "silencer-lib" % SilencerVersion % Provided cross CrossVersion.full,
-          compilerPlugin("com.github.ghik" % "silencer-plugin" % SilencerVersion cross CrossVersion.full),
+          "com.github.ghik" % "silencer-lib" % "1.7.3" % Provided cross CrossVersion.full,
+           compilerPlugin("com.github.ghik" % "silencer-plugin" % "1.7.3" cross CrossVersion.full),
           compilerPlugin(scalafixSemanticdb)
         )
     },
-    semanticdbEnabled := !isDotty.value, // enable SemanticDB
     parallelExecution in Test := true,
     incOptions ~= (_.withLogRecompileOnMacro(false)),
     autoAPIMappings := true,
