@@ -189,6 +189,18 @@ object ZQuerySpec extends ZIOBaseSpec {
           output <- TestConsole.output
         } yield assert(result)(equalTo(Set("c", "d"))) &&
           assert(output)(equalTo(Vector("getAll called\n")))
+      },
+      testM("requests can be removed from the cache") {
+        for {
+          cache <- zio.query.Cache.empty
+          query = for {
+                    _ <- getUserNameById(1)
+                    _ <- ZQuery.fromEffect(cache.remove(GetNameById(1)))
+                    _ <- getUserNameById(1)
+                  } yield ()
+          _   <- query.runCache(cache)
+          log <- TestConsole.output
+        } yield assert(log)(hasSize(equalTo(2)))
       }
     ) @@ silent
 

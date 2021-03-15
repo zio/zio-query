@@ -34,6 +34,11 @@ trait Cache {
    * when it is executed into the cache.
    */
   def put[E, A](request: Request[E, A], result: Ref[Option[Either[E, A]]]): UIO[Unit]
+
+  /**
+   * Removes a request from the cache.
+   */
+  def remove[E, A](request: Request[E, A]): UIO[Unit]
 }
 
 object Cache {
@@ -62,6 +67,9 @@ object Cache {
       }
 
     def put[E, A](request: Request[E, A], result: Ref[Option[Either[E, A]]]): UIO[Unit] =
-      state.update(_ + (request -> result)).unit
+      state.update(_ + (request -> result))
+
+    def remove[E, A](request: Request[E, A]): UIO[Unit] =
+      state.update(_ - request)
   }
 }
