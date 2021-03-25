@@ -261,6 +261,12 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
     self.foldCauseM(c => ZQuery.halt(h(c)), ZQuery.succeedNow)
 
   /**
+   * Maps the specified effectual function over the result of this query.
+   */
+  final def mapM[R1 <: R, E1 >: E, B](f: A => ZIO[R1, E1, B]): ZQuery[R1, E1, B] =
+    flatMap(a => ZQuery.fromEffect(f(a)))
+
+  /**
    * Converts this query to one that returns `Some` if data sources return
    * results for all requests received and `None` otherwise.
    */
