@@ -7,7 +7,7 @@ scala_213: &scala_213
   SCALA_VERSION: 2.13.4
 
 scala_dotty: &scala_dotty
-  SCALA_VERSION: 3.0.0-RC1
+  SCALA_VERSION: 3.0.0-RC2
 
 jdk_8: &jdk_8
   JDK_VERSION: 8
@@ -300,6 +300,11 @@ workflows:
             - lint
           filters:
             <<: *filter_tags
+      - test_dotty_jdk11_jvm:
+          requires:
+            - lint
+          filters:
+            <<: *filter_tags
       - release:
           context: Sonatype2
           requires:
@@ -307,6 +312,7 @@ workflows:
             - test_212_jdk11_jvm
             - test_213_jdk8_jvm
             - test_213_jdk11_jvm
+            - test_dotty_jdk11_jvm
             - mdoc
           filters:
             <<: *filter_tags
