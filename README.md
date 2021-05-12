@@ -43,4 +43,4 @@ Come chat with us on [![Badge-Discord]][Link-Discord].
 [Link-SonatypeSnapshots]: https://oss.sonatype.org/content/repositories/snapshots/dev/zio/zio-query_2.12/ "Sonatype Snapshots"
 [Link-Discord]: https://discord.gg/2ccFBr4 "Discord"
 [Stage]: https://img.shields.io/badge/Project%20Stage-Production%20Ready-brightgreen.svg
-[Stage-Page]: https://blog.pother.ca/project-stages/
+[Stage-Page]: https://github.com/zio/zio/wiki/Project-Stages
