@@ -1,6 +1,6 @@
 # ZIO Query
 
-| Project Status | CI | Release | Snapshot | Discord |
+| Project Stage | CI | Release | Snapshot | Discord |
 | --- | --- | --- | --- | --- |
 | [![Project stage][Stage]][Stage-Page] | [![Build Status][Badge-Circle]][Link-Circle] | [![Release Artifacts][Badge-SonatypeReleases]][Link-SonatypeReleases] | [![Snapshot Artifacts][Badge-SonatypeSnapshots]][Link-SonatypeSnapshots] | [![Badge-Discord]][Link-Discord] |
 
