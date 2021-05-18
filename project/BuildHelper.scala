@@ -186,11 +186,11 @@ object BuildHelper {
     scalacOptions := stdOptions ++ extraOptions(scalaVersion.value, optimize = !isSnapshot.value),
     libraryDependencies ++= {
       if (isDotty.value)
-        Seq("com.github.ghik" % "silencer-lib_2.13.5" % "1.7.3" % Provided)
+        Seq("com.github.ghik" % "silencer-lib_2.13.5" % "1.7.4" % Provided)
       else
         Seq(
-          "com.github.ghik" % "silencer-lib" % "1.7.3" % Provided cross CrossVersion.full,
-          compilerPlugin("com.github.ghik" % "silencer-plugin" % "1.7.3" cross CrossVersion.full),
+          "com.github.ghik" % "silencer-lib" % "1.7.4" % Provided cross CrossVersion.full,
+          compilerPlugin("com.github.ghik" % "silencer-plugin" % "1.7.4" cross CrossVersion.full),
           compilerPlugin(scalafixSemanticdb)
         )
     },
