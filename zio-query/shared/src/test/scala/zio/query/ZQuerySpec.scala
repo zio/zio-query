@@ -215,7 +215,7 @@ object ZQuerySpec extends ZIOBaseSpec {
   val UserRequestDataSource: DataSource[Console, UserRequest[Any]] =
     DataSource.Batched.make[Console, UserRequest[Any]]("UserRequestDataSource") { requests =>
       ZIO.when(requests.toSet.size != requests.size)(ZIO.dieMessage("Duplicate requests)")) *>
-        console.putStrLn("Running query") *>
+        console.putStrLn("Running query").orDie *>
         ZIO.succeed {
           requests.foldLeft(CompletedRequestMap.empty) {
             case (completedRequests, GetAllIds) => completedRequests.insert(GetAllIds)(Right(userIds))
@@ -378,12 +378,12 @@ object ZQuerySpec extends ZIOBaseSpec {
 
   def backendGetAll: ZIO[Console, Nothing, Map[Int, String]] =
     for {
-      _ <- console.putStrLn("getAll called")
+      _ <- console.putStrLn("getAll called").orDie
     } yield testData
 
   def backendGetSome(ids: Chunk[Int]): ZIO[Console, Nothing, Map[Int, String]] =
     for {
-      _ <- console.putStrLn(s"getSome ${ids.mkString(", ")} called")
+      _ <- console.putStrLn(s"getSome ${ids.mkString(", ")} called").orDie
     } yield ids.flatMap { id =>
       testData.get(id).map(v => id -> v)
     }.toMap
