@@ -11,10 +11,22 @@ import scalafix.sbt.ScalafixPlugin.autoImport.scalafixSemanticdb
 
 object BuildHelper {
 
-  private val Scala211 = "2.11.12"
-  private val Scala212 = "2.12.13"
-  private val Scala213 = "2.13.5"
-  val DottyVersion     = "3.0.0"
+  private val versions: Map[String, String] = {
+    import org.snakeyaml.engine.v2.api.{Load, LoadSettings}
+
+    import java.util.{List => JList, Map => JMap}
+    import scala.jdk.CollectionConverters._
+
+    val doc  = new Load(LoadSettings.builder().build())
+      .loadFromReader(scala.io.Source.fromFile(".github/workflows/ci.yml").bufferedReader())
+    val yaml = doc.asInstanceOf[JMap[String, JMap[String, JMap[String, JMap[String, JMap[String, JList[String]]]]]]]
+    val list = yaml.get("jobs").get("test").get("strategy").get("matrix").get("scala").asScala
+    list.map(v => (v.split('.').take(2).mkString("."), v)).toMap
+  }
+  val Scala211: String   = versions("2.11")
+  val Scala212: String   = versions("2.12")
+  val Scala213: String   = versions("2.13")
+  val ScalaDotty: String = versions("3.0")
 
   def buildInfoSettings(packageName: String) =
     Seq(
@@ -125,7 +137,7 @@ object BuildHelper {
 
   val dottySettings = Seq(
     // Keep this consistent with the version in .circleci/config.yml
-    crossScalaVersions += DottyVersion,
+    crossScalaVersions += ScalaDotty, 
     scalacOptions ++= {
       if (isDotty.value)
         Seq("-noindent")
