@@ -12,12 +12,12 @@ import scalafix.sbt.ScalafixPlugin.autoImport.scalafixSemanticdb
 object BuildHelper {
 
   private val versions: Map[String, String] = {
-    import org.snakeyaml.engine.v2.api.{Load, LoadSettings}
+    import org.snakeyaml.engine.v2.api.{ Load, LoadSettings }
 
-    import java.util.{List => JList, Map => JMap}
+    import java.util.{ List => JList, Map => JMap }
     import scala.jdk.CollectionConverters._
 
-    val doc  = new Load(LoadSettings.builder().build())
+    val doc = new Load(LoadSettings.builder().build())
       .loadFromReader(scala.io.Source.fromFile(".github/workflows/ci.yml").bufferedReader())
     val yaml = doc.asInstanceOf[JMap[String, JMap[String, JMap[String, JMap[String, JMap[String, JList[String]]]]]]]
     val list = yaml.get("jobs").get("test").get("strategy").get("matrix").get("scala").asScala
@@ -137,7 +137,7 @@ object BuildHelper {
 
   val dottySettings = Seq(
     // Keep this consistent with the version in .circleci/config.yml
-    crossScalaVersions += ScalaDotty, 
+    crossScalaVersions += ScalaDotty,
     scalacOptions ++= {
       if (isDotty.value)
         Seq("-noindent")
