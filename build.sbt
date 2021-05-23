@@ -16,14 +16,7 @@ inThisBuild(
         "adam.fraser@gmail.com",
         url("https://github.com/adamgfraser")
       )
-    ),
-    pgpPassphrase := sys.env.get("PGP_PASSWORD").map(_.toArray),
-    pgpPublicRing := file("/tmp/public.asc"),
-    pgpSecretRing := file("/tmp/secret.asc"),
-    scmInfo := Some(
-      ScmInfo(url("https://github.com/zio/zio-query/"), "scm:git:git@github.com:zio/zio-query.git")
-    ),
-    resolvers += "Sonatype OSS Snapshots" at "https://oss.sonatype.org/content/repositories/snapshots"
+    )
   )
 )
 
