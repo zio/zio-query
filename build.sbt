@@ -51,6 +51,7 @@ lazy val zioQuery = crossProject(JSPlatform, JVMPlatform)
   .settings(testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework"))
 
 lazy val zioQueryJS = zioQuery.js
+  .settings(dottySettings)
   .settings(scalaJSUseMainModuleInitializer := true)
 
 lazy val zioQueryJVM = zioQuery.jvm
