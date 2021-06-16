@@ -921,7 +921,7 @@ object ZQuery {
           fiber: Fiber[Nothing, B1]
         ): ZQuery[R, E, B1] =
           ZQuery {
-            query.step.raceWith(fiber.join)(
+            query.step.raceWith[(R, QueryContext), Nothing, Nothing, B1, Result[R, E, B1]](fiber.join)(
               (leftExit, rightFiber) =>
                 leftExit.foldM(
                   cause => rightFiber.interrupt *> ZIO.succeedNow(Result.fail(cause)),
