@@ -2,7 +2,7 @@ package zio.query.internal
 
 import zio.query.internal.Result._
 import zio.query.{ DataSourceAspect, Described }
-import zio.{ CanFail, Cause, NeedsEnv }
+import zio.{ CanFail, Cause, Exit, NeedsEnv }
 
 /**
  * A `Result[R, E, A]` is the result of running one step of a `ZQuery`. A
@@ -94,6 +94,12 @@ private[query] object Result {
    */
   def fromEither[E, A](either: Either[E, A]): Result[Any, E, A] =
     either.fold(e => Result.fail(Cause.fail(e)), a => Result.done(a))
+
+  /**
+   * Lifts an `Exit` into a result.
+   */
+  def fromExit[E, A](exit: Exit[E, A]): Result[Any, E, A] =
+    exit.fold(Result.fail, Result.done)
 
   final case class Blocked[-R, +E, +A](blockedRequests: BlockedRequests[R], continue: Continue[R, E, A])
       extends Result[R, E, A]
