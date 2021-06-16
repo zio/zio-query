@@ -1,11 +1,12 @@
 package zio.query
 
 import zio.console.Console
+import zio.duration._
 import zio.query.DataSourceAspect._
 import zio.test.Assertion._
 import zio.test.TestAspect.{ after, nonFlaky, silent }
 import zio.test._
-import zio.test.environment.{ TestConsole, TestEnvironment }
+import zio.test.environment.{ TestClock, TestConsole, TestEnvironment }
 import zio.{ console, Chunk, Has, Promise, Ref, ZIO, ZLayer }
 
 object ZQuerySpec extends ZIOBaseSpec {
@@ -201,7 +202,23 @@ object ZQuerySpec extends ZIOBaseSpec {
           _   <- query.runCache(cache)
           log <- TestConsole.output
         } yield assert(log)(hasSize(equalTo(2)))
-      }
+      },
+      suite("timeout")(
+        testM("times out a query that does not complete") {
+          for {
+            fiber <- ZQuery.never.timeout(1.second).run.fork
+            _     <- TestClock.adjust(1.second)
+            _     <- fiber.join
+          } yield assertCompletes
+        },
+        testM("prevents subsequent requests to data sources from being executed") {
+          for {
+            fiber <- (ZQuery.fromEffect(ZIO.sleep(2.seconds)) *> neverQuery).timeout(1.second).run.fork
+            _     <- TestClock.adjust(2.second)
+            _     <- fiber.join
+          } yield assertCompletes
+        }
+      )
     ) @@ silent
 
   val userIds: List[Int]          = (1 to 26).toList

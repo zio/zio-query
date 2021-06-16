@@ -137,6 +137,17 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
     self.foldCauseM[R1, E2, A1](h, ZQuery.succeed(_))
 
   /**
+   * Moves a `None` value in the error channel into the value channel while converting the existing value into a `Some`
+   *
+   * Inverse of [[ZQuery.some]]
+   */
+  def collectSome[E1](implicit ev: E <:< Option[E1]): ZQuery[R, E1, Option[A]] =
+    self.foldM(
+      _.fold[ZQuery[R, E1, Option[A]]](ZQuery.none)(ZQuery.fail(_)),
+      a => ZQuery.some(a)
+    )
+
+  /**
    * Returns a query whose failure and success have been lifted into an
    * `Either`. The resulting query cannot fail, because the failure case has
    * been exposed as part of the `Either` success case.
@@ -453,15 +464,33 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
     summarized(clock.nanoTime)((start, end) => Duration.fromNanos(end - start))
 
   /**
-   * Moves a `None` value in the error channel into the value channel while converting the existing value into a `Some`
-   *
-   * Inverse of [[ZQuery.some]]
+   * Returns an effect that will timeout this query, returning `None` if the
+   * timeout elapses before the query was completed.
    */
-  def collectSome[E1](implicit ev: E <:< Option[E1]): ZQuery[R, E1, Option[A]] =
-    self.foldM(
-      _.fold[ZQuery[R, E1, Option[A]]](ZQuery.none)(ZQuery.fail(_)),
-      a => ZQuery.some(a)
-    )
+  final def timeout(duration: Duration): ZQuery[R with Clock, E, Option[A]] =
+    timeoutTo(None)(Some(_))(duration)
+
+  /**
+   * The same as [[timeout]], but instead of producing a `None` in the event
+   * of timeout, it will produce the specified error.
+   */
+  final def timeoutFail[E1 >: E](e: => E1)(duration: Duration): ZQuery[R with Clock, E1, A] =
+    timeoutTo(ZQuery.fail(e))(ZQuery.succeedNow)(duration).flatten
+
+  /**
+   * The same as [[timeout]], but instead of producing a `None` in the event
+   * of timeout, it will produce the specified failure.
+   */
+  final def timeoutHalt[E1 >: E](cause: Cause[E1])(duration: Duration): ZQuery[R with Clock, E1, A] =
+    timeoutTo(ZQuery.halt(cause))(ZQuery.succeedNow)(duration).flatten
+
+  /**
+   * Returns a query that will timeout this query, returning either the default
+   * value if the timeout elapses before the query has completed or the result
+   * of applying the function `f` to the successful result of the query.
+   */
+  final def timeoutTo[B](b: B): ZQuery.TimeoutTo[R, E, A, B] =
+    new ZQuery.TimeoutTo(self, b)
 
   /**
    * Takes some fiber failures and converts them into errors.
@@ -882,6 +911,41 @@ object ZQuery {
       layer: Described[ZLayer[R0, E1, R1]]
     )(implicit ev1: R0 with R1 <:< R, ev2: NeedsEnv[R], tag: Tag[R1]): ZQuery[R0, E1, A] =
       self.provideLayer[E1, R0, R0 with R1](Described(ZLayer.identity[R0] ++ layer.value, layer.description))
+  }
+
+  final class TimeoutTo[-R, +E, +A, +B](self: ZQuery[R, E, A], b: B) {
+    def apply[B1 >: B](f: A => B1)(duration: Duration): ZQuery[R with Clock, E, B1] =
+      ZQuery.environment[Clock].flatMap { clock =>
+        def race(
+          query: ZQuery[R, E, B1],
+          fiber: Fiber[Nothing, B1]
+        ): ZQuery[R, E, B1] =
+          ZQuery {
+            query.step.raceWith(fiber.join)(
+              (leftExit, rightFiber) =>
+                leftExit.foldM(
+                  cause => rightFiber.interrupt *> ZIO.succeedNow(Result.fail(cause)),
+                  result =>
+                    result match {
+                      case Result.Blocked(blockedRequests, continue) =>
+                        continue match {
+                          case Continue.Effect(query) =>
+                            ZIO.succeedNow(Result.blocked(blockedRequests, Continue.effect(race(query, fiber))))
+                          case Continue.Get(io) =>
+                            ZIO.succeedNow(
+                              Result.blocked(blockedRequests, Continue.effect(race(ZQuery.fromEffect(io), fiber)))
+                            )
+                        }
+                      case Result.Done(value) => rightFiber.interrupt *> ZIO.succeedNow(Result.done(value))
+                      case Result.Fail(cause) => rightFiber.interrupt *> ZIO.succeedNow(Result.fail(cause))
+                    }
+                ),
+              (rightExit, leftFiber) => leftFiber.interrupt *> ZIO.succeedNow(Result.fromExit(rightExit))
+            )
+          }
+
+        ZQuery.fromEffect(clock.get.sleep(duration).interruptible.as(b).fork).flatMap(fiber => race(self.map(f), fiber))
+      }
   }
 
   /**
