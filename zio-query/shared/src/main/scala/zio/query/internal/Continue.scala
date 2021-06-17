@@ -89,9 +89,9 @@ private[query] sealed trait Continue[-R, +E, +A] { self =>
   /**
    * Runs this continuation..
    */
-  final def runCache(cache: Cache): ZIO[R, E, A] =
+  final def runContext(queryContext: QueryContext): ZIO[R, E, A] =
     self match {
-      case Effect(query) => query.runCache(cache)
+      case Effect(query) => query.runContext(queryContext)
       case Get(io)       => io
     }
 

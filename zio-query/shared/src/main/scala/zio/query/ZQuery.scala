@@ -123,6 +123,18 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
     foldM(e => ZQuery.fail(f(e)), a => ZQuery.succeed(g(a)))
 
   /**
+   * Enables caching for this query. Note that caching is enabled by default
+   * so this will only be effective to enable caching in part of a larger
+   * query in which caching has been disabled.
+   */
+  def cached: ZQuery[R, E, A] =
+    for {
+      queryContext   <- ZQuery.queryContext
+      cachingEnabled <- ZQuery.fromEffect(queryContext.cachingEnabled.getAndSet(true))
+      a              <- self.ensuring(ZQuery.fromEffect(queryContext.cachingEnabled.set(cachingEnabled)))
+    } yield a
+
+  /**
    * Recovers from all errors.
    */
   def catchAll[R1 <: R, E2, A1 >: A](h: E => ZQuery[R1, E2, A1])(implicit ev: CanFail[E]): ZQuery[R1, E2, A1] =
@@ -154,6 +166,25 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
    */
   final def either(implicit ev: CanFail[E]): ZQuery[R, Nothing, Either[E, A]] =
     fold(Left(_), Right(_))
+
+  /**
+   * Ensures that if this query starts executing, the specified query will be
+   * executed immediately after this query completes execution, whether by
+   * success or failure.
+   */
+  final def ensuring[R1 <: R](finalizer: ZQuery[R1, Nothing, Any]): ZQuery[R1, E, A] =
+    self.foldCauseM(
+      cause1 =>
+        finalizer.foldCauseM(
+          cause2 => ZQuery.halt(cause1 ++ cause2),
+          _ => ZQuery.halt(cause1)
+        ),
+      value =>
+        finalizer.foldCauseM(
+          cause => ZQuery.halt(cause),
+          _ => ZQuery.succeedNow(value)
+        )
+    )
 
   /**
    * Returns a query that models execution of this query, followed by passing
@@ -392,11 +423,10 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
    * cache.
    */
   final def runCache(cache: Cache): ZIO[R, E, A] =
-    step.provideSome[R]((_, QueryContext(cache))).flatMap {
-      case Result.Blocked(br, c) => br.run(cache) *> c.runCache(cache)
-      case Result.Done(a)        => ZIO.succeedNow(a)
-      case Result.Fail(e)        => ZIO.halt(e)
-    }
+    for {
+      ref <- FiberRef.make(true)
+      a   <- runContext(QueryContext(cache, ref))
+    } yield a
 
   /**
    * Returns an effect that models executing this query, returning the query
@@ -491,6 +521,16 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
    */
   final def timeoutTo[B](b: B): ZQuery.TimeoutTo[R, E, A, B] =
     new ZQuery.TimeoutTo(self, b)
+
+  /**
+   * Disables caching for this query.
+   */
+  def uncached: ZQuery[R, E, A] =
+    for {
+      queryContext   <- ZQuery.queryContext
+      cachingEnabled <- ZQuery.fromEffect(queryContext.cachingEnabled.getAndSet(false))
+      a              <- self.ensuring(ZQuery.fromEffect(queryContext.cachingEnabled.set(cachingEnabled)))
+    } yield a
 
   /**
    * Takes some fiber failures and converts them into errors.
@@ -642,6 +682,17 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
         case (Result.Fail(e), _)                                => Result.fail(e)
         case (_, Result.Fail(e))                                => Result.fail(e)
       }
+    }
+
+  /**
+   * Returns an effect that models executing this query with the specified
+   * context.
+   */
+  private[query] final def runContext(queryContext: QueryContext): ZIO[R, E, A] =
+    step.provideSome[R]((_, queryContext)).flatMap {
+      case Result.Blocked(br, c) => br.run(queryContext.cache) *> c.runContext(queryContext)
+      case Result.Done(a)        => ZIO.succeedNow(a)
+      case Result.Fail(e)        => ZIO.halt(e)
     }
 }
 
@@ -799,19 +850,32 @@ object ZQuery {
     request: A
   )(dataSource: DataSource[R, A])(implicit ev: A <:< Request[E, B]): ZQuery[R, E, B] =
     ZQuery {
-      ZIO.accessM[(R, QueryContext)](_._2.cache.lookup(request)).flatMap {
-        case Left(ref) =>
-          UIO.succeedNow(
-            Result.blocked(
-              BlockedRequests.single(dataSource, BlockedRequest(request, ref)),
-              Continue(request, dataSource, ref)
-            )
-          )
-        case Right(ref) =>
-          ref.get.map {
-            case None    => Result.blocked(BlockedRequests.empty, Continue(request, dataSource, ref))
-            case Some(b) => Result.fromEither(b)
+      ZIO.environment[(R, QueryContext)].flatMap { case (_, queryContext) =>
+        queryContext.cachingEnabled.get.flatMap { cachingEnabled =>
+          if (cachingEnabled) {
+            queryContext.cache.lookup(request).flatMap {
+              case Left(ref) =>
+                UIO.succeedNow(
+                  Result.blocked(
+                    BlockedRequests.single(dataSource, BlockedRequest(request, ref)),
+                    Continue(request, dataSource, ref)
+                  )
+                )
+              case Right(ref) =>
+                ref.get.map {
+                  case None    => Result.blocked(BlockedRequests.empty, Continue(request, dataSource, ref))
+                  case Some(b) => Result.fromEither(b)
+                }
+            }
+          } else {
+            Ref.make(Option.empty[Either[E, B]]).map { ref =>
+              Result.blocked(
+                BlockedRequests.single(dataSource, BlockedRequest(request, ref)),
+                Continue(request, dataSource, ref)
+              )
+            }
           }
+        }
       }
     }
 
@@ -822,14 +886,7 @@ object ZQuery {
   def fromRequestUncached[R, E, A, B](
     request: A
   )(dataSource: DataSource[R, A])(implicit ev: A <:< Request[E, B]): ZQuery[R, E, B] =
-    ZQuery {
-      Ref.make(Option.empty[Either[E, B]]).map { ref =>
-        Result.blocked(
-          BlockedRequests.single(dataSource, BlockedRequest(request, ref)),
-          Continue(request, dataSource, ref)
-        )
-      }
-    }
+    fromRequest(request)(dataSource).uncached
 
   /**
    * Constructs a query that fails with the specified cause.
@@ -968,6 +1025,12 @@ object ZQuery {
     }
     (bs.result(), cs.result())
   }
+
+  /**
+   * Returns a query that accesses the context.
+   */
+  private def queryContext: ZQuery[Any, Nothing, QueryContext] =
+    ZQuery(ZIO.access[(Any, QueryContext)] { case (_, queryContext) => Result.done(queryContext) })
 
   /**
    * Constructs a query that succeeds with the specified value.

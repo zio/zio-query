@@ -88,7 +88,7 @@ object ZQuerySpec extends ZIOBaseSpec {
         } @@ nonFlaky,
         testM("does not deduplicate uncached requests") {
           val query = Cache.getAll *> Cache.put(0, 1) *> Cache.getAll
-          assertM(query.run)(equalTo(Map(0 -> 1)))
+          assertM(query.uncached.run)(equalTo(Map(0 -> 1)))
         } @@ nonFlaky
       ).provideCustomLayer(Cache.live),
       suite("zipBatched")(
@@ -333,19 +333,19 @@ object ZQuerySpec extends ZIOBaseSpec {
     def get(key: Int): ZQuery[Cache, Nothing, Option[Int]] =
       for {
         cache <- ZQuery.environment[Cache].map(_.get)
-        value <- ZQuery.fromRequestUncached(Get(key))(cache)
+        value <- ZQuery.fromRequest(Get(key))(cache)
       } yield value
 
     val getAll: ZQuery[Cache, Nothing, Map[Int, Int]] =
       for {
         cache <- ZQuery.environment[Cache].map(_.get)
-        value <- ZQuery.fromRequestUncached(GetAll)(cache)
+        value <- ZQuery.fromRequest(GetAll)(cache)
       } yield value
 
     def put(key: Int, value: Int): ZQuery[Cache, Nothing, Unit] =
       for {
         cache <- ZQuery.environment[Cache].map(_.get)
-        value <- ZQuery.fromRequestUncached(Put(key, value))(cache)
+        value <- ZQuery.fromRequest(Put(key, value))(cache)
       } yield value
 
     val clear: ZIO[Cache, Nothing, Unit] =
