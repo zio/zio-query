@@ -1,11 +1,12 @@
 package zio.query
 
 import zio.console.Console
+import zio.duration._
 import zio.query.DataSourceAspect._
 import zio.test.Assertion._
 import zio.test.TestAspect.{ after, nonFlaky, silent }
 import zio.test._
-import zio.test.environment.{ TestConsole, TestEnvironment }
+import zio.test.environment.{ TestClock, TestConsole, TestEnvironment }
 import zio.{ console, Chunk, Has, Promise, Ref, ZIO, ZLayer }
 
 object ZQuerySpec extends ZIOBaseSpec {
@@ -87,7 +88,7 @@ object ZQuerySpec extends ZIOBaseSpec {
         } @@ nonFlaky,
         testM("does not deduplicate uncached requests") {
           val query = Cache.getAll *> Cache.put(0, 1) *> Cache.getAll
-          assertM(query.run)(equalTo(Map(0 -> 1)))
+          assertM(query.uncached.run)(equalTo(Map(0 -> 1)))
         } @@ nonFlaky
       ).provideCustomLayer(Cache.live),
       suite("zipBatched")(
@@ -201,7 +202,23 @@ object ZQuerySpec extends ZIOBaseSpec {
           _   <- query.runCache(cache)
           log <- TestConsole.output
         } yield assert(log)(hasSize(equalTo(2)))
-      }
+      },
+      suite("timeout")(
+        testM("times out a query that does not complete") {
+          for {
+            fiber <- ZQuery.never.timeout(1.second).run.fork
+            _     <- TestClock.adjust(1.second)
+            _     <- fiber.join
+          } yield assertCompletes
+        },
+        testM("prevents subsequent requests to data sources from being executed") {
+          for {
+            fiber <- (ZQuery.fromEffect(ZIO.sleep(2.seconds)) *> neverQuery).timeout(1.second).run.fork
+            _     <- TestClock.adjust(2.second)
+            _     <- fiber.join
+          } yield assertCompletes
+        }
+      )
     ) @@ silent
 
   val userIds: List[Int]          = (1 to 26).toList
@@ -316,19 +333,19 @@ object ZQuerySpec extends ZIOBaseSpec {
     def get(key: Int): ZQuery[Cache, Nothing, Option[Int]] =
       for {
         cache <- ZQuery.environment[Cache].map(_.get)
-        value <- ZQuery.fromRequestUncached(Get(key))(cache)
+        value <- ZQuery.fromRequest(Get(key))(cache)
       } yield value
 
     val getAll: ZQuery[Cache, Nothing, Map[Int, Int]] =
       for {
         cache <- ZQuery.environment[Cache].map(_.get)
-        value <- ZQuery.fromRequestUncached(GetAll)(cache)
+        value <- ZQuery.fromRequest(GetAll)(cache)
       } yield value
 
     def put(key: Int, value: Int): ZQuery[Cache, Nothing, Unit] =
       for {
         cache <- ZQuery.environment[Cache].map(_.get)
-        value <- ZQuery.fromRequestUncached(Put(key, value))(cache)
+        value <- ZQuery.fromRequest(Put(key, value))(cache)
       } yield value
 
     val clear: ZIO[Cache, Nothing, Unit] =

@@ -1,6 +1,7 @@
 package zio.query.internal
 
 import zio.query.Cache
+import zio.FiberRef
 
 /**
  * `QueryContext` maintains the context of a query. Currently `QueryContext`
@@ -8,4 +9,4 @@ import zio.query.Cache
  * augmented with other functionality such as logging and metrics in the
  * future.
  */
-private[query] final case class QueryContext(cache: Cache)
+private[query] final case class QueryContext(cache: Cache, cachingEnabled: FiberRef[Boolean])
