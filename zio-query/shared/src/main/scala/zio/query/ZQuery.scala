@@ -783,6 +783,55 @@ object ZQuery {
     }
 
   /**
+   * Applies the function `f` to each element of the `Set[A]` and
+   * returns the results in a new `Set[B]`.
+   *
+   * For a parallel version of this method, see `foreachPar`.
+   * If you do not need the results, see `foreach_` for a more efficient implementation.
+   */
+  final def foreach[R, E, A, B](in: Set[A])(f: A => ZQuery[R, E, B]): ZQuery[R, E, Set[B]] =
+    foreach[R, E, A, B, Iterable](in)(f).map(_.toSet)
+
+  /**
+   * Applies the function `f` to each element of the `Array[A]` and
+   * returns the results in a new `Array[B]`.
+   *
+   * For a parallel version of this method, see `foreachPar`.
+   * If you do not need the results, see `foreach_` for a more efficient implementation.
+   */
+  final def foreach[R, E, A, B: ClassTag](in: Array[A])(f: A => ZQuery[R, E, B]): ZQuery[R, E, Array[B]] =
+    foreach[R, E, A, B, Iterable](in)(f).map(_.toArray)
+
+  /**
+   * Applies the function `f` to each element of the `Map[Key, Value]` and
+   * returns the results in a new `Map[Key2, Value2]`.
+   *
+   * For a parallel version of this method, see `foreachPar`. If you do not
+   * need the results, see `foreach_` for a more efficient implementation.
+   */
+  def foreach[R, E, Key, Key2, Value, Value2](
+    map: Map[Key, Value]
+  )(f: (Key, Value) => ZQuery[R, E, (Key2, Value2)]): ZQuery[R, E, Map[Key2, Value2]] =
+    foreach[R, E, (Key, Value), (Key2, Value2), Iterable](map)(f.tupled).map(_.toMap)
+
+  /**
+   * Applies the function `f` if the argument is non-empty and
+   * returns the results in a new `Option[B]`.
+   */
+  final def foreach[R, E, A, B](in: Option[A])(f: A => ZQuery[R, E, B]): ZQuery[R, E, Option[B]] =
+    in.fold[ZQuery[R, E, Option[B]]](none)(f(_).map(Some(_)))
+
+  /**
+   * Applies the function `f` to each element of the `NonEmptyChunk[A]` and
+   * returns the results in a new `NonEmptyChunk[B]`.
+   *
+   * For a parallel version of this method, see `foreachPar`.
+   * If you do not need the results, see `foreach_` for a more efficient implementation.
+   */
+  final def foreach[R, E, A, B](in: NonEmptyChunk[A])(f: A => ZQuery[R, E, B]): ZQuery[R, E, NonEmptyChunk[B]] =
+    foreach[R, E, A, B, Chunk](in)(f).map(NonEmptyChunk.nonEmpty)
+
+  /**
    * Performs a query for each element in a collection, batching requests to
    * data sources and collecting the results into a query returning a
    * collection of their results.
@@ -801,6 +850,41 @@ object ZQuery {
       }
       builder.map(_.result())
     }
+
+  final def foreachBatched[R, E, A, B](as: Set[A])(fn: A => ZQuery[R, E, B]): ZQuery[R, E, Set[B]] =
+    foreachBatched[R, E, A, B, Iterable](as)(fn).map(_.toSet)
+
+  /**
+   * Performs a query for each element in an Array, batching requests to
+   * data sources and collecting the results into a query returning a
+   * collection of their results.
+   *
+   * For a sequential version of this method, see `foreach`.
+   */
+  final def foreachBatched[R, E, A, B: ClassTag](as: Array[A])(f: A => ZQuery[R, E, B]): ZQuery[R, E, Array[B]] =
+    foreachBatched[R, E, A, B, Iterable](as)(f).map(_.toArray)
+
+  /**
+   * Performs a query for each element in a Map, batching requests to
+   * data sources and collecting the results into a query returning a
+   * collection of their results.
+   *
+   * For a sequential version of this method, see `foreach`.
+   */
+  def foreachBatched[R, E, Key, Key2, Value, Value2](
+    map: Map[Key, Value]
+  )(f: (Key, Value) => ZQuery[R, E, (Key2, Value2)]): ZQuery[R, E, Map[Key2, Value2]] =
+    foreachBatched[R, E, (Key, Value), (Key2, Value2), Iterable](map)(f.tupled).map(_.toMap)
+
+  /**
+   * Performs a query for each element in a NonEmptyChunk, batching requests to
+   * data sources and collecting the results into a query returning a
+   * collection of their results.
+   *
+   * For a sequential version of this method, see `foreach`.
+   */
+  final def foreachBatched[R, E, A, B](as: NonEmptyChunk[A])(f: A => ZQuery[R, E, B]): ZQuery[R, E, NonEmptyChunk[B]] =
+    foreachBatched[R, E, A, B, Chunk](as)(f).map(NonEmptyChunk.nonEmpty)
 
   /**
    * Performs a query for each element in a collection, collecting the results
@@ -821,6 +905,46 @@ object ZQuery {
       }
       builder.map(_.result())
     }
+
+  /**
+   * Performs a query for each element in a Set, collecting the results
+   * into a query returning a collection of their results. Requests will be
+   * executed in parallel and will be batched.
+   */
+  final def foreachPar[R, E, A, B](as: Set[A])(fn: A => ZQuery[R, E, B]): ZQuery[R, E, Set[B]] =
+    foreachPar[R, E, A, B, Iterable](as)(fn).map(_.toSet)
+
+  /**
+   * Performs a query for each element in an Array, collecting the results
+   * into a query returning a collection of their results. Requests will be
+   * executed in parallel and will be batched.
+   *
+   * For a sequential version of this method, see `foreach`.
+   */
+  final def foreachPar[R, E, A, B: ClassTag](as: Array[A])(f: A => ZQuery[R, E, B]): ZQuery[R, E, Array[B]] =
+    foreachPar[R, E, A, B, Iterable](as)(f).map(_.toArray)
+
+  /**
+   * Performs a query for each element in a Map, collecting the results
+   * into a query returning a collection of their results. Requests will be
+   * executed in parallel and will be batched.
+   *
+   * For a sequential version of this method, see `foreach`.
+   */
+  def foreachPar[R, E, Key, Key2, Value, Value2](
+    map: Map[Key, Value]
+  )(f: (Key, Value) => ZQuery[R, E, (Key2, Value2)]): ZQuery[R, E, Map[Key2, Value2]] =
+    foreachPar[R, E, (Key, Value), (Key2, Value2), Iterable](map)(f.tupled).map(_.toMap)
+
+  /**
+   * Performs a query for each element in a NonEmptyChunk, collecting the results
+   * into a query returning a collection of their results. Requests will be
+   * executed in parallel and will be batched.
+   *
+   * For a sequential version of this method, see `foreach`.
+   */
+  final def foreachPar[R, E, A, B](as: NonEmptyChunk[A])(fn: A => ZQuery[R, E, B]): ZQuery[R, E, NonEmptyChunk[B]] =
+    foreachPar[R, E, A, B, Chunk](as)(fn).map(NonEmptyChunk.nonEmpty)
 
   /**
    * Constructs a query from an effect.
