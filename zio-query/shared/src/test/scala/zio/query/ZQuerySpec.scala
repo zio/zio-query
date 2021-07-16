@@ -218,7 +218,29 @@ object ZQuerySpec extends ZIOBaseSpec {
             _     <- fiber.join
           } yield assertCompletes
         }
-      )
+      ),
+      testM("regional caching should work with parallelism") {
+        val left = for {
+          _ <- getUserNameById(1)
+          _ <- ZQuery.fromEffect(ZIO.sleep(1000.milliseconds))
+          _ <- getUserNameById(1)
+        } yield ()
+        val right = for {
+          _ <- getUserNameById(2)
+          _ <- ZQuery.fromEffect(ZIO.sleep(500.milliseconds))
+        } yield ()
+        val query = left.uncached.zipPar(right.cached)
+        for {
+          fiber <- query.run.fork
+          _     <- TestClock.adjust(500.milliseconds)
+          _     <- TestClock.adjust(1000.milliseconds)
+          _     <- fiber.join
+          log   <- TestConsole.output
+        } yield assert(log)(hasSize(equalTo(2))) &&
+          assert(log)(hasAt(0)(containsString("GetNameById(1)"))) &&
+          assert(log)(hasAt(0)(containsString("GetNameById(2)"))) &&
+          assert(log)(hasAt(1)(containsString("GetNameById(1)")))
+      } @@ nonFlaky
     ) @@ silent
 
   val userIds: List[Int]          = (1 to 26).toList
@@ -232,7 +254,7 @@ object ZQuerySpec extends ZIOBaseSpec {
   val UserRequestDataSource: DataSource[Console, UserRequest[Any]] =
     DataSource.Batched.make[Console, UserRequest[Any]]("UserRequestDataSource") { requests =>
       ZIO.when(requests.toSet.size != requests.size)(ZIO.dieMessage("Duplicate requests)")) *>
-        console.putStrLn("Running query").orDie *>
+        console.putStrLn(requests.toString).orDie *>
         ZIO.succeed {
           requests.foldLeft(CompletedRequestMap.empty) {
             case (completedRequests, GetAllIds) => completedRequests.insert(GetAllIds)(Right(userIds))
