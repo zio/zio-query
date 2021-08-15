@@ -240,7 +240,23 @@ object ZQuerySpec extends ZIOBaseSpec {
           assert(log)(hasAt(0)(containsString("GetNameById(1)"))) &&
           assert(log)(hasAt(0)(containsString("GetNameById(2)"))) &&
           assert(log)(hasAt(1)(containsString("GetNameById(1)")))
-      } @@ nonFlaky
+      } @@ nonFlaky,
+      suite("race")(
+        testM("race with never") {
+          val query = ZQuery.never.race(ZQuery.succeed(()))
+          assertM(query.run)(anything)
+        },
+        testM("interruption of loser") {
+          for {
+            promise1 <- Promise.make[Nothing, Unit]
+            promise2 <- Promise.make[Nothing, Unit]
+            left      = ZQuery.fromEffect((promise1.succeed(()) *> ZIO.never).onInterrupt(promise2.succeed(())))
+            right     = ZQuery.fromEffect(promise1.await)
+            _        <- left.race(right).run
+            _        <- promise2.await
+          } yield assertCompletes
+        }
+      ) @@ nonFlaky
     ) @@ silent
 
   val userIds: List[Int]          = (1 to 26).toList
