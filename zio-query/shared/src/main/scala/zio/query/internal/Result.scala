@@ -52,6 +52,16 @@ private[query] sealed trait Result[-R, +E, +A] { self =>
     }
 
   /**
+   * Maps the specified function over the failure cause of this result.
+   */
+  def mapErrorCause[E1](f: Cause[E] => Cause[E1]): Result[R, E1, A] =
+    self match {
+      case Blocked(br, c) => blocked(br, c.mapErrorCause(f))
+      case Done(a)        => done(a)
+      case Fail(e)        => fail(f(e))
+    }
+
+  /**
    * Provides this result with its required environment.
    */
   final def provide(r: Described[R])(implicit ev: NeedsEnv[R]): Result[Any, E, A] =

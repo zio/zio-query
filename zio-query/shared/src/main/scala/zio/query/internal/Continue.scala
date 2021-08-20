@@ -22,7 +22,6 @@ private[query] sealed trait Continue[-R, +E, +A] { self =>
     self match {
       case Effect(query) => effect(query.fold(failure, success))
       case Get(io)       => get(io.fold(failure, success))
-
     }
 
   /**
@@ -44,7 +43,6 @@ private[query] sealed trait Continue[-R, +E, +A] { self =>
     self match {
       case Effect(query) => effect(query.map(f))
       case Get(io)       => get(io.map(f))
-
     }
 
   /**
@@ -54,7 +52,6 @@ private[query] sealed trait Continue[-R, +E, +A] { self =>
     self match {
       case Effect(query) => effect(query.mapDataSources(f))
       case Get(io)       => get(io)
-
     }
 
   /**
@@ -64,7 +61,15 @@ private[query] sealed trait Continue[-R, +E, +A] { self =>
     self match {
       case Effect(query) => effect(query.mapError(f))
       case Get(io)       => get(io.mapError(f))
+    }
 
+  /**
+   * Purely maps over the failure cause of this continuation.
+   */
+  final def mapErrorCause[E1](f: Cause[E] => Cause[E1]): Continue[R, E1, A] =
+    self match {
+      case Effect(query) => effect(query.mapErrorCause(f))
+      case Get(io)       => get(io.mapErrorCause(f))
     }
 
   /**
@@ -83,11 +88,10 @@ private[query] sealed trait Continue[-R, +E, +A] { self =>
     self match {
       case Effect(query) => effect(query.provideSome(f))
       case Get(io)       => get(io)
-
     }
 
   /**
-   * Runs this continuation..
+   * Runs this continuation.
    */
   final def runContext(queryContext: QueryContext): ZIO[R, E, A] =
     self match {

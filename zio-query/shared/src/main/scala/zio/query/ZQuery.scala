@@ -373,6 +373,40 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
     new ZQuery.ProvideSomeLayer(self)
 
   /**
+   * Races this query with the specified query, returning the result of the
+   * first to complete successfully and safely interrupting the other.
+   */
+  def race[R1 <: R, E1 >: E, A1 >: A](that: ZQuery[R1, E1, A1]): ZQuery[R1, E1, A1] = {
+
+    def coordinate(
+      exit: Exit[Nothing, Result[R1, E1, A1]],
+      fiber: Fiber[Nothing, Result[R1, E1, A1]]
+    ): ZIO[(R1, QueryContext), Nothing, Result[R1, E1, A1]] =
+      exit.foldM(
+        cause => fiber.join.map(_.mapErrorCause(_ && cause)),
+        {
+          case Result.Blocked(blockedRequests, continue) =>
+            continue match {
+              case Continue.Effect(query) =>
+                ZIO.succeedNow(Result.blocked(blockedRequests, Continue.effect(race(query, fiber))))
+              case Continue.Get(io) =>
+                ZIO.succeedNow(Result.blocked(blockedRequests, Continue.effect(race(ZQuery.fromEffect(io), fiber))))
+            }
+          case Result.Done(value) => fiber.interrupt *> ZIO.succeedNow(Result.done(value))
+          case Result.Fail(cause) => fiber.join.map(_.mapErrorCause(_ && cause))
+        }
+      )
+
+    def race(
+      query: ZQuery[R1, E1, A1],
+      fiber: Fiber[Nothing, Result[R1, E1, A1]]
+    ): ZQuery[R1, E1, A1] =
+      ZQuery(query.step.raceWith(fiber.join)(coordinate, coordinate))
+
+    ZQuery(self.step.raceWith(that.step)(coordinate, coordinate))
+  }
+
+  /**
    * Keeps some of the errors, and terminates the query with the rest
    */
   def refineOrDie[E1](pf: PartialFunction[E, E1])(implicit ev1: E <:< Throwable, ev2: CanFail[E]): ZQuery[R, E1, A] =
