@@ -42,10 +42,10 @@ object DataSourceAspect {
   )(after: Described[A => ZIO[R, Nothing, Any]]): DataSourceAspect[R] =
     new DataSourceAspect[R] {
       def apply[R1 <: R, A](dataSource: DataSource[R1, A]): DataSource[R1, A] =
-        new DataSource[R, A] {
+        new DataSource[R1, A] {
           val identifier = s"${dataSource.identifier} @@ around(${before.description})(${after.description})"
-          def runAll(requests: Chunk[Chunk[A]]): ZIO[R, Nothing, CompletedRequestMap] =
-            before.value.bracket(after.value)(_ => runAll(requests))
+          def runAll(requests: Chunk[Chunk[A]]): ZIO[R1, Nothing, CompletedRequestMap] =
+            before.value.bracket(after.value)(_ => dataSource.runAll(requests))
         }
     }
 
