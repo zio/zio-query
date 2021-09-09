@@ -256,6 +256,22 @@ object ZQuerySpec extends ZIOBaseSpec {
             _        <- promise2.await
           } yield assertCompletes
         }
+      ) @@ nonFlaky,
+      suite("around data source aspect")(
+        testM("wraps data source with before and after effects that are evaluated accordingly") {
+          for {
+            beforeRef <- Ref.make(0)
+            before     = beforeRef.set(1) *> beforeRef.get
+
+            afterRef    <- Ref.make(0)
+            after        = (v: Int) => afterRef.set(v * 2)
+            aspect       = DataSourceAspect.around(Described(before, "before effect"))(Described(after, "after effect"))
+            query        = getUserNameById(1) @@ aspect
+            _           <- query.run
+            isBeforeRan <- beforeRef.get
+            isAfterRan  <- afterRef.get
+          } yield assert(isBeforeRan)(equalTo(1)) && assert(isAfterRan)(equalTo(2))
+        }
       ) @@ nonFlaky
     ) @@ silent
 
