@@ -67,9 +67,18 @@ trait DataSource[-R, -A] { self =>
    * specified effectual function to transform `B` requests into requests that
    * this data source can execute.
    */
+  @deprecated("use contramapZIO", "0.3.0")
   final def contramapM[R1 <: R, B](f: Described[B => ZIO[R1, Nothing, A]]): DataSource[R1, B] =
+    contramapZIO(f)
+
+  /**
+   * Returns a new data source that executes requests of type `B` using the
+   * specified effectual function to transform `B` requests into requests that
+   * this data source can execute.
+   */
+  final def contramapZIO[R1 <: R, B](f: Described[B => ZIO[R1, Nothing, A]]): DataSource[R1, B] =
     new DataSource[R1, B] {
-      val identifier = s"${self.identifier}.contramapM(${f.description})"
+      val identifier = s"${self.identifier}.contramapZIO(${f.description})"
       def runAll(requests: Chunk[Chunk[B]]): ZIO[R1, Nothing, CompletedRequestMap] =
         ZIO.foreach(requests)(ZIO.foreachPar(_)(f.value)).flatMap(self.runAll)
     }
@@ -187,7 +196,7 @@ object DataSource {
   def fromFunctionBatched[A, B](
     name: String
   )(f: Chunk[A] => Chunk[B])(implicit ev: A <:< Request[Nothing, B]): DataSource[Any, A] =
-    fromFunctionBatchedM(name)(as => ZIO.succeedNow(f(as)))
+    fromFunctionBatchedZIO(name)(as => ZIO.succeedNow(f(as)))
 
   /**
    * Constructs a data source from an effectual function that takes a list of
@@ -195,21 +204,11 @@ object DataSource {
    * result list must correspond to the item at the same index in the request
    * list.
    */
+  @deprecated("use fromFunctionBatchedZIO", "0.3.0")
   def fromFunctionBatchedM[R, E, A, B](
     name: String
   )(f: Chunk[A] => ZIO[R, E, Chunk[B]])(implicit ev: A <:< Request[E, B]): DataSource[R, A] =
-    new DataSource.Batched[R, A] {
-      val identifier: String = name
-      def run(requests: Chunk[A]): ZIO[R, Nothing, CompletedRequestMap] =
-        f(requests)
-          .fold(
-            e => requests.map((_, Left(e))),
-            bs => requests.zip(bs.map(Right(_)))
-          )
-          .map(_.foldLeft(CompletedRequestMap.empty) { case (map, (k, v)) =>
-            map.insert(k)(v)
-          })
-    }
+    fromFunctionBatchedZIO(name)(f)
 
   /**
    * Constructs a data source from a pure function that takes a list of
@@ -220,7 +219,7 @@ object DataSource {
   def fromFunctionBatchedOption[A, B](
     name: String
   )(f: Chunk[A] => Chunk[Option[B]])(implicit ev: A <:< Request[Nothing, B]): DataSource[Any, A] =
-    fromFunctionBatchedOptionM(name)(as => ZIO.succeedNow(f(as)))
+    fromFunctionBatchedOptionZIO(name)(as => ZIO.succeedNow(f(as)))
 
   /**
    * Constructs a data source from an effectual function that takes a list of
@@ -228,7 +227,19 @@ object DataSource {
    * item in the result list must correspond to the item at the same index in
    * the request list.
    */
+  @deprecated("use fromFunctionBatchedOptionZIO", "0.3.0")
   def fromFunctionBatchedOptionM[R, E, A, B](
+    name: String
+  )(f: Chunk[A] => ZIO[R, E, Chunk[Option[B]]])(implicit ev: A <:< Request[E, B]): DataSource[R, A] =
+    fromFunctionBatchedOptionZIO(name)(f)
+
+  /**
+   * Constructs a data source from an effectual function that takes a list of
+   * requests and returns a list of optional results of the same size. Each
+   * item in the result list must correspond to the item at the same index in
+   * the request list.
+   */
+  def fromFunctionBatchedOptionZIO[R, E, A, B](
     name: String
   )(f: Chunk[A] => ZIO[R, E, Chunk[Option[B]]])(implicit ev: A <:< Request[E, B]): DataSource[R, A] =
     new DataSource.Batched[R, A] {
@@ -256,7 +267,7 @@ object DataSource {
   )(f: Chunk[A] => Chunk[B], g: B => Request[Nothing, B])(implicit
     ev: A <:< Request[Nothing, B]
   ): DataSource[Any, A] =
-    fromFunctionBatchedWithM(name)(as => ZIO.succeedNow(f(as)), g)
+    fromFunctionBatchedWithZIO(name)(as => ZIO.succeedNow(f(as)), g)
 
   /**
    * Constructs a data source from an effectual function that takes a list of
@@ -265,7 +276,22 @@ object DataSource {
    * allowing the function to return the list of results in a different order
    * than the list of requests.
    */
+  @deprecated("use fromFunctionBatchedWithZIO", "0.3.0")
   def fromFunctionBatchedWithM[R, E, A, B](
+    name: String
+  )(f: Chunk[A] => ZIO[R, E, Chunk[B]], g: B => Request[E, B])(implicit
+    ev: A <:< Request[E, B]
+  ): DataSource[R, A] =
+    fromFunctionBatchedWithZIO(name)(f, g)
+
+  /**
+   * Constructs a data source from an effectual function that takes a list of
+   * requests and returns a list of results of the same size. Uses the
+   * specified function to associate each result with the corresponding effect,
+   * allowing the function to return the list of results in a different order
+   * than the list of requests.
+   */
+  def fromFunctionBatchedWithZIO[R, E, A, B](
     name: String
   )(f: Chunk[A] => ZIO[R, E, Chunk[B]], g: B => Request[E, B])(implicit
     ev: A <:< Request[E, B]
@@ -284,9 +310,40 @@ object DataSource {
     }
 
   /**
+   * Constructs a data source from an effectual function that takes a list of
+   * requests and returns a list of results of the same size. Each item in the
+   * result list must correspond to the item at the same index in the request
+   * list.
+   */
+  def fromFunctionBatchedZIO[R, E, A, B](
+    name: String
+  )(f: Chunk[A] => ZIO[R, E, Chunk[B]])(implicit ev: A <:< Request[E, B]): DataSource[R, A] =
+    new DataSource.Batched[R, A] {
+      val identifier: String = name
+      def run(requests: Chunk[A]): ZIO[R, Nothing, CompletedRequestMap] =
+        f(requests)
+          .fold(
+            e => requests.map((_, Left(e))),
+            bs => requests.zip(bs.map(Right(_)))
+          )
+          .map(_.foldLeft(CompletedRequestMap.empty) { case (map, (k, v)) =>
+            map.insert(k)(v)
+          })
+    }
+
+  /**
    * Constructs a data source from an effectual function.
    */
+  @deprecated("use fromFunctionZIO", "0.3.0")
   def fromFunctionM[R, E, A, B](
+    name: String
+  )(f: A => ZIO[R, E, B])(implicit ev: A <:< Request[E, B]): DataSource[R, A] =
+    fromFunctionZIO(name)(f)
+
+  /**
+   * Constructs a data source from an effectual function.
+   */
+  def fromFunctionZIO[R, E, A, B](
     name: String
   )(f: A => ZIO[R, E, B])(implicit ev: A <:< Request[E, B]): DataSource[R, A] =
     new DataSource.Batched[R, A] {
@@ -304,13 +361,23 @@ object DataSource {
   def fromFunctionOption[A, B](
     name: String
   )(f: A => Option[B])(implicit ev: A <:< Request[Nothing, B]): DataSource[Any, A] =
-    fromFunctionOptionM(name)(a => ZIO.succeedNow(f(a)))
+    fromFunctionOptionZIO(name)(a => ZIO.succeedNow(f(a)))
 
   /**
    * Constructs a data source from an effectual function that may not provide
    * results for all requests received.
    */
+  @deprecated("use fromFunctionOptionZIO", "0.3.0")
   def fromFunctionOptionM[R, E, A, B](
+    name: String
+  )(f: A => ZIO[R, E, Option[B]])(implicit ev: A <:< Request[E, B]): DataSource[R, A] =
+    fromFunctionOptionZIO(name)(f)
+
+  /**
+   * Constructs a data source from an effectual function that may not provide
+   * results for all requests received.
+   */
+  def fromFunctionOptionZIO[R, E, A, B](
     name: String
   )(f: A => ZIO[R, E, Option[B]])(implicit ev: A <:< Request[E, B]): DataSource[R, A] =
     new DataSource.Batched[R, A] {

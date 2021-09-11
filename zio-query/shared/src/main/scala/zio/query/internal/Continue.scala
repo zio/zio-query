@@ -27,13 +27,13 @@ private[query] sealed trait Continue[-R, +E, +A] { self =>
   /**
    * Effectually folds over the failure and success types of this continuation.
    */
-  final def foldCauseM[R1 <: R, E1, B](
+  final def foldCauseQuery[R1 <: R, E1, B](
     failure: Cause[E] => ZQuery[R1, E1, B],
     success: A => ZQuery[R1, E1, B]
   ): Continue[R1, E1, B] =
     self match {
-      case Effect(query) => effect(query.foldCauseM(failure, success))
-      case Get(io)       => effect(ZQuery.fromEffect(io).foldCauseM(failure, success))
+      case Effect(query) => effect(query.foldCauseQuery(failure, success))
+      case Get(io)       => effect(ZQuery.fromZIO(io).foldCauseQuery(failure, success))
     }
 
   /**
@@ -75,10 +75,10 @@ private[query] sealed trait Continue[-R, +E, +A] { self =>
   /**
    * Effectually maps over the success type of this continuation.
    */
-  final def mapM[R1 <: R, E1 >: E, B](f: A => ZQuery[R1, E1, B]): Continue[R1, E1, B] =
+  final def mapQuery[R1 <: R, E1 >: E, B](f: A => ZQuery[R1, E1, B]): Continue[R1, E1, B] =
     self match {
       case Effect(query) => effect(query.flatMap(f))
-      case Get(io)       => effect(ZQuery.fromEffect(io).flatMap(f))
+      case Get(io)       => effect(ZQuery.fromZIO(io).flatMap(f))
     }
 
   /**
@@ -106,8 +106,8 @@ private[query] sealed trait Continue[-R, +E, +A] { self =>
   final def zipWith[R1 <: R, E1 >: E, B, C](that: Continue[R1, E1, B])(f: (A, B) => C): Continue[R1, E1, C] =
     (self, that) match {
       case (Effect(l), Effect(r)) => effect(l.zipWith(r)(f))
-      case (Effect(l), Get(r))    => effect(l.zipWith(ZQuery.fromEffect(r))(f))
-      case (Get(l), Effect(r))    => effect(ZQuery.fromEffect(l).zipWith(r)(f))
+      case (Effect(l), Get(r))    => effect(l.zipWith(ZQuery.fromZIO(r))(f))
+      case (Get(l), Effect(r))    => effect(ZQuery.fromZIO(l).zipWith(r)(f))
       case (Get(l), Get(r))       => get(l.zipWith(r)(f))
     }
 
@@ -118,8 +118,8 @@ private[query] sealed trait Continue[-R, +E, +A] { self =>
   final def zipWithPar[R1 <: R, E1 >: E, B, C](that: Continue[R1, E1, B])(f: (A, B) => C): Continue[R1, E1, C] =
     (self, that) match {
       case (Effect(l), Effect(r)) => effect(l.zipWithPar(r)(f))
-      case (Effect(l), Get(r))    => effect(l.zipWith(ZQuery.fromEffect(r))(f))
-      case (Get(l), Effect(r))    => effect(ZQuery.fromEffect(l).zipWith(r)(f))
+      case (Effect(l), Get(r))    => effect(l.zipWith(ZQuery.fromZIO(r))(f))
+      case (Get(l), Effect(r))    => effect(ZQuery.fromZIO(l).zipWith(r)(f))
       case (Get(l), Get(r))       => get(l.zipWith(r)(f))
     }
 
@@ -130,8 +130,8 @@ private[query] sealed trait Continue[-R, +E, +A] { self =>
   final def zipWithBatched[R1 <: R, E1 >: E, B, C](that: Continue[R1, E1, B])(f: (A, B) => C): Continue[R1, E1, C] =
     (self, that) match {
       case (Effect(l), Effect(r)) => effect(l.zipWithBatched(r)(f))
-      case (Effect(l), Get(r))    => effect(l.zipWith(ZQuery.fromEffect(r))(f))
-      case (Get(l), Effect(r))    => effect(ZQuery.fromEffect(l).zipWith(r)(f))
+      case (Effect(l), Get(r))    => effect(l.zipWith(ZQuery.fromZIO(r))(f))
+      case (Get(l), Effect(r))    => effect(ZQuery.fromZIO(l).zipWith(r)(f))
       case (Get(l), Get(r))       => get(l.zipWith(r)(f))
     }
 }

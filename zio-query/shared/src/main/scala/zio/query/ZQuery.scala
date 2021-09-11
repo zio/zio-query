@@ -88,6 +88,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
   /**
    * A symbolic alias for `flatMap`.
    */
+  @deprecated("use flatMap", "0.3.0")
   final def >>=[R1 <: R, E1 >: E, B](f: A => ZQuery[R1, E1, B]): ZQuery[R1, E1, B] =
     flatMap(f)
 
@@ -117,8 +118,9 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
    * Returns a query whose failure and success channels have been mapped by the
    * specified pair of functions, `f` and `g`.
    */
+  @deprecated("use mapBoth", "0.3.0")
   final def bimap[E1, B](f: E => E1, g: A => B)(implicit ev: CanFail[E]): ZQuery[R, E1, B] =
-    foldM(e => ZQuery.fail(f(e)), a => ZQuery.succeed(g(a)))
+    mapBoth(f, g)
 
   /**
    * Enables caching for this query. Note that caching is enabled by default
@@ -128,15 +130,15 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
   def cached: ZQuery[R, E, A] =
     for {
       queryContext   <- ZQuery.queryContext
-      cachingEnabled <- ZQuery.fromEffect(queryContext.cachingEnabled.getAndSet(true))
-      a              <- self.ensuring(ZQuery.fromEffect(queryContext.cachingEnabled.set(cachingEnabled)))
+      cachingEnabled <- ZQuery.fromZIO(queryContext.cachingEnabled.getAndSet(true))
+      a              <- self.ensuring(ZQuery.fromZIO(queryContext.cachingEnabled.set(cachingEnabled)))
     } yield a
 
   /**
    * Recovers from all errors.
    */
   def catchAll[R1 <: R, E2, A1 >: A](h: E => ZQuery[R1, E2, A1])(implicit ev: CanFail[E]): ZQuery[R1, E2, A1] =
-    self.foldM[R1, E2, A1](h, ZQuery.succeed(_))
+    self.foldQuery[R1, E2, A1](h, ZQuery.succeed(_))
 
   /**
    * Recovers from all errors with provided Cause.
@@ -144,7 +146,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
    * @see [[ZQuery.sandbox]] - other functions that can recover from defects
    */
   def catchAllCause[R1 <: R, E2, A1 >: A](h: Cause[E] => ZQuery[R1, E2, A1]): ZQuery[R1, E2, A1] =
-    self.foldCauseM[R1, E2, A1](h, ZQuery.succeed(_))
+    self.foldCauseQuery[R1, E2, A1](h, ZQuery.succeed(_))
 
   /**
    * Moves a `None` value in the error channel into the value channel while converting the existing value into a `Some`
@@ -152,7 +154,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
    * Inverse of [[ZQuery.some]]
    */
   def collectSome[E1](implicit ev: E <:< Option[E1]): ZQuery[R, E1, Option[A]] =
-    self.foldM(
+    self.foldQuery(
       _.fold[ZQuery[R, E1, Option[A]]](ZQuery.none)(ZQuery.fail(_)),
       a => ZQuery.some(a)
     )
@@ -171,15 +173,15 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
    * success or failure.
    */
   final def ensuring[R1 <: R](finalizer: ZQuery[R1, Nothing, Any]): ZQuery[R1, E, A] =
-    self.foldCauseM(
+    self.foldCauseQuery(
       cause1 =>
-        finalizer.foldCauseM(
-          cause2 => ZQuery.halt(cause1 ++ cause2),
-          _ => ZQuery.halt(cause1)
+        finalizer.foldCauseQuery(
+          cause2 => ZQuery.failCause(cause1 ++ cause2),
+          _ => ZQuery.failCause(cause1)
         ),
       value =>
-        finalizer.foldCauseM(
-          cause => ZQuery.halt(cause),
+        finalizer.foldCauseQuery(
+          cause => ZQuery.failCause(cause),
           _ => ZQuery.succeedNow(value)
         )
     )
@@ -194,7 +196,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
   final def flatMap[R1 <: R, E1 >: E, B](f: A => ZQuery[R1, E1, B]): ZQuery[R1, E1, B] =
     ZQuery {
       step.flatMap {
-        case Result.Blocked(br, c) => ZIO.succeedNow(Result.blocked(br, c.mapM(f)))
+        case Result.Blocked(br, c) => ZIO.succeedNow(Result.blocked(br, c.mapQuery(f)))
         case Result.Done(a)        => f(a).step
         case Result.Fail(e)        => ZIO.succeedNow(Result.fail(e))
       }
@@ -215,13 +217,24 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
    * right function passed to `fold`.
    */
   final def fold[B](failure: E => B, success: A => B)(implicit ev: CanFail[E]): ZQuery[R, Nothing, B] =
-    foldM(e => ZQuery.succeed(failure(e)), a => ZQuery.succeed(success(a)))
+    foldQuery(e => ZQuery.succeed(failure(e)), a => ZQuery.succeed(success(a)))
 
   /**
    * A more powerful version of `foldM` that allows recovering from any type
    * of failure except interruptions.
    */
+  @deprecated("use foldCauseQuery", "0.3.0")
   final def foldCauseM[R1 <: R, E1, B](
+    failure: Cause[E] => ZQuery[R1, E1, B],
+    success: A => ZQuery[R1, E1, B]
+  ): ZQuery[R1, E1, B] =
+    foldCauseQuery(failure, success)
+
+  /**
+   * A more powerful version of `foldQuery` that allows recovering from any
+   * type of failure except interruptions.
+   */
+  final def foldCauseQuery[R1 <: R, E1, B](
     failure: Cause[E] => ZQuery[R1, E1, B],
     success: A => ZQuery[R1, E1, B]
   ): ZQuery[R1, E1, B] =
@@ -229,7 +242,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
       step.foldCauseZIO(
         failure(_).step,
         {
-          case Result.Blocked(br, c) => ZIO.succeedNow(Result.blocked(br, c.foldCauseM(failure, success)))
+          case Result.Blocked(br, c) => ZIO.succeedNow(Result.blocked(br, c.foldCauseQuery(failure, success)))
           case Result.Done(a)        => success(a).step
           case Result.Fail(e)        => failure(e).step
         }
@@ -240,43 +253,43 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
    * Recovers from errors by accepting one query to execute for the case of an
    * error, and one query to execute for the case of success.
    */
+  @deprecated("use foldQuery", "0.3.0")
   final def foldM[R1 <: R, E1, B](failure: E => ZQuery[R1, E1, B], success: A => ZQuery[R1, E1, B])(implicit
     ev: CanFail[E]
   ): ZQuery[R1, E1, B] =
-    foldCauseM(_.failureOrCause.fold(failure, ZQuery.halt(_)), success)
+    foldQuery(failure, success)
 
   /**
-   * Returns a successful query if the value is `Left`, or fails with the error `None`.
+   * Recovers from errors by accepting one query to execute for the case of an
+   * error, and one query to execute for the case of success.
    */
-  final def left[B, C](implicit ev: A <:< Either[B, C]): ZQuery[R, Option[E], B] =
-    self.foldM(
-      e => ZQuery.fail(Some(e)),
-      a => ev(a).fold(ZQuery.succeedNow, _ => ZQuery.fail(None))
+  final def foldQuery[R1 <: R, E1, B](failure: E => ZQuery[R1, E1, B], success: A => ZQuery[R1, E1, B])(implicit
+    ev: CanFail[E]
+  ): ZQuery[R1, E1, B] =
+    foldCauseQuery(_.failureOrCause.fold(failure, ZQuery.failCause(_)), success)
+
+  /**
+   * "Zooms in" on the value in the `Left` side of an `Either`, moving the
+   * possibility that the value is a `Right` to the error channel.
+   */
+  final def left[B, C](implicit ev: A IsSubtypeOfOutput Either[B, C]): ZQuery[R, Either[E, C], B] =
+    self.foldQuery(
+      e => ZQuery.fail(Left(e)),
+      a => ev(a).fold(b => ZQuery.succeedNow(b), c => ZQuery.fail(Right(c)))
     )
-
-  /**
-   * Returns a successful query if the value is `Left`, or fails with the error e.
-   */
-  final def leftOrFail[B, C, E1 >: E](e: => E1)(implicit ev: A <:< Either[B, C]): ZQuery[R, E1, B] =
-    self.flatMap(ev(_) match {
-      case Right(_)    => ZQuery.fail(e)
-      case Left(value) => ZQuery.succeedNow(value)
-    })
-
-  /**
-   * Returns a successful query if the value is `Left`, or fails with the given error function 'e'.
-   */
-  final def leftOrFailWith[B, C, E1 >: E](e: C => E1)(implicit ev: A <:< Either[B, C]): ZQuery[R, E1, B] =
-    self.flatMap(ev(_) match {
-      case Left(value) => ZQuery.succeedNow(value)
-      case Right(err)  => ZQuery.fail(e(err))
-    })
 
   /**
    * Maps the specified function over the successful result of this query.
    */
   final def map[B](f: A => B): ZQuery[R, E, B] =
     ZQuery(step.map(_.map(f)))
+
+  /**
+   * Returns a query whose failure and success channels have been mapped by the
+   * specified pair of functions, `f` and `g`.
+   */
+  final def mapBoth[E1, B](f: E => E1, g: A => B)(implicit ev: CanFail[E]): ZQuery[R, E1, B] =
+    foldQuery(e => ZQuery.fail(f(e)), a => ZQuery.succeed(g(a)))
 
   /**
    * Transforms all data sources with the specified data source aspect.
@@ -288,7 +301,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
    * Maps the specified function over the failed result of this query.
    */
   final def mapError[E1](f: E => E1)(implicit ev: CanFail[E]): ZQuery[R, E1, A] =
-    bimap(f, identity)
+    mapBoth(f, identity)
 
   /**
    * Returns a query with its full cause of failure mapped using the
@@ -298,21 +311,28 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
    * @see [[sandbox]], [[catchAllCause]] - other functions for dealing with defects
    */
   def mapErrorCause[E2](h: Cause[E] => Cause[E2]): ZQuery[R, E2, A] =
-    self.foldCauseM(c => ZQuery.halt(h(c)), ZQuery.succeedNow)
+    self.foldCauseQuery(c => ZQuery.failCause(h(c)), ZQuery.succeedNow)
 
   /**
    * Maps the specified effectual function over the result of this query.
    */
+  @deprecated("use mapQuery", "0.3.0")
   final def mapM[R1 <: R, E1 >: E, B](f: A => ZIO[R1, E1, B]): ZQuery[R1, E1, B] =
-    flatMap(a => ZQuery.fromEffect(f(a)))
+    mapQuery(f)
+
+  /**
+   * Maps the specified effectual function over the result of this query.
+   */
+  final def mapQuery[R1 <: R, E1 >: E, B](f: A => ZIO[R1, E1, B]): ZQuery[R1, E1, B] =
+    flatMap(a => ZQuery.fromZIO(f(a)))
 
   /**
    * Converts this query to one that returns `Some` if data sources return
    * results for all requests received and `None` otherwise.
    */
   final def optional: ZQuery[R, E, Option[A]] =
-    foldCauseM(
-      _.stripSomeDefects { case _: QueryFailure => () }.fold[ZQuery[R, E, Option[A]]](ZQuery.none)(ZQuery.halt(_)),
+    foldCauseQuery(
+      _.stripSomeDefects { case _: QueryFailure => () }.fold[ZQuery[R, E, Option[A]]](ZQuery.none)(ZQuery.failCause(_)),
       ZQuery.some(_)
     )
 
@@ -327,7 +347,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
    * specified function to map the error to a `Throwable`.
    */
   final def orDieWith(f: E => Throwable)(implicit ev: CanFail[E]): ZQuery[R, Nothing, A] =
-    foldM(e => ZQuery.die(f(e)), a => ZQuery.succeed(a))
+    foldQuery(e => ZQuery.die(f(e)), a => ZQuery.succeed(a))
 
   /**
    * Provides this query with its required environment.
@@ -388,7 +408,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
               case Continue.Effect(query) =>
                 ZIO.succeedNow(Result.blocked(blockedRequests, Continue.effect(race(query, fiber))))
               case Continue.Get(io) =>
-                ZIO.succeedNow(Result.blocked(blockedRequests, Continue.effect(race(ZQuery.fromEffect(io), fiber))))
+                ZIO.succeedNow(Result.blocked(blockedRequests, Continue.effect(race(ZQuery.fromZIO(io), fiber))))
             }
           case Result.Done(value) => fiber.interrupt *> ZIO.succeedNow(Result.done(value))
           case Result.Fail(cause) => fiber.join.map(_.mapErrorCause(_ && cause))
@@ -418,31 +438,14 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
     self catchAll (err => (pf lift err).fold[ZQuery[R, E1, A]](ZQuery.die(f(err)))(ZQuery.fail(_)))
 
   /**
-   * Returns a successful effect if the value is `Right`, or fails with the error `None`.
+   * "Zooms in" on the value in the `Right` side of an `Either`, moving the
+   * possibility that the value is a `Left` to the error channel.
    */
-  def right[B, C](implicit ev: A <:< Either[B, C]): ZQuery[R, Option[E], C] =
-    self.foldM(
-      e => ZQuery.fail(Some(e)),
-      a => ev(a).fold(_ => ZQuery.fail(None), ZQuery.succeedNow)
+  final def right[B, C](implicit ev: A IsSubtypeOfOutput Either[B, C]): ZQuery[R, Either[B, E], C] =
+    self.foldQuery(
+      e => ZQuery.fail(Right(e)),
+      a => ev(a).fold(b => ZQuery.fail(Left(b)), c => ZQuery.succeedNow(c))
     )
-
-  /**
-   * Returns a successful effect if the value is `Right`, or fails with the given error 'e'.
-   */
-  def rightOrFail[B, C, E1 >: E](e: => E1)(implicit ev: A <:< Either[B, C]): ZQuery[R, E1, C] =
-    self.flatMap(ev(_) match {
-      case Right(value) => ZQuery.succeedNow(value)
-      case Left(_)      => ZQuery.fail(e)
-    })
-
-  /**
-   * Returns a successful effect if the value is `Right`, or fails with the given error function 'e'.
-   */
-  def rightOrFailWith[B, C, E1 >: E](e: B => E1)(implicit ev: A <:< Either[B, C]): ZQuery[R, E1, C] =
-    self.flatMap(ev(_) match {
-      case Right(value) => ZQuery.succeedNow(value)
-      case Left(err)    => ZQuery.fail(e(err))
-    })
 
   /**
    * Returns an effect that models executing this query.
@@ -473,7 +476,8 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
   /**
    * Expose the full cause of failure of this query
    */
-  def sandbox: ZQuery[R, Cause[E], A] = foldCauseM(ZQuery.fail(_), ZQuery.succeed(_))
+  def sandbox: ZQuery[R, Cause[E], A] =
+    foldCauseQuery(ZQuery.fail(_), ZQuery.succeed(_))
 
   /**
    * Companion helper to `sandbox`. Allows recovery, and partial recovery, from
@@ -488,7 +492,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
    * Inverse of [[ZQuery.collectSome]]
    */
   def some[B](implicit ev: A <:< Option[B]): ZQuery[R, Option[E], B] =
-    self.foldM[R, Option[E], B](
+    self.foldQuery[R, Option[E], B](
       e => ZQuery.fail(Some(e)),
       ev(_) match {
         case Some(b) => ZQuery.succeed(b)
@@ -514,9 +518,9 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
    */
   final def summarized[R1 <: R, E1 >: E, B, C](summary: ZIO[R1, E1, B])(f: (B, B) => C): ZQuery[R1, E1, (C, A)] =
     for {
-      start <- ZQuery.fromEffect(summary)
+      start <- ZQuery.fromZIO(summary)
       value <- self
-      end   <- ZQuery.fromEffect(summary)
+      end   <- ZQuery.fromZIO(summary)
     } yield (f(start, end), value)
 
   /**
@@ -543,8 +547,16 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
    * The same as [[timeout]], but instead of producing a `None` in the event
    * of timeout, it will produce the specified failure.
    */
+  final def timeoutFailCause[E1 >: E](cause: Cause[E1])(duration: Duration): ZQuery[R with Has[Clock], E1, A] =
+    timeoutTo(ZQuery.failCause(cause))(ZQuery.succeedNow)(duration).flatten
+
+  /**
+   * The same as [[timeout]], but instead of producing a `None` in the event
+   * of timeout, it will produce the specified failure.
+   */
+  @deprecated("use timeoutFailCause", "0.3.0")
   final def timeoutHalt[E1 >: E](cause: Cause[E1])(duration: Duration): ZQuery[R with Has[Clock], E1, A] =
-    timeoutTo(ZQuery.halt(cause))(ZQuery.succeedNow)(duration).flatten
+    timeoutFailCause(cause)(duration)
 
   /**
    * Returns a query that will timeout this query, returning either the default
@@ -560,9 +572,29 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
   def uncached: ZQuery[R, E, A] =
     for {
       queryContext   <- ZQuery.queryContext
-      cachingEnabled <- ZQuery.fromEffect(queryContext.cachingEnabled.getAndSet(false))
-      a              <- self.ensuring(ZQuery.fromEffect(queryContext.cachingEnabled.set(cachingEnabled)))
+      cachingEnabled <- ZQuery.fromZIO(queryContext.cachingEnabled.getAndSet(false))
+      a              <- self.ensuring(ZQuery.fromZIO(queryContext.cachingEnabled.set(cachingEnabled)))
     } yield a
+
+  /**
+   * Converts a `ZQuery[R, Either[E, B], A]` into a
+   * `ZQuery[R, E, Either[A, B]]`. The inverse of `left`.
+   */
+  final def unleft[E1, B](implicit ev: E IsSubtypeOfError Either[E1, B]): ZQuery[R, E1, Either[A, B]] =
+    self.foldQuery(
+      e => ev(e).fold(e1 => ZQuery.fail(e1), b => ZQuery.succeedNow(Right(b))),
+      a => ZQuery.succeedNow(Left(a))
+    )
+
+  /**
+   * Converts this query to one that returns `Some` if data sources return
+   * results for all requests received and `None` otherwise.
+   */
+  final def unoption[E1](implicit ev: E IsSubtypeOfError Option[E1]): ZQuery[R, E1, Option[A]] =
+    self.foldQuery(
+      e => ev(e).fold[ZQuery[R, E1, Option[A]]](ZQuery.succeedNow(Option.empty[A]))(ZQuery.fail(_)),
+      a => ZQuery.succeedNow(Some(a))
+    )
 
   /**
    * Takes some fiber failures and converts them into errors.
@@ -584,8 +616,18 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
     catchAllCause { cause =>
       cause.find {
         case Cause.Die(t) if pf.isDefinedAt(t) => pf(t)
-      }.fold(ZQuery.halt(cause.map(f)))(ZQuery.fail(_))
+      }.fold(ZQuery.failCause(cause.map(f)))(ZQuery.fail(_))
     }
+
+  /**
+   * Converts a `ZQuery[R, Either[B, E], A]` into a
+   * `ZQuery[R, E, Either[B, A]]`. The inverse of `right`.
+   */
+  final def unright[E1, B](implicit ev: E IsSubtypeOfError Either[B, E1]): ZQuery[R, E1, Either[B, A]] =
+    self.foldQuery(
+      e => ev(e).fold(b => ZQuery.succeedNow(Left(b)), e1 => ZQuery.fail(e1)),
+      a => ZQuery.succeedNow(Right(a))
+    )
 
   /**
    * Returns a query that models the execution of this query and the specified
@@ -745,8 +787,15 @@ object ZQuery {
   /**
    * Effectfully accesses the environment of the effect.
    */
-  final def accessM[R]: AccessMPartiallyApplied[R] =
-    new AccessMPartiallyApplied[R]
+  @deprecated("use accessQuery", "0.3.0")
+  final def accessM[R]: AccessQueryPartiallyApplied[R] =
+    accessQuery
+
+  /**
+   * Effectfully accesses the environment of the effect.
+   */
+  final def accessQuery[R]: AccessQueryPartiallyApplied[R] =
+    new AccessQueryPartiallyApplied[R]
 
   /**
    * Collects a collection of queries into a query returning a collection of
@@ -786,13 +835,19 @@ object ZQuery {
    * Accesses the whole environment of the query.
    */
   def environment[R]: ZQuery[R, Nothing, R] =
-    ZQuery.fromEffect(ZIO.environment)
+    ZQuery.fromZIO(ZIO.environment)
 
   /**
    * Constructs a query that fails with the specified error.
    */
   def fail[E](error: => E): ZQuery[Any, E, Nothing] =
     ZQuery(ZIO.succeed(Result.fail(Cause.fail(error))))
+
+  /**
+   * Constructs a query that fails with the specified cause.
+   */
+  def failCause[E](cause: => Cause[E]): ZQuery[Any, E, Nothing] =
+    ZQuery(ZIO.succeed(Result.fail(cause)))
 
   /**
    * Performs a query for each element in a collection, collecting the results
@@ -981,8 +1036,9 @@ object ZQuery {
   /**
    * Constructs a query from an effect.
    */
+  @deprecated("use fromZIO", "0.3.0")
   def fromEffect[R, E, A](effect: ZIO[R, E, A]): ZQuery[R, E, A] =
-    ZQuery(effect.foldCause(Result.fail, Result.done).provideSome(_._1))
+    fromZIO(effect)
 
   /**
    * Constructs a query from an either
@@ -1045,8 +1101,15 @@ object ZQuery {
     fromRequest(request)(dataSource).uncached
 
   /**
+   * Constructs a query from an effect.
+   */
+  def fromZIO[R, E, A](effect: ZIO[R, E, A]): ZQuery[R, E, A] =
+    ZQuery(effect.foldCause(Result.fail, Result.done).provideSome(_._1))
+
+  /**
    * Constructs a query that fails with the specified cause.
    */
+  @deprecated("use failCause", "0.3.0")
   def halt[E](cause: => Cause[E]): ZQuery[Any, E, Nothing] =
     ZQuery(ZIO.succeed(Result.fail(cause)))
 
@@ -1054,7 +1117,7 @@ object ZQuery {
    * Constructs a query that never completes.
    */
   val never: ZQuery[Any, Nothing, Nothing] =
-    ZQuery.fromEffect(ZIO.never)
+    ZQuery.fromZIO(ZIO.never)
 
   /**
    * Constructs a query that succeds with the empty value.
@@ -1067,7 +1130,29 @@ object ZQuery {
    * into a collection of failed results and a collection of successful
    * results. Requests will be executed sequentially and will be pipelined.
    */
+  @deprecated("use partitionQuery", "0.3.0")
   def partitionM[R, E, A, B](
+    as: Iterable[A]
+  )(f: A => ZQuery[R, E, B])(implicit ev: CanFail[E]): ZQuery[R, Nothing, (Iterable[E], Iterable[B])] =
+    partitionQuery(as)(f)
+
+  /**
+   * Performs a query for each element in a collection, collecting the results
+   * into a collection of failed results and a collection of successful
+   * results. Requests will be executed in parallel and will be batched.
+   */
+  @deprecated("use partitionQueryPar", "0.3.0")
+  def partitionMPar[R, E, A, B](
+    as: Iterable[A]
+  )(f: A => ZQuery[R, E, B])(implicit ev: CanFail[E]): ZQuery[R, Nothing, (Iterable[E], Iterable[B])] =
+    partitionQueryPar(as)(f)
+
+  /**
+   * Performs a query for each element in a collection, collecting the results
+   * into a collection of failed results and a collection of successful
+   * results. Requests will be executed sequentially and will be pipelined.
+   */
+  def partitionQuery[R, E, A, B](
     as: Iterable[A]
   )(f: A => ZQuery[R, E, B])(implicit ev: CanFail[E]): ZQuery[R, Nothing, (Iterable[E], Iterable[B])] =
     ZQuery.foreach(as)(f(_).either).map(partitionMap(_)(identity))
@@ -1077,7 +1162,7 @@ object ZQuery {
    * into a collection of failed results and a collection of successful
    * results. Requests will be executed in parallel and will be batched.
    */
-  def partitionMPar[R, E, A, B](
+  def partitionQueryPar[R, E, A, B](
     as: Iterable[A]
   )(f: A => ZQuery[R, E, B])(implicit ev: CanFail[E]): ZQuery[R, Nothing, (Iterable[E], Iterable[B])] =
     ZQuery.foreachPar(as)(f(_).either).map(partitionMap(_)(identity))
@@ -1107,14 +1192,14 @@ object ZQuery {
    * Unwraps a query that is produced by an effect.
    */
   def unwrap[R, E, A](zio: ZIO[R, E, ZQuery[R, E, A]]): ZQuery[R, E, A] =
-    ZQuery.fromEffect(zio).flatten
+    ZQuery.fromZIO(zio).flatten
 
   final class AccessPartiallyApplied[R](private val dummy: Boolean = true) extends AnyVal {
     def apply[A](f: R => A): ZQuery[R, Nothing, A] =
       environment[R].map(f)
   }
 
-  final class AccessMPartiallyApplied[R](private val dummy: Boolean = true) extends AnyVal {
+  final class AccessQueryPartiallyApplied[R](private val dummy: Boolean = true) extends AnyVal {
     def apply[E, A](f: R => ZQuery[R, E, A]): ZQuery[R, E, A] =
       environment[R].flatMap(f)
   }
@@ -1146,7 +1231,7 @@ object ZQuery {
                             ZIO.succeedNow(Result.blocked(blockedRequests, Continue.effect(race(query, fiber))))
                           case Continue.Get(io) =>
                             ZIO.succeedNow(
-                              Result.blocked(blockedRequests, Continue.effect(race(ZQuery.fromEffect(io), fiber)))
+                              Result.blocked(blockedRequests, Continue.effect(race(ZQuery.fromZIO(io), fiber)))
                             )
                         }
                       case Result.Done(value) => rightFiber.interrupt *> ZIO.succeedNow(Result.done(value))
@@ -1157,7 +1242,7 @@ object ZQuery {
             )
           }
 
-        ZQuery.fromEffect(clock.get.sleep(duration).interruptible.as(b).fork).flatMap(fiber => race(self.map(f), fiber))
+        ZQuery.fromZIO(clock.get.sleep(duration).interruptible.as(b).fork).flatMap(fiber => race(self.map(f), fiber))
       }
   }
 

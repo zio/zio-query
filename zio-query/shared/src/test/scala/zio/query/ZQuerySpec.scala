@@ -54,8 +54,8 @@ object ZQuerySpec extends ZIOBaseSpec {
         test("arbitrary effects are executed in order") {
           for {
             ref    <- Ref.make(List.empty[Int])
-            query1  = ZQuery.fromEffect(ref.update(1 :: _))
-            query2  = ZQuery.fromEffect(ref.update(2 :: _))
+            query1  = ZQuery.fromZIO(ref.update(1 :: _))
+            query2  = ZQuery.fromZIO(ref.update(2 :: _))
             _      <- (query1 *> query2).run
             result <- ref.get
           } yield assert(result)(equalTo(List(2, 1)))
@@ -79,7 +79,7 @@ object ZQuerySpec extends ZIOBaseSpec {
         test("short circuits on failure") {
           for {
             ref    <- Ref.make(true)
-            query   = ZQuery.fail("fail") *> ZQuery.fromEffect(ref.set(false))
+            query   = ZQuery.fail("fail") *> ZQuery.fromZIO(ref.set(false))
             _      <- query.run.ignore
             result <- ref.get
           } yield assert(result)(isTrue)
@@ -100,8 +100,8 @@ object ZQuerySpec extends ZIOBaseSpec {
         test("arbitrary effects are executed in order") {
           for {
             ref    <- Ref.make(List.empty[Int])
-            query1  = ZQuery.fromEffect(ref.update(1 :: _))
-            query2  = ZQuery.fromEffect(ref.update(2 :: _))
+            query1  = ZQuery.fromZIO(ref.update(1 :: _))
+            query2  = ZQuery.fromZIO(ref.update(2 :: _))
             _      <- (query1.zipBatchedRight(query2)).run
             result <- ref.get
           } yield assert(result)(equalTo(List(2, 1)))
@@ -118,7 +118,7 @@ object ZQuerySpec extends ZIOBaseSpec {
         test("arbitrary effects can be executed in parallel") {
           for {
             promise <- Promise.make[Nothing, Unit]
-            _       <- (ZQuery.never <&> ZQuery.fromEffect(promise.succeed(()))).run.fork
+            _       <- (ZQuery.never <&> ZQuery.fromZIO(promise.succeed(()))).run.fork
             _       <- promise.await
           } yield assertCompletes
         },
@@ -164,7 +164,7 @@ object ZQuerySpec extends ZIOBaseSpec {
       },
       test("efficiency of large queries") {
         val query = for {
-          users <- ZQuery.fromEffect(
+          users <- ZQuery.fromZIO(
                      ZIO.succeed(
                        List.tabulate(Sources.totalCount)(id => User(id, "user name", id, id))
                      )
@@ -194,7 +194,7 @@ object ZQuerySpec extends ZIOBaseSpec {
           cache <- zio.query.Cache.empty
           query = for {
                     _ <- getUserNameById(1)
-                    _ <- ZQuery.fromEffect(cache.remove(GetNameById(1)))
+                    _ <- ZQuery.fromZIO(cache.remove(GetNameById(1)))
                     _ <- getUserNameById(1)
                   } yield ()
           _   <- query.runCache(cache)
@@ -211,7 +211,7 @@ object ZQuerySpec extends ZIOBaseSpec {
         },
         test("prevents subsequent requests to data sources from being executed") {
           for {
-            fiber <- (ZQuery.fromEffect(ZIO.sleep(2.seconds)) *> neverQuery).timeout(1.second).run.fork
+            fiber <- (ZQuery.fromZIO(ZIO.sleep(2.seconds)) *> neverQuery).timeout(1.second).run.fork
             _     <- TestClock.adjust(2.second)
             _     <- fiber.join
           } yield assertCompletes
@@ -220,12 +220,12 @@ object ZQuerySpec extends ZIOBaseSpec {
       test("regional caching should work with parallelism") {
         val left = for {
           _ <- getUserNameById(1)
-          _ <- ZQuery.fromEffect(ZIO.sleep(1000.milliseconds))
+          _ <- ZQuery.fromZIO(ZIO.sleep(1000.milliseconds))
           _ <- getUserNameById(1)
         } yield ()
         val right = for {
           _ <- getUserNameById(2)
-          _ <- ZQuery.fromEffect(ZIO.sleep(500.milliseconds))
+          _ <- ZQuery.fromZIO(ZIO.sleep(500.milliseconds))
         } yield ()
         val query = left.uncached.zipPar(right.cached)
         for {
@@ -248,8 +248,8 @@ object ZQuerySpec extends ZIOBaseSpec {
           for {
             promise1 <- Promise.make[Nothing, Unit]
             promise2 <- Promise.make[Nothing, Unit]
-            left      = ZQuery.fromEffect((promise1.succeed(()) *> ZIO.never).onInterrupt(promise2.succeed(())))
-            right     = ZQuery.fromEffect(promise1.await)
+            left      = ZQuery.fromZIO((promise1.succeed(()) *> ZIO.never).onInterrupt(promise2.succeed(())))
+            right     = ZQuery.fromZIO(promise1.await)
             _        <- left.race(right).run
             _        <- promise2.await
           } yield assertCompletes
@@ -308,12 +308,12 @@ object ZQuerySpec extends ZIOBaseSpec {
 
   case object GetFoo extends Request[Nothing, String]
   val getFoo: ZQuery[Has[Console], Nothing, String] = ZQuery.fromRequest(GetFoo)(
-    DataSource.fromFunctionM("foo")(_ => Console.printLine("Running foo query") *> ZIO.succeed("foo"))
+    DataSource.fromFunctionZIO("foo")(_ => Console.printLine("Running foo query") *> ZIO.succeed("foo"))
   )
 
   case object GetBar extends Request[Nothing, String]
   val getBar: ZQuery[Has[Console], Nothing, String] = ZQuery.fromRequest(GetBar)(
-    DataSource.fromFunctionM("bar")(_ => Console.printLine("Running bar query") *> ZIO.succeed("bar"))
+    DataSource.fromFunctionZIO("bar")(_ => Console.printLine("Running bar query") *> ZIO.succeed("bar"))
   )
 
   case object NeverRequest extends Request[Nothing, Nothing]
@@ -324,7 +324,7 @@ object ZQuerySpec extends ZIOBaseSpec {
   final case class SucceedRequest(promise: Promise[Nothing, Unit]) extends Request[Nothing, Unit]
 
   val succeedDataSource: DataSource[Any, SucceedRequest] =
-    DataSource.fromFunctionM("succeed") { case SucceedRequest(promise) =>
+    DataSource.fromFunctionZIO("succeed") { case SucceedRequest(promise) =>
       promise.succeed(()).unit
     }
 
@@ -420,7 +420,7 @@ object ZQuerySpec extends ZIOBaseSpec {
     val paymentData: Map[Int, Payment] = List.tabulate(totalCount)(i => i -> Payment(i, "payment name")).toMap
     case class GetPayment(id: Int) extends Request[Nothing, Payment]
     val paymentSource: DataSource[Any, GetPayment] =
-      DataSource.fromFunctionBatchedOptionM("PaymentSource") { (requests: Chunk[GetPayment]) =>
+      DataSource.fromFunctionBatchedOptionZIO("PaymentSource") { (requests: Chunk[GetPayment]) =>
         ZIO.succeed(requests.map(req => paymentData.get(req.id)))
       }
 
@@ -430,7 +430,7 @@ object ZQuerySpec extends ZIOBaseSpec {
     val addressData: Map[Int, Address] = List.tabulate(totalCount)(i => i -> Address(i, "street")).toMap
     case class GetAddress(id: Int) extends Request[Nothing, Address]
     val addressSource: DataSource[Any, GetAddress] =
-      DataSource.fromFunctionBatchedOptionM("AddressSource") { (requests: Chunk[GetAddress]) =>
+      DataSource.fromFunctionBatchedOptionZIO("AddressSource") { (requests: Chunk[GetAddress]) =>
         ZIO.succeed(requests.map(req => addressData.get(req.id)))
       }
 
