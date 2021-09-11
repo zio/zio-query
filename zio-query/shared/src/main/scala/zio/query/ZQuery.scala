@@ -157,11 +157,9 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
    *
    * Inverse of [[ZQuery.some]]
    */
+  @deprecated("use unoption", "0.3.0")
   def collectSome[E1](implicit ev: E IsSubtypeOfError Option[E1]): ZQuery[R, E1, Option[A]] =
-    self.foldQuery(
-      _.fold[ZQuery[R, E1, Option[A]]](ZQuery.none)(ZQuery.fail(_)),
-      a => ZQuery.some(a)
-    )
+    unoption
 
   /**
    * Returns a query whose failure and success have been lifted into an
