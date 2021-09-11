@@ -101,7 +101,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
    *
    * The inverse of [[ZQuery.either]]
    */
-  def absolve[E1 >: E, B](implicit ev: A <:< Either[E1, B]): ZQuery[R, E1, B] =
+  def absolve[E1 >: E, B](implicit ev: A IsSubtypeOfOutput Either[E1, B]): ZQuery[R, E1, B] =
     ZQuery.absolve(self.map(ev))
 
   /**
@@ -157,7 +157,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
    *
    * Inverse of [[ZQuery.some]]
    */
-  def collectSome[E1](implicit ev: E <:< Option[E1]): ZQuery[R, E1, Option[A]] =
+  def collectSome[E1](implicit ev: E IsSubtypeOfError Option[E1]): ZQuery[R, E1, Option[A]] =
     self.foldQuery(
       _.fold[ZQuery[R, E1, Option[A]]](ZQuery.none)(ZQuery.fail(_)),
       a => ZQuery.some(a)
@@ -212,7 +212,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
    *
    * This method can be used to "flatten" nested queries.
    */
-  final def flatten[R1 <: R, E1 >: E, B](implicit ev: A <:< ZQuery[R1, E1, B]): ZQuery[R1, E1, B] =
+  final def flatten[R1 <: R, E1 >: E, B](implicit ev: A IsSubtypeOfOutput ZQuery[R1, E1, B]): ZQuery[R1, E1, B] =
     flatMap(ev)
 
   /**
@@ -343,7 +343,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
   /**
    * Converts this query to one that dies if a query failure occurs.
    */
-  final def orDie(implicit ev1: E <:< Throwable, ev2: CanFail[E]): ZQuery[R, Nothing, A] =
+  final def orDie(implicit ev1: E IsSubtypeOfError Throwable, ev2: CanFail[E]): ZQuery[R, Nothing, A] =
     orDieWith(ev1)
 
   /**
@@ -431,7 +431,9 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
   /**
    * Keeps some of the errors, and terminates the query with the rest
    */
-  def refineOrDie[E1](pf: PartialFunction[E, E1])(implicit ev1: E <:< Throwable, ev2: CanFail[E]): ZQuery[R, E1, A] =
+  def refineOrDie[E1](
+    pf: PartialFunction[E, E1]
+  )(implicit ev1: E IsSubtypeOfError Throwable, ev2: CanFail[E]): ZQuery[R, E1, A] =
     refineOrDieWith(pf)(ev1)
 
   /**
@@ -495,7 +497,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
    *
    * Inverse of [[ZQuery.collectSome]]
    */
-  def some[B](implicit ev: A <:< Option[B]): ZQuery[R, Option[E], B] =
+  def some[B](implicit ev: A IsSubtypeOfOutput Option[B]): ZQuery[R, Option[E], B] =
     self.foldQuery[R, Option[E], B](
       e => ZQuery.fail(Some(e)),
       ev(_) match {
@@ -507,7 +509,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
   /**
    * Extracts the optional value or fails with the given error `e`.
    */
-  final def someOrFail[B, E1 >: E](e: => E1)(implicit ev: A <:< Option[B]): ZQuery[R, E1, B] =
+  final def someOrFail[B, E1 >: E](e: => E1)(implicit ev: A IsSubtypeOfOutput Option[B]): ZQuery[R, E1, B] =
     self.flatMap { a =>
       ev(a) match {
         case Some(b) => ZQuery.succeed(b)
