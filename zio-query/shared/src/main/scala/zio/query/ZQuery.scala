@@ -1,11 +1,9 @@
 package zio.query
 
-import scala.collection.mutable.Builder
 import zio._
-import zio.clock._
-import zio.duration._
 import zio.query.internal._
 
+import scala.collection.mutable.Builder
 import scala.reflect.ClassTag
 
 /**
@@ -228,7 +226,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
     success: A => ZQuery[R1, E1, B]
   ): ZQuery[R1, E1, B] =
     ZQuery {
-      step.foldCauseM(
+      step.foldCauseZIO(
         failure(_).step,
         {
           case Result.Blocked(br, c) => ZIO.succeedNow(Result.blocked(br, c.foldCauseM(failure, success)))
@@ -353,7 +351,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
     layer: Described[ZLayer[R0, E1, R1]]
   )(implicit ev1: R1 <:< R, ev2: NeedsEnv[R]): ZQuery[R0, E1, A] =
     ZQuery {
-      layer.value.build.provideSome[(R0, QueryContext)](_._1).run.use {
+      layer.value.build.provideSome[(R0, QueryContext)](_._1).exit.use {
         case Exit.Failure(e) => ZIO.succeedNow(Result.fail(e))
         case Exit.Success(r) => self.provide(Described(r, layer.description)).step
       }
@@ -382,7 +380,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
       exit: Exit[Nothing, Result[R1, E1, A1]],
       fiber: Fiber[Nothing, Result[R1, E1, A1]]
     ): ZIO[(R1, QueryContext), Nothing, Result[R1, E1, A1]] =
-      exit.foldM(
+      exit.foldZIO(
         cause => fiber.join.map(_.mapErrorCause(_ && cause)),
         {
           case Result.Blocked(blockedRequests, continue) =>
@@ -524,28 +522,28 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
   /**
    * Returns a new query that executes this one and times the execution.
    */
-  final def timed: ZQuery[R with Clock, E, (Duration, A)] =
-    summarized(clock.nanoTime)((start, end) => Duration.fromNanos(end - start))
+  final def timed: ZQuery[R with Has[Clock], E, (Duration, A)] =
+    summarized(Clock.nanoTime)((start, end) => Duration.fromNanos(end - start))
 
   /**
    * Returns an effect that will timeout this query, returning `None` if the
    * timeout elapses before the query was completed.
    */
-  final def timeout(duration: Duration): ZQuery[R with Clock, E, Option[A]] =
+  final def timeout(duration: Duration): ZQuery[R with Has[Clock], E, Option[A]] =
     timeoutTo(None)(Some(_))(duration)
 
   /**
    * The same as [[timeout]], but instead of producing a `None` in the event
    * of timeout, it will produce the specified error.
    */
-  final def timeoutFail[E1 >: E](e: => E1)(duration: Duration): ZQuery[R with Clock, E1, A] =
+  final def timeoutFail[E1 >: E](e: => E1)(duration: Duration): ZQuery[R with Has[Clock], E1, A] =
     timeoutTo(ZQuery.fail(e))(ZQuery.succeedNow)(duration).flatten
 
   /**
    * The same as [[timeout]], but instead of producing a `None` in the event
    * of timeout, it will produce the specified failure.
    */
-  final def timeoutHalt[E1 >: E](cause: Cause[E1])(duration: Duration): ZQuery[R with Clock, E1, A] =
+  final def timeoutHalt[E1 >: E](cause: Cause[E1])(duration: Duration): ZQuery[R with Has[Clock], E1, A] =
     timeoutTo(ZQuery.halt(cause))(ZQuery.succeedNow)(duration).flatten
 
   /**
@@ -726,7 +724,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
     step.provideSome[R]((_, queryContext)).flatMap {
       case Result.Blocked(br, c) => br.run(queryContext.cache) *> c.runContext(queryContext)
       case Result.Done(a)        => ZIO.succeedNow(a)
-      case Result.Fail(e)        => ZIO.halt(e)
+      case Result.Fail(e)        => ZIO.failCause(e)
     }
 }
 
@@ -1129,8 +1127,8 @@ object ZQuery {
   }
 
   final class TimeoutTo[-R, +E, +A, +B](self: ZQuery[R, E, A], b: B) {
-    def apply[B1 >: B](f: A => B1)(duration: Duration): ZQuery[R with Clock, E, B1] =
-      ZQuery.environment[Clock].flatMap { clock =>
+    def apply[B1 >: B](f: A => B1)(duration: Duration): ZQuery[R with Has[Clock], E, B1] =
+      ZQuery.environment[Has[Clock]].flatMap { clock =>
         def race(
           query: ZQuery[R, E, B1],
           fiber: Fiber[Nothing, B1]
@@ -1138,7 +1136,7 @@ object ZQuery {
           ZQuery {
             query.step.raceWith[(R, QueryContext), Nothing, Nothing, B1, Result[R, E, B1]](fiber.join)(
               (leftExit, rightFiber) =>
-                leftExit.foldM(
+                leftExit.foldZIO(
                   cause => rightFiber.interrupt *> ZIO.succeedNow(Result.fail(cause)),
                   result =>
                     result match {

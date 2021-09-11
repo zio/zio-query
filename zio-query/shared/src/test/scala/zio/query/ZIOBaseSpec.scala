@@ -1,6 +1,6 @@
 package zio.query
 
-import zio.duration._
+import zio._
 import zio.test._
 
 trait ZIOBaseSpec extends DefaultRunnableSpec {

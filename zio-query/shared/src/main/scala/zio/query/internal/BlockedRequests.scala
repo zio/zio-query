@@ -58,17 +58,17 @@ private[query] sealed trait BlockedRequests[-R] { self =>
    * parallel.
    */
   def run(cache: Cache): ZIO[R, Nothing, Unit] =
-    ZIO.effectSuspendTotal {
-      ZIO.foreach_(BlockedRequests.flatten(self)) { requestsByDataSource =>
-        ZIO.foreachPar_(requestsByDataSource.toIterable) { case (dataSource, sequential) =>
+    ZIO.suspendSucceed {
+      ZIO.foreachDiscard(BlockedRequests.flatten(self)) { requestsByDataSource =>
+        ZIO.foreachParDiscard(requestsByDataSource.toIterable) { case (dataSource, sequential) =>
           for {
             completedRequests <- dataSource.runAll(sequential.map(_.map(_.request)))
             blockedRequests    = sequential.flatten
             leftovers          = completedRequests.requests -- blockedRequests.map(_.request)
-            _ <- ZIO.foreach_(blockedRequests) { blockedRequest =>
+            _ <- ZIO.foreachDiscard(blockedRequests) { blockedRequest =>
                    blockedRequest.result.set(completedRequests.lookup(blockedRequest.request))
                  }
-            _ <- ZIO.foreach_(leftovers) { request =>
+            _ <- ZIO.foreachDiscard(leftovers) { request =>
                    Ref.make(completedRequests.lookup(request)).flatMap(cache.put(request, _))
                  }
           } yield ()

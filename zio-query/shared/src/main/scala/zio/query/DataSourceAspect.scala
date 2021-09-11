@@ -45,7 +45,7 @@ object DataSourceAspect {
         new DataSource[R1, A] {
           val identifier = s"${dataSource.identifier} @@ around(${before.description})(${after.description})"
           def runAll(requests: Chunk[Chunk[A]]): ZIO[R1, Nothing, CompletedRequestMap] =
-            before.value.bracket(after.value)(_ => dataSource.runAll(requests))
+            before.value.acquireReleaseWith(after.value)(_ => dataSource.runAll(requests))
         }
     }
 

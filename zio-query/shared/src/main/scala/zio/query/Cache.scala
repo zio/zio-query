@@ -52,7 +52,7 @@ object Cache {
   private final class Default(private val state: Ref[Map[Any, Any]]) extends Cache {
 
     def get[E, A](request: Request[E, A]): IO[Unit, Ref[Option[Either[E, A]]]] =
-      state.get.map(_.get(request).asInstanceOf[Option[Ref[Option[Either[E, A]]]]]).get.orElseFail(())
+      state.get.map(_.get(request).asInstanceOf[Option[Ref[Option[Either[E, A]]]]]).some.orElseFail(())
 
     def lookup[R, E, A, B](request: A)(implicit
       ev: A <:< Request[E, B]
