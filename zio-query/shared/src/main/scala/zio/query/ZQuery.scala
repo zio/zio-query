@@ -70,7 +70,9 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
   /**
    * A symbolic alias for `zipPar`.
    */
-  final def <&>[R1 <: R, E1 >: E, B](that: ZQuery[R1, E1, B]): ZQuery[R1, E1, (A, B)] =
+  final def <&>[R1 <: R, E1 >: E, B](that: ZQuery[R1, E1, B])(implicit
+    zippable: Zippable[A, B]
+  ): ZQuery[R1, E1, zippable.Out] =
     zipPar(that)
 
   /**
@@ -82,7 +84,9 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
   /**
    * A symbolic alias for `zip`.
    */
-  final def <*>[R1 <: R, E1 >: E, B](that: ZQuery[R1, E1, B]): ZQuery[R1, E1, (A, B)] =
+  final def <*>[R1 <: R, E1 >: E, B](that: ZQuery[R1, E1, B])(implicit
+    zippable: Zippable[A, B]
+  ): ZQuery[R1, E1, zippable.Out] =
     zip(that)
 
   /**
@@ -633,16 +637,20 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
    * Returns a query that models the execution of this query and the specified
    * query sequentially, combining their results into a tuple.
    */
-  final def zip[R1 <: R, E1 >: E, B](that: ZQuery[R1, E1, B]): ZQuery[R1, E1, (A, B)] =
-    zipWith(that)((_, _))
+  final def zip[R1 <: R, E1 >: E, B](that: ZQuery[R1, E1, B])(implicit
+    zippable: Zippable[A, B]
+  ): ZQuery[R1, E1, zippable.Out] =
+    zipWith(that)(zippable.zip(_, _))
 
   /**
    * Returns a query that models the execution of this query and the specified
    * query, batching requests to data sources and combining their results into
    * a tuple.
    */
-  final def zipBatched[R1 <: R, E1 >: E, B](that: ZQuery[R1, E1, B]): ZQuery[R1, E1, (A, B)] =
-    zipWithBatched(that)((_, _))
+  final def zipBatched[R1 <: R, E1 >: E, B](that: ZQuery[R1, E1, B])(implicit
+    zippable: Zippable[A, B]
+  ): ZQuery[R1, E1, zippable.Out] =
+    zipWithBatched(that)(zippable.zip(_, _))
 
   /**
    * Returns a query that models the execution of this query and the specified
@@ -671,8 +679,10 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
    * Returns a query that models the execution of this query and the specified
    * query in parallel, combining their results into a tuple.
    */
-  final def zipPar[R1 <: R, E1 >: E, B](that: ZQuery[R1, E1, B]): ZQuery[R1, E1, (A, B)] =
-    zipWithPar(that)((_, _))
+  final def zipPar[R1 <: R, E1 >: E, B](that: ZQuery[R1, E1, B])(implicit
+    zippable: Zippable[A, B]
+  ): ZQuery[R1, E1, zippable.Out] =
+    zipWithPar(that)(zippable.zip(_, _))
 
   /**
    * Returns a query that models the execution of this query and the specified
