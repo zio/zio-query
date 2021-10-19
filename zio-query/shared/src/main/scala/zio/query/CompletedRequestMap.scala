@@ -1,5 +1,7 @@
 package zio.query
 
+import zio.stacktracer.TracingImplicits.disableAutoTrace
+
 /**
  * A `CompletedRequestMap` is a universally quantified mapping from requests
  * of type `Request[E, A]` to results of type `Either[E, A[` for all types `E`

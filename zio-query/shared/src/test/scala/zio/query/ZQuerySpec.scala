@@ -364,7 +364,9 @@ object ZQuerySpec extends ZIOBaseSpec {
             ref.get
           val identifier: String =
             "CacheDataSource"
-          def runAll(requests: Chunk[Chunk[CacheRequest[Any]]]): ZIO[Any, Nothing, CompletedRequestMap] =
+          def runAll(requests: Chunk[Chunk[CacheRequest[Any]]])(implicit
+            trace: ZTraceElement
+          ): ZIO[Any, Nothing, CompletedRequestMap] =
             ref.update(requests.map(_.toSet).toList :: _) *>
               ZIO
                 .foreach(requests) { requests =>
@@ -467,7 +469,9 @@ object ZQuerySpec extends ZIOBaseSpec {
   }
 
   val ds: DataSource.Batched[Has[Console], Req[_]] = new DataSource.Batched[Has[Console], Req[_]] {
-    override def run(requests: Chunk[Req[_]]): ZIO[Has[Console], Nothing, CompletedRequestMap] = {
+    override def run(
+      requests: Chunk[Req[_]]
+    )(implicit trace: ZTraceElement): ZIO[Has[Console], Nothing, CompletedRequestMap] = {
       val (all, oneByOne) = requests.partition {
         case Req.GetAll => true
         case Req.Get(_) => false

@@ -2,7 +2,8 @@ package zio.query.internal
 
 import zio.query._
 import zio.query.internal.Continue._
-import zio.{ CanFail, Cause, IO, NeedsEnv, Ref, ZIO }
+import zio.stacktracer.TracingImplicits.disableAutoTrace
+import zio.{ CanFail, Cause, IO, NeedsEnv, Ref, ZIO, ZTraceElement }
 
 /**
  * A `Continue[R, E, A]` models a continuation of a blocked request that
@@ -18,7 +19,10 @@ private[query] sealed trait Continue[-R, +E, +A] { self =>
   /**
    * Purely folds over the failure and success types of this continuation.
    */
-  final def fold[B](failure: E => B, success: A => B)(implicit ev: CanFail[E]): Continue[R, Nothing, B] =
+  final def fold[B](failure: E => B, success: A => B)(implicit
+    ev: CanFail[E],
+    trace: ZTraceElement
+  ): Continue[R, Nothing, B] =
     self match {
       case Effect(query) => effect(query.fold(failure, success))
       case Get(io)       => get(io.fold(failure, success))
@@ -30,7 +34,7 @@ private[query] sealed trait Continue[-R, +E, +A] { self =>
   final def foldCauseQuery[R1 <: R, E1, B](
     failure: Cause[E] => ZQuery[R1, E1, B],
     success: A => ZQuery[R1, E1, B]
-  ): Continue[R1, E1, B] =
+  )(implicit trace: ZTraceElement): Continue[R1, E1, B] =
     self match {
       case Effect(query) => effect(query.foldCauseQuery(failure, success))
       case Get(io)       => effect(ZQuery.fromZIO(io).foldCauseQuery(failure, success))
@@ -39,7 +43,7 @@ private[query] sealed trait Continue[-R, +E, +A] { self =>
   /**
    * Purely maps over the success type of this continuation.
    */
-  final def map[B](f: A => B): Continue[R, E, B] =
+  final def map[B](f: A => B)(implicit trace: ZTraceElement): Continue[R, E, B] =
     self match {
       case Effect(query) => effect(query.map(f))
       case Get(io)       => get(io.map(f))
@@ -48,7 +52,7 @@ private[query] sealed trait Continue[-R, +E, +A] { self =>
   /**
    * Transforms all data sources with the specified data source aspect.
    */
-  final def mapDataSources[R1 <: R](f: DataSourceAspect[R1]): Continue[R1, E, A] =
+  final def mapDataSources[R1 <: R](f: DataSourceAspect[R1])(implicit trace: ZTraceElement): Continue[R1, E, A] =
     self match {
       case Effect(query) => effect(query.mapDataSources(f))
       case Get(io)       => get(io)
@@ -57,7 +61,7 @@ private[query] sealed trait Continue[-R, +E, +A] { self =>
   /**
    * Purely maps over the failure type of this continuation.
    */
-  final def mapError[E1](f: E => E1)(implicit ev: CanFail[E]): Continue[R, E1, A] =
+  final def mapError[E1](f: E => E1)(implicit ev: CanFail[E], trace: ZTraceElement): Continue[R, E1, A] =
     self match {
       case Effect(query) => effect(query.mapError(f))
       case Get(io)       => get(io.mapError(f))
@@ -66,7 +70,7 @@ private[query] sealed trait Continue[-R, +E, +A] { self =>
   /**
    * Purely maps over the failure cause of this continuation.
    */
-  final def mapErrorCause[E1](f: Cause[E] => Cause[E1]): Continue[R, E1, A] =
+  final def mapErrorCause[E1](f: Cause[E] => Cause[E1])(implicit trace: ZTraceElement): Continue[R, E1, A] =
     self match {
       case Effect(query) => effect(query.mapErrorCause(f))
       case Get(io)       => get(io.mapErrorCause(f))
@@ -75,7 +79,9 @@ private[query] sealed trait Continue[-R, +E, +A] { self =>
   /**
    * Effectually maps over the success type of this continuation.
    */
-  final def mapQuery[R1 <: R, E1 >: E, B](f: A => ZQuery[R1, E1, B]): Continue[R1, E1, B] =
+  final def mapQuery[R1 <: R, E1 >: E, B](
+    f: A => ZQuery[R1, E1, B]
+  )(implicit trace: ZTraceElement): Continue[R1, E1, B] =
     self match {
       case Effect(query) => effect(query.flatMap(f))
       case Get(io)       => effect(ZQuery.fromZIO(io).flatMap(f))
@@ -84,7 +90,7 @@ private[query] sealed trait Continue[-R, +E, +A] { self =>
   /**
    * Purely contramaps over the environment type of this continuation.
    */
-  final def provideSome[R0](f: Described[R0 => R])(implicit ev: NeedsEnv[R]): Continue[R0, E, A] =
+  final def provideSome[R0](f: Described[R0 => R])(implicit ev: NeedsEnv[R], trace: ZTraceElement): Continue[R0, E, A] =
     self match {
       case Effect(query) => effect(query.provideSome(f))
       case Get(io)       => get(io)
@@ -93,7 +99,7 @@ private[query] sealed trait Continue[-R, +E, +A] { self =>
   /**
    * Runs this continuation.
    */
-  final def runContext(queryContext: QueryContext): ZIO[R, E, A] =
+  final def runContext(queryContext: QueryContext)(implicit trace: ZTraceElement): ZIO[R, E, A] =
     self match {
       case Effect(query) => query.runContext(queryContext)
       case Get(io)       => io
@@ -103,7 +109,9 @@ private[query] sealed trait Continue[-R, +E, +A] { self =>
    * Combines this continuation with that continuation using the specified
    * function, in sequence.
    */
-  final def zipWith[R1 <: R, E1 >: E, B, C](that: Continue[R1, E1, B])(f: (A, B) => C): Continue[R1, E1, C] =
+  final def zipWith[R1 <: R, E1 >: E, B, C](
+    that: Continue[R1, E1, B]
+  )(f: (A, B) => C)(implicit trace: ZTraceElement): Continue[R1, E1, C] =
     (self, that) match {
       case (Effect(l), Effect(r)) => effect(l.zipWith(r)(f))
       case (Effect(l), Get(r))    => effect(l.zipWith(ZQuery.fromZIO(r))(f))
@@ -115,7 +123,9 @@ private[query] sealed trait Continue[-R, +E, +A] { self =>
    * Combines this continuation with that continuation using the specified
    * function, in parallel.
    */
-  final def zipWithPar[R1 <: R, E1 >: E, B, C](that: Continue[R1, E1, B])(f: (A, B) => C): Continue[R1, E1, C] =
+  final def zipWithPar[R1 <: R, E1 >: E, B, C](
+    that: Continue[R1, E1, B]
+  )(f: (A, B) => C)(implicit trace: ZTraceElement): Continue[R1, E1, C] =
     (self, that) match {
       case (Effect(l), Effect(r)) => effect(l.zipWithPar(r)(f))
       case (Effect(l), Get(r))    => effect(l.zipWith(ZQuery.fromZIO(r))(f))
@@ -127,7 +137,9 @@ private[query] sealed trait Continue[-R, +E, +A] { self =>
    * Combines this continuation with that continuation using the specified
    * function, batching requests to data sources.
    */
-  final def zipWithBatched[R1 <: R, E1 >: E, B, C](that: Continue[R1, E1, B])(f: (A, B) => C): Continue[R1, E1, C] =
+  final def zipWithBatched[R1 <: R, E1 >: E, B, C](
+    that: Continue[R1, E1, B]
+  )(f: (A, B) => C)(implicit trace: ZTraceElement): Continue[R1, E1, C] =
     (self, that) match {
       case (Effect(l), Effect(r)) => effect(l.zipWithBatched(r)(f))
       case (Effect(l), Get(r))    => effect(l.zipWith(ZQuery.fromZIO(r))(f))
@@ -143,7 +155,8 @@ private[query] object Continue {
    * will contain the result of the request when it is executed.
    */
   def apply[R, E, A, B](request: A, dataSource: DataSource[R, A], ref: Ref[Option[Either[E, B]]])(implicit
-    ev: A <:< Request[E, B]
+    ev: A <:< Request[E, B],
+    trace: ZTraceElement
   ): Continue[R, E, B] =
     Continue.get {
       ref.get.flatMap {

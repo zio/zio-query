@@ -49,6 +49,14 @@ lazy val zioQuery = crossProject(JSPlatform, JVMPlatform)
     )
   )
   .settings(testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework"))
+  .settings(
+    scalacOptions ++= {
+      if (scalaVersion.value == ScalaDotty)
+        Seq.empty
+      else
+        Seq("-P:silencer:globalFilters=[zio.stacktracer.TracingImplicits.disableAutoTrace]")
+    }
+  )
 
 lazy val zioQueryJS = zioQuery.js
   .settings(dottySettings)

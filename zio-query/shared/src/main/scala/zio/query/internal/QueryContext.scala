@@ -1,6 +1,7 @@
 package zio.query.internal
 
 import zio.query.Cache
+import zio.stacktracer.TracingImplicits.disableAutoTrace
 import zio.FiberRef
 
 /**

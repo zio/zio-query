@@ -1,6 +1,7 @@
 package zio.query
 
-import zio.{ IO, Ref, UIO }
+import zio.{ IO, Ref, UIO, ZTraceElement }
+import zio.stacktracer.TracingImplicits.disableAutoTrace
 
 /**
  * A `Cache` maintains an internal state with a mapping from requests to `Ref`s
@@ -16,7 +17,7 @@ trait Cache {
    * in the cache but has not been executed yet, or `Ref(Some(value))` if the
    * request has been executed.
    */
-  def get[E, A](request: Request[E, A]): IO[Unit, Ref[Option[Either[E, A]]]]
+  def get[E, A](request: Request[E, A])(implicit trace: ZTraceElement): IO[Unit, Ref[Option[Either[E, A]]]]
 
   /**
    * Looks up a request in the cache. If the request is not in the cache
@@ -26,19 +27,20 @@ trait Cache {
    * or `None` if the request has not been executed yet.
    */
   def lookup[R, E, A, B](request: A)(implicit
-    ev: A <:< Request[E, B]
+    ev: A <:< Request[E, B],
+    trace: ZTraceElement
   ): UIO[Either[Ref[Option[Either[E, B]]], Ref[Option[Either[E, B]]]]]
 
   /**
    * Inserts a request and a `Ref` that will contain the result of the request
    * when it is executed into the cache.
    */
-  def put[E, A](request: Request[E, A], result: Ref[Option[Either[E, A]]]): UIO[Unit]
+  def put[E, A](request: Request[E, A], result: Ref[Option[Either[E, A]]])(implicit trace: ZTraceElement): UIO[Unit]
 
   /**
    * Removes a request from the cache.
    */
-  def remove[E, A](request: Request[E, A]): UIO[Unit]
+  def remove[E, A](request: Request[E, A])(implicit trace: ZTraceElement): UIO[Unit]
 }
 
 object Cache {
@@ -46,16 +48,17 @@ object Cache {
   /**
    * Constructs an empty cache.
    */
-  val empty: UIO[Cache] =
+  def empty(implicit trace: ZTraceElement): UIO[Cache] =
     Ref.make(Map.empty[Any, Any]).map(new Default(_))
 
   private final class Default(private val state: Ref[Map[Any, Any]]) extends Cache {
 
-    def get[E, A](request: Request[E, A]): IO[Unit, Ref[Option[Either[E, A]]]] =
+    def get[E, A](request: Request[E, A])(implicit trace: ZTraceElement): IO[Unit, Ref[Option[Either[E, A]]]] =
       state.get.map(_.get(request).asInstanceOf[Option[Ref[Option[Either[E, A]]]]]).some.orElseFail(())
 
     def lookup[R, E, A, B](request: A)(implicit
-      ev: A <:< Request[E, B]
+      ev: A <:< Request[E, B],
+      trace: ZTraceElement
     ): UIO[Either[Ref[Option[Either[E, B]]], Ref[Option[Either[E, B]]]]] =
       Ref.make(Option.empty[Either[E, B]]).flatMap { ref =>
         state.modify { map =>
@@ -66,10 +69,10 @@ object Cache {
         }
       }
 
-    def put[E, A](request: Request[E, A], result: Ref[Option[Either[E, A]]]): UIO[Unit] =
+    def put[E, A](request: Request[E, A], result: Ref[Option[Either[E, A]]])(implicit trace: ZTraceElement): UIO[Unit] =
       state.update(_ + (request -> result))
 
-    def remove[E, A](request: Request[E, A]): UIO[Unit] =
+    def remove[E, A](request: Request[E, A])(implicit trace: ZTraceElement): UIO[Unit] =
       state.update(_ - request)
   }
 }
