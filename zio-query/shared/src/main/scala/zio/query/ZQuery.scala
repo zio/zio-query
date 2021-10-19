@@ -1236,7 +1236,7 @@ object ZQuery {
     def apply[E1 >: E, R1 <: Has[_]](
       layer: => Described[ZLayer[R0, E1, R1]]
     )(implicit ev1: R0 with R1 <:< R, ev2: NeedsEnv[R], tag: Tag[R1]): ZQuery[R0, E1, A] =
-      self.provideLayer[E1, R0, R0 with R1](Described(ZLayer.identity[R0] ++ layer.value, layer.description))
+      self.provideLayer[E1, R0, R0 with R1](Described(ZLayer.environment[R0] ++ layer.value, layer.description))
   }
 
   final class TimeoutTo[-R, +E, +A, +B](self: ZQuery[R, E, A], b: () => B) {
