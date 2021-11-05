@@ -489,7 +489,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
    *
    * Inverse of [[ZQuery.collectSome]]
    */
-  def some[B](implicit ev: A <:< Option[B]): ZQuery[R, Option[E], B] =
+  final def some[B](implicit ev: A <:< Option[B]): ZQuery[R, Option[E], B] =
     self.foldM[R, Option[E], B](
       e => ZQuery.fail(Some(e)),
       ev(_) match {
@@ -497,6 +497,23 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
         case None    => ZQuery.fail(None)
       }
     )
+
+  /**
+   * Extracts the optional value or succeeds with the given 'default' value.
+   */
+  final def someOrElse[B](default: => B)(implicit ev: A <:< Option[B]): ZQuery[R, E, B] =
+    self.map(_.getOrElse(default))
+
+  /**
+   * Extracts the optional value or executes the given 'default' query.
+   */
+  final def someOrElseM[B, R1 <: R, E1 >: E](
+    default: ZQuery[R1, E1, B]
+  )(implicit ev: A <:< Option[B]): ZQuery[R1, E1, B] =
+    self.flatMap(ev(_) match {
+      case Some(value) => ZQuery.succeed(value)
+      case None        => default
+    })
 
   /**
    * Extracts the optional value or fails with the given error `e`.
