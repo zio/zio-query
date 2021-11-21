@@ -43,9 +43,9 @@ lazy val zioQuery = crossProject(JSPlatform, JVMPlatform)
   .settings(buildInfoSettings("zio.query"))
   .settings(
     libraryDependencies ++= Seq(
-      "dev.zio" %%% "zio"          % zioVersion,
-      "dev.zio" %%% "zio-test"     % zioVersion % "test",
-      "dev.zio" %%% "zio-test-sbt" % zioVersion % "test"
+      "dev.zio" %% "zio"          % zioVersion,
+      "dev.zio" %% "zio-test"     % zioVersion % "test",
+      "dev.zio" %% "zio-test-sbt" % zioVersion % "test"
     )
   )
   .settings(testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework"))
@@ -61,12 +61,6 @@ lazy val zioQuery = crossProject(JSPlatform, JVMPlatform)
 lazy val zioQueryJS = zioQuery.js
   .settings(dottySettings)
   .settings(scalaJSUseMainModuleInitializer := true)
-  .settings(
-    libraryDependencies ++= List(
-      "io.github.cquiroz" %%% "scala-java-time"      % "2.3.0" % "test",
-      "io.github.cquiroz" %%% "scala-java-time-tzdb" % "2.3.0" % "test"
-    )
-  )
 
 lazy val zioQueryJVM = zioQuery.jvm
   .settings(dottySettings)
