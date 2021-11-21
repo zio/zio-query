@@ -3,7 +3,7 @@ package zio.query
 import zio._
 import zio.query.DataSourceAspect._
 import zio.test.Assertion._
-import zio.test.TestAspect.{ after, nonFlaky, silent }
+import zio.test.TestAspect.{ after, jvm, nonFlaky, silent }
 import zio.test._
 import zio.test.{ TestClock, TestConsole, TestEnvironment }
 
@@ -238,7 +238,7 @@ object ZQuerySpec extends ZIOBaseSpec {
           assert(log)(hasAt(0)(containsString("GetNameById(1)"))) &&
           assert(log)(hasAt(0)(containsString("GetNameById(2)"))) &&
           assert(log)(hasAt(1)(containsString("GetNameById(1)")))
-      } @@ nonFlaky,
+      } @@ jvm(nonFlaky),
       suite("race")(
         test("race with never") {
           val query = ZQuery.never.race(ZQuery.succeed(()))
