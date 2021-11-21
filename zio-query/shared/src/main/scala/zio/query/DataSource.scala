@@ -118,7 +118,7 @@ trait DataSource[-R, -A] { self =>
    */
   @deprecated("use provideEnvironment", "2.0.0")
   final def provide(r: Described[ZEnvironment[R]])(implicit ev: NeedsEnv[R]): DataSource[Any, A] =
-    provide(r)
+    provideEnvironment(r)
 
   /**
    * Provides this data source with its required environment.

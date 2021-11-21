@@ -88,7 +88,7 @@ object ZQuerySpec extends ZIOBaseSpec {
           val query = Cache.getAll *> Cache.put(0, 1) *> Cache.getAll
           assertM(query.uncached.run)(equalTo(Map(0 -> 1)))
         } @@ nonFlaky
-      ).provideCustomLayer(Cache.live),
+      ).provideCustom(Cache.live),
       suite("zipBatched")(
         test("queries to multiple data sources can be executed in parallel") {
           for {

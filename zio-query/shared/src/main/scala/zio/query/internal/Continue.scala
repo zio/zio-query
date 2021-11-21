@@ -94,10 +94,7 @@ private[query] sealed trait Continue[-R, +E, +A] { self =>
   final def provideSome[R0](
     f: Described[ZEnvironment[R0] => ZEnvironment[R]]
   )(implicit ev: NeedsEnv[R], trace: ZTraceElement): Continue[R0, E, A] =
-    self match {
-      case Effect(query) => effect(query.provideSomeEnvironment(f))
-      case Get(io)       => get(io)
-    }
+    provideSomeEnvironment(f)
 
   /**
    * Purely contramaps over the environment type of this continuation.

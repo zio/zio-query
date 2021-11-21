@@ -42,7 +42,7 @@ import scala.reflect.ClassTag
  * Concise Data Access" by Simon Marlow, Louis Brandy, Jonathan Coens, and Jon
  * Purdy. [[http://simonmar.github.io/bib/papers/haxl-icfp14.pdf]]
  */
-final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result[R, E, A]]) extends { self =>
+final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result[R, E, A]]) { self =>
 
   /**
    * Syntax for adding aspects.
@@ -392,7 +392,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
   final def provideCustom[E1 >: E, R1](
     layer: => Described[ZLayer[ZEnv, E1, R1]]
   )(implicit ev: ZEnv with R1 <:< R, tag: Tag[R1], trace: ZTraceElement): ZQuery[ZEnv, E1, A] =
-    provideSomeLayer(layer)
+    provideSome(layer)
 
   /**
    * Provides the part of the environment that is not part of the `ZEnv`,
@@ -1422,7 +1422,7 @@ object ZQuery {
     )(implicit ev1: R0 with R1 <:< R, ev2: NeedsEnv[R], tag: Tag[R1], trace: ZTraceElement): ZQuery[R0, E1, A] =
       self
         .asInstanceOf[ZQuery[R0 with R1, E, A]]
-        .provideLayer(Described(ZLayer.environment[R0] ++ layer.value, layer.description))
+        .provide(Described(ZLayer.environment[R0] ++ layer.value, layer.description))
   }
 
   final class TimeoutTo[-R, +E, +A, +B](self: ZQuery[R, E, A], b: () => B) {
