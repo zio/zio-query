@@ -5,7 +5,7 @@ import zio.query.DataSourceAspect._
 import zio.test.Assertion._
 import zio.test.TestAspect.{ after, nonFlaky, silent }
 import zio.test._
-import zio.test.environment.{ TestClock, TestConsole, TestEnvironment }
+import zio.test.{ TestClock, TestConsole, TestEnvironment }
 
 object ZQuerySpec extends ZIOBaseSpec {
 
@@ -88,7 +88,7 @@ object ZQuerySpec extends ZIOBaseSpec {
           val query = Cache.getAll *> Cache.put(0, 1) *> Cache.getAll
           assertM(query.uncached.run)(equalTo(Map(0 -> 1)))
         } @@ nonFlaky
-      ).provideCustomLayer(Cache.live),
+      ).provideCustom(Cache.live),
       suite("zipBatched")(
         test("queries to multiple data sources can be executed in parallel") {
           for {
@@ -281,8 +281,8 @@ object ZQuerySpec extends ZIOBaseSpec {
   case object GetAllIds                 extends UserRequest[List[Int]]
   final case class GetNameById(id: Int) extends UserRequest[String]
 
-  val UserRequestDataSource: DataSource[Has[Console], UserRequest[Any]] =
-    DataSource.Batched.make[Has[Console], UserRequest[Any]]("UserRequestDataSource") { requests =>
+  val UserRequestDataSource: DataSource[Console, UserRequest[Any]] =
+    DataSource.Batched.make[Console, UserRequest[Any]]("UserRequestDataSource") { requests =>
       ZIO.when(requests.toSet.size != requests.size)(ZIO.dieMessage("Duplicate requests)")) *>
         Console.printLine(requests.toString).orDie *>
         ZIO.succeed {
@@ -294,25 +294,25 @@ object ZQuerySpec extends ZIOBaseSpec {
         }
     }
 
-  val getAllUserIds: ZQuery[Has[Console], Nothing, List[Int]] =
+  val getAllUserIds: ZQuery[Console, Nothing, List[Int]] =
     ZQuery.fromRequest(GetAllIds)(UserRequestDataSource)
 
-  def getUserNameById(id: Int): ZQuery[Has[Console], Nothing, String] =
+  def getUserNameById(id: Int): ZQuery[Console, Nothing, String] =
     ZQuery.fromRequest(GetNameById(id))(UserRequestDataSource)
 
-  val getAllUserNames: ZQuery[Has[Console], Nothing, List[String]] =
+  val getAllUserNames: ZQuery[Console, Nothing, List[String]] =
     for {
       userIds   <- getAllUserIds
       userNames <- ZQuery.foreachPar(userIds)(getUserNameById)
     } yield userNames
 
   case object GetFoo extends Request[Nothing, String]
-  val getFoo: ZQuery[Has[Console], Nothing, String] = ZQuery.fromRequest(GetFoo)(
+  val getFoo: ZQuery[Console, Nothing, String] = ZQuery.fromRequest(GetFoo)(
     DataSource.fromFunctionZIO("foo")(_ => Console.printLine("Running foo query") *> ZIO.succeed("foo"))
   )
 
   case object GetBar extends Request[Nothing, String]
-  val getBar: ZQuery[Has[Console], Nothing, String] = ZQuery.fromRequest(GetBar)(
+  val getBar: ZQuery[Console, Nothing, String] = ZQuery.fromRequest(GetBar)(
     DataSource.fromFunctionZIO("bar")(_ => Console.printLine("Running bar query") *> ZIO.succeed("bar"))
   )
 
@@ -343,7 +343,7 @@ object ZQuerySpec extends ZIOBaseSpec {
   case object GetAll                         extends CacheRequest[Map[Int, Int]]
   final case class Put(key: Int, value: Int) extends CacheRequest[Unit]
 
-  type Cache = Has[Cache.Service]
+  type Cache = Cache.Service
 
   object Cache {
 
@@ -447,12 +447,12 @@ object ZQuerySpec extends ZIOBaseSpec {
     4 -> "d"
   )
 
-  def backendGetAll: ZIO[Has[Console], Nothing, Map[Int, String]] =
+  def backendGetAll: ZIO[Console, Nothing, Map[Int, String]] =
     for {
       _ <- Console.printLine("getAll called").orDie
     } yield testData
 
-  def backendGetSome(ids: Chunk[Int]): ZIO[Has[Console], Nothing, Map[Int, String]] =
+  def backendGetSome(ids: Chunk[Int]): ZIO[Console, Nothing, Map[Int, String]] =
     for {
       _ <- Console.printLine(s"getSome ${ids.mkString(", ")} called").orDie
     } yield ids.flatMap { id =>
@@ -468,10 +468,10 @@ object ZQuerySpec extends ZIOBaseSpec {
     final case class Get(id: Int) extends Req[String]
   }
 
-  val ds: DataSource.Batched[Has[Console], Req[_]] = new DataSource.Batched[Has[Console], Req[_]] {
+  val ds: DataSource.Batched[Console, Req[_]] = new DataSource.Batched[Console, Req[_]] {
     override def run(
       requests: Chunk[Req[_]]
-    )(implicit trace: ZTraceElement): ZIO[Has[Console], Nothing, CompletedRequestMap] = {
+    )(implicit trace: ZTraceElement): ZIO[Console, Nothing, CompletedRequestMap] = {
       val (all, oneByOne) = requests.partition {
         case Req.GetAll => true
         case Req.Get(_) => false
@@ -505,8 +505,8 @@ object ZQuerySpec extends ZIOBaseSpec {
     override val identifier: String = "test"
   }
 
-  def getAll: ZQuery[Has[Console], DataSourceErrors, Map[Int, String]] =
+  def getAll: ZQuery[Console, DataSourceErrors, Map[Int, String]] =
     ZQuery.fromRequest(Req.GetAll)(ds)
-  def get(id: Int): ZQuery[Has[Console], DataSourceErrors, String] =
+  def get(id: Int): ZQuery[Console, DataSourceErrors, String] =
     ZQuery.fromRequest(Req.Get(id))(ds)
 }

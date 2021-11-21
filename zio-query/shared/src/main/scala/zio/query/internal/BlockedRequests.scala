@@ -2,9 +2,9 @@ package zio.query.internal
 
 import scala.annotation.tailrec
 
-import zio.{ Ref, ZIO, ZTraceElement }
+import zio.{ Ref, ZEnvironment, ZIO, ZTraceElement }
 import zio.query.internal.BlockedRequests._
-import zio.query.{ Cache, DataSource, DataSourceAspect, Described }
+import zio.query.{ Cache, DataSource, DataSourceAspect, Described, ZQuery }
 import zio.stacktracer.TracingImplicits.disableAutoTrace
 
 /**
@@ -46,20 +46,27 @@ private[query] sealed trait BlockedRequests[-R] { self =>
   /**
    * Provides each data source with part of its required environment.
    */
-  final def provideSome[R0](f: Described[R0 => R]): BlockedRequests[R0] =
+  @deprecated("use provideSomeEnvironment", "2.0.0")
+  final def provideSome[R0](f: Described[ZEnvironment[R0] => ZEnvironment[R]]): BlockedRequests[R0] =
+    provideSomeEnvironment(f)
+
+  /**
+   * Provides each data source with part of its required environment.
+   */
+  final def provideSomeEnvironment[R0](f: Described[ZEnvironment[R0] => ZEnvironment[R]]): BlockedRequests[R0] =
     self match {
       case Empty          => Empty
-      case Both(l, r)     => Both(l.provideSome(f), r.provideSome(f))
-      case Then(l, r)     => Then(l.provideSome(f), r.provideSome(f))
-      case Single(ds, br) => Single(ds.provideSome(f), br)
+      case Both(l, r)     => Both(l.provideSomeEnvironment(f), r.provideSomeEnvironment(f))
+      case Then(l, r)     => Then(l.provideSomeEnvironment(f), r.provideSomeEnvironment(f))
+      case Single(ds, br) => Single(ds.provideSomeEnvironment(f), br)
     }
 
   /**
    * Executes all requests, submitting requests to each data source in
    * parallel.
    */
-  def run(cache: Cache)(implicit trace: ZTraceElement): ZIO[R, Nothing, Unit] =
-    ZIO.suspendSucceed {
+  def run(implicit trace: ZTraceElement): ZIO[R, Nothing, Unit] =
+    ZQuery.currentCache.get.flatMap { cache =>
       ZIO.foreachDiscard(BlockedRequests.flatten(self)) { requestsByDataSource =>
         ZIO.foreachParDiscard(requestsByDataSource.toIterable) { case (dataSource, sequential) =>
           for {

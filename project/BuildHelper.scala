@@ -25,7 +25,7 @@ object BuildHelper {
   val Scala211: String   = versions("2.11")
   val Scala212: String   = versions("2.12")
   val Scala213: String   = versions("2.13")
-  val ScalaDotty: String = versions("3.0")
+  val ScalaDotty: String = versions("3.1")
 
   def buildInfoSettings(packageName: String) =
     Seq(
