@@ -3,7 +3,7 @@ package zio.query.internal
 import zio.query._
 import zio.query.internal.Continue._
 import zio.stacktracer.TracingImplicits.disableAutoTrace
-import zio.{ CanFail, Cause, IO, NeedsEnv, Ref, ZIO, ZTraceElement }
+import zio.{ CanFail, Cause, IO, NeedsEnv, Ref, ZEnvironment, ZIO, ZTraceElement }
 
 /**
  * A `Continue[R, E, A]` models a continuation of a blocked request that
@@ -90,19 +90,24 @@ private[query] sealed trait Continue[-R, +E, +A] { self =>
   /**
    * Purely contramaps over the environment type of this continuation.
    */
-  final def provideSome[R0](f: Described[R0 => R])(implicit ev: NeedsEnv[R], trace: ZTraceElement): Continue[R0, E, A] =
+  @deprecated("use provideSomeEnvironment", "2.0.0")
+  final def provideSome[R0](
+    f: Described[ZEnvironment[R0] => ZEnvironment[R]]
+  )(implicit ev: NeedsEnv[R], trace: ZTraceElement): Continue[R0, E, A] =
     self match {
-      case Effect(query) => effect(query.provideSome(f))
+      case Effect(query) => effect(query.provideSomeEnvironment(f))
       case Get(io)       => get(io)
     }
 
   /**
-   * Runs this continuation.
+   * Purely contramaps over the environment type of this continuation.
    */
-  final def runContext(queryContext: QueryContext)(implicit trace: ZTraceElement): ZIO[R, E, A] =
+  final def provideSomeEnvironment[R0](
+    f: Described[ZEnvironment[R0] => ZEnvironment[R]]
+  )(implicit ev: NeedsEnv[R], trace: ZTraceElement): Continue[R0, E, A] =
     self match {
-      case Effect(query) => query.runContext(queryContext)
-      case Get(io)       => io
+      case Effect(query) => effect(query.provideSomeEnvironment(f))
+      case Get(io)       => get(io)
     }
 
   /**

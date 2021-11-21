@@ -1,6 +1,6 @@
 package zio.query
 
-import zio.{ IO, Ref, UIO, ZTraceElement }
+import zio.{ IO, Ref, UIO, ZIO, ZTraceElement }
 import zio.stacktracer.TracingImplicits.disableAutoTrace
 
 /**
@@ -49,7 +49,7 @@ object Cache {
    * Constructs an empty cache.
    */
   def empty(implicit trace: ZTraceElement): UIO[Cache] =
-    Ref.make(Map.empty[Any, Any]).map(new Default(_))
+    ZIO.succeed(Cache.unsafeMake())
 
   private final class Default(private val state: Ref[Map[Any, Any]]) extends Cache {
 
@@ -75,4 +75,7 @@ object Cache {
     def remove[E, A](request: Request[E, A])(implicit trace: ZTraceElement): UIO[Unit] =
       state.update(_ - request)
   }
+
+  private[query] def unsafeMake(): Cache =
+    new Default(Ref.unsafeMake(Map.empty[Any, Any]))
 }

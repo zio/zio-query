@@ -42,7 +42,7 @@ import scala.reflect.ClassTag
  * Concise Data Access" by Simon Marlow, Louis Brandy, Jonathan Coens, and Jon
  * Purdy. [[http://simonmar.github.io/bib/papers/haxl-icfp14.pdf]]
  */
-final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext), Nothing, Result[R, E, A]]) { self =>
+final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result[R, E, A]]) extends { self =>
 
   /**
    * Syntax for adding aspects.
@@ -136,9 +136,8 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
    */
   def cached(implicit trace: ZTraceElement): ZQuery[R, E, A] =
     for {
-      queryContext   <- ZQuery.queryContext
-      cachingEnabled <- ZQuery.fromZIO(queryContext.cachingEnabled.getAndSet(true))
-      a              <- self.ensuring(ZQuery.fromZIO(queryContext.cachingEnabled.set(cachingEnabled)))
+      cachingEnabled <- ZQuery.fromZIO(ZQuery.cachingEnabled.getAndSet(true))
+      a              <- self.ensuring(ZQuery.fromZIO(ZQuery.cachingEnabled.set(cachingEnabled)))
     } yield a
 
   /**
@@ -338,12 +337,12 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
    */
   @deprecated("use mapQuery", "0.3.0")
   final def mapM[R1 <: R, E1 >: E, B](f: A => ZIO[R1, E1, B])(implicit trace: ZTraceElement): ZQuery[R1, E1, B] =
-    mapQuery(f)
+    mapZIO(f)
 
   /**
    * Maps the specified effectual function over the result of this query.
    */
-  final def mapQuery[R1 <: R, E1 >: E, B](f: A => ZIO[R1, E1, B])(implicit trace: ZTraceElement): ZQuery[R1, E1, B] =
+  final def mapZIO[R1 <: R, E1 >: E, B](f: A => ZIO[R1, E1, B])(implicit trace: ZTraceElement): ZQuery[R1, E1, B] =
     flatMap(a => ZQuery.fromZIO(f(a)))
 
   /**
@@ -374,47 +373,76 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
     foldQuery(e => ZQuery.die(f(e)), a => ZQuery.succeed(a))
 
   /**
-   * Provides this query with its required environment.
+   * Provides a layer to this query, which translates it to another level.
    */
-  final def provide(r: => Described[R])(implicit ev: NeedsEnv[R], trace: ZTraceElement): ZQuery[Any, E, A] =
-    provideSome(Described(_ => r.value, s"_ => ${r.description}"))
+  final def provide[E1 >: E, R0](
+    layer: => Described[ZLayer[R0, E1, R]]
+  )(implicit ev: NeedsEnv[R], trace: ZTraceElement): ZQuery[R0, E1, A] =
+    ZQuery {
+      layer.value.build.exit.use {
+        case Exit.Failure(e) => ZIO.succeedNow(Result.fail(e))
+        case Exit.Success(r) => self.provideEnvironment(Described(r, layer.description)).step
+      }
+    }
 
   /**
    * Provides the part of the environment that is not part of the `ZEnv`,
    * leaving a query that only depends on the `ZEnv`.
    */
-  final def provideCustomLayer[E1 >: E, R1 <: Has[_]](
+  final def provideCustom[E1 >: E, R1](
     layer: => Described[ZLayer[ZEnv, E1, R1]]
   )(implicit ev: ZEnv with R1 <:< R, tag: Tag[R1], trace: ZTraceElement): ZQuery[ZEnv, E1, A] =
     provideSomeLayer(layer)
 
   /**
-   * Provides a layer to this query, which translates it to another level.
+   * Provides the part of the environment that is not part of the `ZEnv`,
+   * leaving a query that only depends on the `ZEnv`.
    */
-  final def provideLayer[E1 >: E, R0, R1 <: Has[_]](
-    layer: => Described[ZLayer[R0, E1, R1]]
-  )(implicit ev1: R1 <:< R, ev2: NeedsEnv[R], trace: ZTraceElement): ZQuery[R0, E1, A] =
-    ZQuery {
-      layer.value.build.provideSome[(R0, QueryContext)](_._1).exit.use {
-        case Exit.Failure(e) => ZIO.succeedNow(Result.fail(e))
-        case Exit.Success(r) => self.provide(Described(r, layer.description)).step
-      }
-    }
+  @deprecated("use provideCustom", "2.0.0")
+  final def provideCustomLayer[E1 >: E, R1](
+    layer: => Described[ZLayer[ZEnv, E1, R1]]
+  )(implicit ev: ZEnv with R1 <:< R, tag: Tag[R1], trace: ZTraceElement): ZQuery[ZEnv, E1, A] =
+    provideCustom(layer)
 
   /**
-   * Provides this query with part of its required environment.
+   * Provides this query with its required environment.
    */
-  final def provideSome[R0](
-    f: => Described[R0 => R]
-  )(implicit ev: NeedsEnv[R], trace: ZTraceElement): ZQuery[R0, E, A] =
-    ZQuery(step.map(_.provideSome(f)).provideSome(r => (f.value(r._1), r._2)))
+  final def provideEnvironment(
+    r: => Described[ZEnvironment[R]]
+  )(implicit ev: NeedsEnv[R], trace: ZTraceElement): ZQuery[Any, E, A] =
+    provideSomeEnvironment(Described(_ => r.value, s"_ => ${r.description}"))
+
+  /**
+   * Provides a layer to this query, which translates it to another level.
+   */
+  @deprecated("use provide", "2.0.0")
+  final def provideLayer[E1 >: E, R0](
+    layer: => Described[ZLayer[R0, E1, R]]
+  )(implicit ev: NeedsEnv[R], trace: ZTraceElement): ZQuery[R0, E1, A] =
+    provide(layer)
 
   /**
    * Splits the environment into two parts, providing one part using the
    * specified layer and leaving the remainder `R0`.
    */
-  final def provideSomeLayer[R0 <: Has[_]]: ZQuery.ProvideSomeLayer[R0, R, E, A] =
-    new ZQuery.ProvideSomeLayer(self)
+  final def provideSome[R0]: ZQuery.ProvideSome[R0, R, E, A] =
+    new ZQuery.ProvideSome(self)
+
+  /**
+   * Provides this query with part of its required environment.
+   */
+  final def provideSomeEnvironment[R0](
+    f: => Described[ZEnvironment[R0] => ZEnvironment[R]]
+  )(implicit ev: NeedsEnv[R], trace: ZTraceElement): ZQuery[R0, E, A] =
+    ZQuery(step.map(_.provideSomeEnvironment(f)).provideSomeEnvironment((r => (f.value(r)))))
+
+  /**
+   * Splits the environment into two parts, providing one part using the
+   * specified layer and leaving the remainder `R0`.
+   */
+  @deprecated("use provideSome", "2.0.0")
+  final def provideSomeLayer[R0]: ZQuery.ProvideSome[R0, R, E, A] =
+    provideSome
 
   /**
    * Races this query with the specified query, returning the result of the
@@ -427,7 +455,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
     def coordinate(
       exit: Exit[Nothing, Result[R1, E1, A1]],
       fiber: Fiber[Nothing, Result[R1, E1, A1]]
-    ): ZIO[(R1, QueryContext), Nothing, Result[R1, E1, A1]] =
+    ): ZIO[R1, Nothing, Result[R1, E1, A1]] =
       exit.foldZIO(
         cause => fiber.join.map(_.mapErrorCause(_ && cause)),
         {
@@ -492,11 +520,18 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
    * Returns an effect that models executing this query with the specified
    * cache.
    */
-  final def runCache(cache: => Cache)(implicit trace: ZTraceElement): ZIO[R, E, A] =
-    for {
-      ref <- FiberRef.make(true)
-      a   <- runContext(QueryContext(cache, ref))
-    } yield a
+  final def runCache(cache: => Cache)(implicit trace: ZTraceElement): ZIO[R, E, A] = {
+
+    def run(query: ZQuery[R, E, A]): ZIO[R, E, A] =
+      query.step.flatMap {
+        case Result.Blocked(br, Continue.Effect(c)) => br.run *> run(c)
+        case Result.Blocked(br, Continue.Get(io))   => br.run *> io
+        case Result.Done(a)                         => ZIO.succeedNow(a)
+        case Result.Fail(e)                         => ZIO.failCause(e)
+      }
+
+    ZQuery.currentCache.locally(cache)(run(self))
+  }
 
   /**
    * Returns an effect that models executing this query, returning the query
@@ -526,7 +561,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
   /**
    * Extracts a Some value into the value channel while moving the None into the error channel for easier composition
    *
-   * Inverse of [[ZQuery.collectSome]]
+   * Inverse of [[ZQuery.unoption]]
    */
   def some[B](implicit ev: A IsSubtypeOfOutput Option[B], trace: ZTraceElement): ZQuery[R, Option[E], B] =
     self.foldQuery[R, Option[E], B](
@@ -570,14 +605,14 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
   /**
    * Returns a new query that executes this one and times the execution.
    */
-  final def timed(implicit trace: ZTraceElement): ZQuery[R with Has[Clock], E, (Duration, A)] =
+  final def timed(implicit trace: ZTraceElement): ZQuery[R with Clock, E, (Duration, A)] =
     summarized(Clock.nanoTime)((start, end) => Duration.fromNanos(end - start))
 
   /**
    * Returns an effect that will timeout this query, returning `None` if the
    * timeout elapses before the query was completed.
    */
-  final def timeout(duration: => Duration)(implicit trace: ZTraceElement): ZQuery[R with Has[Clock], E, Option[A]] =
+  final def timeout(duration: => Duration)(implicit trace: ZTraceElement): ZQuery[R with Clock, E, Option[A]] =
     timeoutTo(None)(Some(_))(duration)
 
   /**
@@ -586,7 +621,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
    */
   final def timeoutFail[E1 >: E](e: => E1)(duration: => Duration)(implicit
     trace: ZTraceElement
-  ): ZQuery[R with Has[Clock], E1, A] =
+  ): ZQuery[R with Clock, E1, A] =
     timeoutTo(ZQuery.fail(e))(ZQuery.succeedNow)(duration).flatten
 
   /**
@@ -595,7 +630,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
    */
   final def timeoutFailCause[E1 >: E](cause: => Cause[E1])(duration: => Duration)(implicit
     trace: ZTraceElement
-  ): ZQuery[R with Has[Clock], E1, A] =
+  ): ZQuery[R with Clock, E1, A] =
     timeoutTo(ZQuery.failCause(cause))(ZQuery.succeedNow)(duration).flatten
 
   /**
@@ -605,7 +640,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
   @deprecated("use timeoutFailCause", "0.3.0")
   final def timeoutHalt[E1 >: E](cause: => Cause[E1])(duration: => Duration)(implicit
     trace: ZTraceElement
-  ): ZQuery[R with Has[Clock], E1, A] =
+  ): ZQuery[R with Clock, E1, A] =
     timeoutFailCause(cause)(duration)
 
   /**
@@ -621,9 +656,8 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
    */
   def uncached(implicit trace: ZTraceElement): ZQuery[R, E, A] =
     for {
-      queryContext   <- ZQuery.queryContext
-      cachingEnabled <- ZQuery.fromZIO(queryContext.cachingEnabled.getAndSet(false))
-      a              <- self.ensuring(ZQuery.fromZIO(queryContext.cachingEnabled.set(cachingEnabled)))
+      cachingEnabled <- ZQuery.fromZIO(ZQuery.cachingEnabled.getAndSet(false))
+      a              <- self.ensuring(ZQuery.fromZIO(ZQuery.cachingEnabled.set(cachingEnabled)))
     } yield a
 
   /**
@@ -669,7 +703,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
   )(f: E => E1)(implicit trace: ZTraceElement): ZQuery[R, E1, A] =
     catchAllCause { cause =>
       cause.find {
-        case Cause.Die(t) if pf.isDefinedAt(t) => pf(t)
+        case Cause.Die(t, _) if pf.isDefinedAt(t) => pf(t)
       }.fold(ZQuery.failCause(cause.map(f)))(ZQuery.fail(_))
     }
 
@@ -839,17 +873,6 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[(R, QueryContext),
         case (_, Result.Fail(e))                                => Result.fail(e)
       }
     }
-
-  /**
-   * Returns an effect that models executing this query with the specified
-   * context.
-   */
-  private[query] final def runContext(queryContext: QueryContext)(implicit trace: ZTraceElement): ZIO[R, E, A] =
-    step.provideSome[R]((_, queryContext)).flatMap {
-      case Result.Blocked(br, c) => br.run(queryContext.cache) *> c.runContext(queryContext)
-      case Result.Done(a)        => ZIO.succeedNow(a)
-      case Result.Fail(e)        => ZIO.failCause(e)
-    }
 }
 
 object ZQuery {
@@ -863,21 +886,16 @@ object ZQuery {
    * val portNumber = effect.access(_.config.portNumber)
    * }}}
    */
-  final def access[R]: AccessPartiallyApplied[R] =
-    new AccessPartiallyApplied[R]
+  @deprecated("use environmentWith", "2..0.0")
+  final def access[R]: EnvironmentWithPartiallyApplied[R] =
+    environmentWith
 
   /**
    * Effectfully accesses the environment of the effect.
    */
-  @deprecated("use accessQuery", "0.3.0")
-  final def accessM[R]: AccessQueryPartiallyApplied[R] =
-    accessQuery
-
-  /**
-   * Effectfully accesses the environment of the effect.
-   */
-  final def accessQuery[R]: AccessQueryPartiallyApplied[R] =
-    new AccessQueryPartiallyApplied[R]
+  @deprecated("use environmentWithQuery", "0.3.0")
+  final def accessM[R]: EnvironmentWithQueryPartiallyApplied[R] =
+    environmentWithQuery
 
   /**
    * Collects a collection of queries into a query returning a collection of
@@ -925,8 +943,29 @@ object ZQuery {
   /**
    * Accesses the whole environment of the query.
    */
-  def environment[R](implicit trace: ZTraceElement): ZQuery[R, Nothing, R] =
+  def environment[R](implicit trace: ZTraceElement): ZQuery[R, Nothing, ZEnvironment[R]] =
     ZQuery.fromZIO(ZIO.environment)
+
+  /**
+   * Accesses the environment of the effect.
+   * {{{
+   * val portNumber = effect.access(_.config.portNumber)
+   * }}}
+   */
+  final def environmentWith[R]: EnvironmentWithPartiallyApplied[R] =
+    new EnvironmentWithPartiallyApplied[R]
+
+  /**
+   * Effectfully accesses the environment of the effect.
+   */
+  final def environmentWithQuery[R]: EnvironmentWithQueryPartiallyApplied[R] =
+    new EnvironmentWithQueryPartiallyApplied[R]
+
+  /**
+   * Effectfully accesses the environment of the effect.
+   */
+  final def environmentWithZIO[R]: EnvironmentWithZIOPartiallyApplied[R] =
+    new EnvironmentWithZIOPartiallyApplied[R]
 
   /**
    * Constructs a query that fails with the specified error.
@@ -1182,10 +1221,10 @@ object ZQuery {
       ZIO.suspendSucceed {
         val request    = request0
         val dataSource = dataSource0
-        ZIO.environment[(R, QueryContext)].flatMap { case (_, queryContext) =>
-          queryContext.cachingEnabled.get.flatMap { cachingEnabled =>
-            if (cachingEnabled) {
-              queryContext.cache.lookup(request).flatMap {
+        ZQuery.cachingEnabled.get.flatMap { cachingEnabled =>
+          if (cachingEnabled) {
+            ZQuery.currentCache.get.flatMap { cache =>
+              cache.lookup(request).flatMap {
                 case Left(ref) =>
                   UIO.succeedNow(
                     Result.blocked(
@@ -1199,13 +1238,13 @@ object ZQuery {
                     case Some(b) => Result.fromEither(b)
                   }
               }
-            } else {
-              Ref.make(Option.empty[Either[E, B]]).map { ref =>
-                Result.blocked(
-                  BlockedRequests.single(dataSource, BlockedRequest(request, ref)),
-                  Continue(request, dataSource, ref)
-                )
-              }
+            }
+          } else {
+            Ref.make(Option.empty[Either[E, B]]).map { ref =>
+              Result.blocked(
+                BlockedRequests.single(dataSource, BlockedRequest(request, ref)),
+                Continue(request, dataSource, ref)
+              )
             }
           }
         }
@@ -1225,7 +1264,7 @@ object ZQuery {
    * Constructs a query from an effect.
    */
   def fromZIO[R, E, A](effect: => ZIO[R, E, A])(implicit trace: ZTraceElement): ZQuery[R, E, A] =
-    ZQuery(ZIO.suspendSucceed(effect).foldCause(Result.fail, Result.done).provideSome(_._1))
+    ZQuery(ZIO.suspendSucceed(effect).foldCause(Result.fail, Result.done))
 
   /**
    * Constructs a query that fails with the specified cause.
@@ -1297,6 +1336,33 @@ object ZQuery {
     ZQuery.foreachPar(as)(f(_).either).map(partitionMap(_)(identity))
 
   /**
+   * Accesses the whole environment of the query.
+   */
+  def service[R: Tag: IsNotIntersection](implicit trace: ZTraceElement): ZQuery[R, Nothing, R] =
+    ZQuery.fromZIO(ZIO.service)
+
+  /**
+   * Accesses the environment of the effect.
+   * {{{
+   * val portNumber = effect.access(_.config.portNumber)
+   * }}}
+   */
+  final def serviceWith[R]: ServiceWithPartiallyApplied[R] =
+    new ServiceWithPartiallyApplied[R]
+
+  /**
+   * Effectfully accesses the environment of the effect.
+   */
+  final def serviceWithQuery[R]: ServiceWithQueryPartiallyApplied[R] =
+    new ServiceWithQueryPartiallyApplied[R]
+
+  /**
+   * Effectfully accesses the environment of the effect.
+   */
+  final def serviceWithZIO[R]: ServiceWithZIOPartiallyApplied[R] =
+    new ServiceWithZIOPartiallyApplied[R]
+
+  /**
    * Constructs a query that succeeds with the optional value.
    */
   def some[A](a: => A)(implicit trace: ZTraceElement): ZQuery[Any, Nothing, Option[A]] =
@@ -1335,34 +1401,41 @@ object ZQuery {
   def unwrap[R, E, A](zio: => ZIO[R, E, ZQuery[R, E, A]])(implicit trace: ZTraceElement): ZQuery[R, E, A] =
     ZQuery.fromZIO(zio).flatten
 
-  final class AccessPartiallyApplied[R](private val dummy: Boolean = true) extends AnyVal {
-    def apply[A](f: R => A)(implicit trace: ZTraceElement): ZQuery[R, Nothing, A] =
+  final class EnvironmentWithPartiallyApplied[R](private val dummy: Boolean = true) extends AnyVal {
+    def apply[A](f: ZEnvironment[R] => A)(implicit trace: ZTraceElement): ZQuery[R, Nothing, A] =
       environment[R].map(f)
   }
 
-  final class AccessQueryPartiallyApplied[R](private val dummy: Boolean = true) extends AnyVal {
-    def apply[E, A](f: R => ZQuery[R, E, A])(implicit trace: ZTraceElement): ZQuery[R, E, A] =
+  final class EnvironmentWithQueryPartiallyApplied[R](private val dummy: Boolean = true) extends AnyVal {
+    def apply[E, A](f: ZEnvironment[R] => ZQuery[R, E, A])(implicit trace: ZTraceElement): ZQuery[R, E, A] =
       environment[R].flatMap(f)
   }
 
-  final class ProvideSomeLayer[R0 <: Has[_], -R, +E, +A](private val self: ZQuery[R, E, A]) extends AnyVal {
-    def apply[E1 >: E, R1 <: Has[_]](
+  final class EnvironmentWithZIOPartiallyApplied[R](private val dummy: Boolean = true) extends AnyVal {
+    def apply[E, A](f: ZEnvironment[R] => ZIO[R, E, A])(implicit trace: ZTraceElement): ZQuery[R, E, A] =
+      environment[R].mapZIO(f)
+  }
+
+  final class ProvideSome[R0, -R, +E, +A](private val self: ZQuery[R, E, A]) extends AnyVal {
+    def apply[E1 >: E, R1](
       layer: => Described[ZLayer[R0, E1, R1]]
     )(implicit ev1: R0 with R1 <:< R, ev2: NeedsEnv[R], tag: Tag[R1], trace: ZTraceElement): ZQuery[R0, E1, A] =
-      self.provideLayer[E1, R0, R0 with R1](Described(ZLayer.environment[R0] ++ layer.value, layer.description))
+      self
+        .asInstanceOf[ZQuery[R0 with R1, E, A]]
+        .provideLayer(Described(ZLayer.environment[R0] ++ layer.value, layer.description))
   }
 
   final class TimeoutTo[-R, +E, +A, +B](self: ZQuery[R, E, A], b: () => B) {
     def apply[B1 >: B](
       f: A => B1
-    )(duration: => Duration)(implicit trace: ZTraceElement): ZQuery[R with Has[Clock], E, B1] =
-      ZQuery.environment[Has[Clock]].flatMap { clock =>
+    )(duration: => Duration)(implicit trace: ZTraceElement): ZQuery[R with Clock, E, B1] =
+      ZQuery.environment[Clock].flatMap { clock =>
         def race(
           query: ZQuery[R, E, B1],
           fiber: Fiber[Nothing, B1]
         ): ZQuery[R, E, B1] =
           ZQuery {
-            query.step.raceWith[(R, QueryContext), Nothing, Nothing, B1, Result[R, E, B1]](fiber.join)(
+            query.step.raceWith[R, Nothing, Nothing, B1, Result[R, E, B1]](fiber.join)(
               (leftExit, rightFiber) =>
                 leftExit.foldZIO(
                   cause => rightFiber.interrupt *> ZIO.succeedNow(Result.fail(cause)),
@@ -1389,10 +1462,31 @@ object ZQuery {
       }
   }
 
+  final class ServiceWithPartiallyApplied[R](private val dummy: Boolean = true) extends AnyVal {
+    def apply[A](
+      f: R => A
+    )(implicit ev: IsNotIntersection[R], tag: Tag[R], trace: ZTraceElement): ZQuery[R, Nothing, A] =
+      service[R].map(f)
+  }
+
+  final class ServiceWithQueryPartiallyApplied[R](private val dummy: Boolean = true) extends AnyVal {
+    def apply[E, A](
+      f: R => ZQuery[R, E, A]
+    )(implicit ev: IsNotIntersection[R], tag: Tag[R], race: ZTraceElement): ZQuery[R, E, A] =
+      service[R].flatMap(f)
+  }
+
+  final class ServiceWithZIOPartiallyApplied[R](private val dummy: Boolean = true) extends AnyVal {
+    def apply[E, A](
+      f: R => ZIO[R, E, A]
+    )(implicit ev: IsNotIntersection[R], tag: Tag[R], trace: ZTraceElement): ZQuery[R, E, A] =
+      service[R].mapZIO(f)
+  }
+
   /**
    * Constructs a query from an effect that returns a result.
    */
-  private def apply[R, E, A](step: ZIO[(R, QueryContext), Nothing, Result[R, E, A]]): ZQuery[R, E, A] =
+  private def apply[R, E, A](step: ZIO[R, Nothing, Result[R, E, A]]): ZQuery[R, E, A] =
     new ZQuery(step)
 
   /**
@@ -1411,14 +1505,14 @@ object ZQuery {
   }
 
   /**
-   * Returns a query that accesses the context.
-   */
-  private def queryContext(implicit trace: ZTraceElement): ZQuery[Any, Nothing, QueryContext] =
-    ZQuery(ZIO.access[(Any, QueryContext)] { case (_, queryContext) => Result.done(queryContext) })
-
-  /**
    * Constructs a query that succeeds with the specified value.
    */
   private def succeedNow[A](value: A): ZQuery[Any, Nothing, A] =
     ZQuery(ZIO.succeedNow(Result.done(value)))
+
+  private[query] val cachingEnabled: FiberRef[Boolean] =
+    FiberRef.unsafeMake(true)
+
+  private[query] val currentCache: FiberRef[Cache] =
+    FiberRef.unsafeMake(Cache.unsafeMake())
 }

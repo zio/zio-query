@@ -3,7 +3,7 @@ package zio.query.internal
 import zio.query.internal.Result._
 import zio.query.{ DataSourceAspect, Described }
 import zio.stacktracer.TracingImplicits.disableAutoTrace
-import zio.{ CanFail, Cause, Exit, NeedsEnv, ZTraceElement }
+import zio.{ CanFail, Cause, Exit, NeedsEnv, ZEnvironment, ZTraceElement }
 
 /**
  * A `Result[R, E, A]` is the result of running one step of a `ZQuery`. A
@@ -68,15 +68,35 @@ private[query] sealed trait Result[-R, +E, +A] { self =>
   /**
    * Provides this result with its required environment.
    */
-  final def provide(r: Described[R])(implicit ev: NeedsEnv[R], trace: ZTraceElement): Result[Any, E, A] =
-    provideSome(Described(_ => r.value, s"_ => ${r.description}"))
+  @deprecated("use provideEnvironment", "2.0.0")
+  final def provide(r: Described[ZEnvironment[R]])(implicit ev: NeedsEnv[R], trace: ZTraceElement): Result[Any, E, A] =
+    provide(r)
+
+  /**
+   * Provides this result with its required environment.
+   */
+  final def provideEnvironment(
+    r: Described[ZEnvironment[R]]
+  )(implicit ev: NeedsEnv[R], trace: ZTraceElement): Result[Any, E, A] =
+    provideSomeEnvironment(Described(_ => r.value, s"_ => ${r.description}"))
 
   /**
    * Provides this result with part of its required environment.
    */
-  final def provideSome[R0](f: Described[R0 => R])(implicit ev: NeedsEnv[R], trace: ZTraceElement): Result[R0, E, A] =
+  @deprecated("use provideSomeEnvironment", "2.0.0")
+  final def provideSome[R0](
+    f: Described[ZEnvironment[R0] => ZEnvironment[R]]
+  )(implicit ev: NeedsEnv[R], trace: ZTraceElement): Result[R0, E, A] =
+    provideSome(f)
+
+  /**
+   * Provides this result with part of its required environment.
+   */
+  final def provideSomeEnvironment[R0](
+    f: Described[ZEnvironment[R0] => ZEnvironment[R]]
+  )(implicit ev: NeedsEnv[R], trace: ZTraceElement): Result[R0, E, A] =
     self match {
-      case Blocked(br, c) => blocked(br.provideSome(f), c.provideSome(f))
+      case Blocked(br, c) => blocked(br.provideSomeEnvironment(f), c.provideSomeEnvironment(f))
       case Done(a)        => done(a)
       case Fail(e)        => fail(e)
     }

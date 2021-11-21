@@ -1,6 +1,6 @@
 package zio.query
 
-import zio.{ Chunk, NeedsEnv, ZIO, ZTraceElement }
+import zio.{ Chunk, NeedsEnv, ZEnvironment, ZIO, ZTraceElement }
 import zio.stacktracer.TracingImplicits.disableAutoTrace
 
 /**
@@ -116,17 +116,35 @@ trait DataSource[-R, -A] { self =>
   /**
    * Provides this data source with its required environment.
    */
-  final def provide(r: Described[R])(implicit ev: NeedsEnv[R]): DataSource[Any, A] =
-    provideSome(Described(_ => r.value, s"_ => ${r.description}"))
+  @deprecated("use provideEnvironment", "2.0.0")
+  final def provide(r: Described[ZEnvironment[R]])(implicit ev: NeedsEnv[R]): DataSource[Any, A] =
+    provide(r)
+
+  /**
+   * Provides this data source with its required environment.
+   */
+  final def provideEnvironment(r: Described[ZEnvironment[R]])(implicit ev: NeedsEnv[R]): DataSource[Any, A] =
+    provideSomeEnvironment(Described(_ => r.value, s"_ => ${r.description}"))
 
   /**
    * Provides this data source with part of its required environment.
    */
-  final def provideSome[R0](f: Described[R0 => R])(implicit ev: NeedsEnv[R]): DataSource[R0, A] =
+  @deprecated("use provideSomeEnvironment", "2.0.0")
+  final def provideSome[R0](
+    f: Described[ZEnvironment[R0] => ZEnvironment[R]]
+  )(implicit ev: NeedsEnv[R]): DataSource[R0, A] =
+    provideSomeEnvironment(f)
+
+  /**
+   * Provides this data source with part of its required environment.
+   */
+  final def provideSomeEnvironment[R0](
+    f: Described[ZEnvironment[R0] => ZEnvironment[R]]
+  )(implicit ev: NeedsEnv[R]): DataSource[R0, A] =
     new DataSource[R0, A] {
-      val identifier = s"${self.identifier}.provideSome(${f.description})"
+      val identifier = s"${self.identifier}.provideSomeEnvironment(${f.description})"
       def runAll(requests: Chunk[Chunk[A]])(implicit trace: ZTraceElement): ZIO[R0, Nothing, CompletedRequestMap] =
-        self.runAll(requests).provideSome(f.value)
+        self.runAll(requests).provideSomeEnvironment(f.value)
     }
 
   /**
