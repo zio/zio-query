@@ -779,6 +779,38 @@ object ZQuery {
 
   /**
    * Collects a collection of queries into a query returning a collection of
+   * their results. Requests will be executed sequentially and will be
+   * pipelined.
+   */
+  def collectAll[R, E, A](as: Set[ZQuery[R, E, A]]): ZQuery[R, E, Set[A]] =
+    foreach(as)(identity)
+
+  /**
+   * Collects a collection of queries into a query returning a collection of
+   * their results. Requests will be executed sequentially and will be
+   * pipelined.
+   */
+  def collectAll[R, E, A: ClassTag](as: Array[ZQuery[R, E, A]]): ZQuery[R, E, Array[A]] =
+    foreach(as)(identity)
+
+  /**
+   * Collects a collection of queries into a query returning a collection of
+   * their results. Requests will be executed sequentially and will be
+   * pipelined.
+   */
+  def collectAll[R, E, A](as: Option[ZQuery[R, E, A]]): ZQuery[R, E, Option[A]] =
+    foreach(as)(identity)
+
+  /**
+   * Collects a collection of queries into a query returning a collection of
+   * their results. Requests will be executed sequentially and will be
+   * pipelined.
+   */
+  def collectAll[R, E, A](as: NonEmptyChunk[ZQuery[R, E, A]]): ZQuery[R, E, NonEmptyChunk[A]] =
+    foreach(as)(identity)
+
+  /**
+   * Collects a collection of queries into a query returning a collection of
    * their results, batching requests to data sources.
    */
   def collectAllBatched[R, E, A, Collection[+Element] <: Iterable[Element]](
@@ -788,11 +820,53 @@ object ZQuery {
 
   /**
    * Collects a collection of queries into a query returning a collection of
+   * their results, batching requests to data sources.
+   */
+  def collectAllBatched[R, E, A](as: Set[ZQuery[R, E, A]]): ZQuery[R, E, Set[A]] =
+    foreachBatched(as)(identity)
+
+  /**
+   * Collects a collection of queries into a query returning a collection of
+   * their results, batching requests to data sources.
+   */
+  def collectAllBatched[R, E, A: ClassTag](as: Array[ZQuery[R, E, A]]): ZQuery[R, E, Array[A]] =
+    foreachBatched(as)(identity)
+
+  /**
+   * Collects a collection of queries into a query returning a collection of
+   * their results, batching requests to data sources.
+   */
+  def collectAllBatched[R, E, A](as: NonEmptyChunk[ZQuery[R, E, A]]): ZQuery[R, E, NonEmptyChunk[A]] =
+    foreachBatched(as)(identity)
+
+  /**
+   * Collects a collection of queries into a query returning a collection of
    * their results. Requests will be executed in parallel and will be batched.
    */
   def collectAllPar[R, E, A, Collection[+Element] <: Iterable[Element]](
     as: Collection[ZQuery[R, E, A]]
   )(implicit bf: BuildFrom[Collection[ZQuery[R, E, A]], A, Collection[A]]): ZQuery[R, E, Collection[A]] =
+    foreachPar(as)(identity)
+
+  /**
+   * Collects a collection of queries into a query returning a collection of
+   * their results. Requests will be executed in parallel and will be batched.
+   */
+  def collectAllPar[R, E, A](as: Set[ZQuery[R, E, A]]): ZQuery[R, E, Set[A]] =
+    foreachPar(as)(identity)
+
+  /**
+   * Collects a collection of queries into a query returning a collection of
+   * their results. Requests will be executed in parallel and will be batched.
+   */
+  def collectAllPar[R, E, A: ClassTag](as: Array[ZQuery[R, E, A]]): ZQuery[R, E, Array[A]] =
+    foreachPar(as)(identity)
+
+  /**
+   * Collects a collection of queries into a query returning a collection of
+   * their results. Requests will be executed in parallel and will be batched.
+   */
+  def collectAllPar[R, E, A](as: NonEmptyChunk[ZQuery[R, E, A]]): ZQuery[R, E, NonEmptyChunk[A]] =
     foreachPar(as)(identity)
 
   /**
