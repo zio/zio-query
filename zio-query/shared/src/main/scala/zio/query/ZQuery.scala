@@ -375,7 +375,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
   /**
    * Provides a layer to this query, which translates it to another level.
    */
-  final def provide[E1 >: E, R0](
+  final def provideLayer[E1 >: E, R0](
     layer: => Described[ZLayer[R0, E1, R]]
   )(implicit ev: NeedsEnv[R], trace: ZTraceElement): ZQuery[R0, E1, A] =
     ZQuery {
@@ -389,20 +389,10 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * Provides the part of the environment that is not part of the `ZEnv`,
    * leaving a query that only depends on the `ZEnv`.
    */
-  final def provideCustom[E1 >: E, R1](
-    layer: => Described[ZLayer[ZEnv, E1, R1]]
-  )(implicit ev: ZEnv with R1 <:< R, tag: Tag[R1], trace: ZTraceElement): ZQuery[ZEnv, E1, A] =
-    provideSome(layer)
-
-  /**
-   * Provides the part of the environment that is not part of the `ZEnv`,
-   * leaving a query that only depends on the `ZEnv`.
-   */
-  @deprecated("use provideCustom", "2.0.0")
   final def provideCustomLayer[E1 >: E, R1](
     layer: => Described[ZLayer[ZEnv, E1, R1]]
   )(implicit ev: ZEnv with R1 <:< R, tag: Tag[R1], trace: ZTraceElement): ZQuery[ZEnv, E1, A] =
-    provideCustom(layer)
+    provideSomeLayer(layer)
 
   /**
    * Provides this query with its required environment.
@@ -413,20 +403,11 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     provideSomeEnvironment(Described(_ => r.value, s"_ => ${r.description}"))
 
   /**
-   * Provides a layer to this query, which translates it to another level.
-   */
-  @deprecated("use provide", "2.0.0")
-  final def provideLayer[E1 >: E, R0](
-    layer: => Described[ZLayer[R0, E1, R]]
-  )(implicit ev: NeedsEnv[R], trace: ZTraceElement): ZQuery[R0, E1, A] =
-    provide(layer)
-
-  /**
    * Splits the environment into two parts, providing one part using the
    * specified layer and leaving the remainder `R0`.
    */
-  final def provideSome[R0]: ZQuery.ProvideSome[R0, R, E, A] =
-    new ZQuery.ProvideSome(self)
+  final def provideSomeLayer[R0]: ZQuery.ProvideSomeLayer[R0, R, E, A] =
+    new ZQuery.ProvideSomeLayer(self)
 
   /**
    * Provides this query with part of its required environment.
@@ -435,14 +416,6 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     f: => Described[ZEnvironment[R0] => ZEnvironment[R]]
   )(implicit ev: NeedsEnv[R], trace: ZTraceElement): ZQuery[R0, E, A] =
     ZQuery(step.map(_.provideSomeEnvironment(f)).provideSomeEnvironment((r => (f.value(r)))))
-
-  /**
-   * Splits the environment into two parts, providing one part using the
-   * specified layer and leaving the remainder `R0`.
-   */
-  @deprecated("use provideSome", "2.0.0")
-  final def provideSomeLayer[R0]: ZQuery.ProvideSome[R0, R, E, A] =
-    provideSome
 
   /**
    * Races this query with the specified query, returning the result of the
@@ -1416,13 +1389,13 @@ object ZQuery {
       environment[R].mapZIO(f)
   }
 
-  final class ProvideSome[R0, -R, +E, +A](private val self: ZQuery[R, E, A]) extends AnyVal {
+  final class ProvideSomeLayer[R0, -R, +E, +A](private val self: ZQuery[R, E, A]) extends AnyVal {
     def apply[E1 >: E, R1](
       layer: => Described[ZLayer[R0, E1, R1]]
     )(implicit ev1: R0 with R1 <:< R, ev2: NeedsEnv[R], tag: Tag[R1], trace: ZTraceElement): ZQuery[R0, E1, A] =
       self
         .asInstanceOf[ZQuery[R0 with R1, E, A]]
-        .provide(Described(ZLayer.environment[R0] ++ layer.value, layer.description))
+        .provideLayer(Described(ZLayer.environment[R0] ++ layer.value, layer.description))
   }
 
   final class TimeoutTo[-R, +E, +A, +B](self: ZQuery[R, E, A], b: () => B) {
