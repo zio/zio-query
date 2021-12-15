@@ -546,6 +546,32 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     )
 
   /**
+   * Extracts the optional value or succeeds with the given 'default' value.
+   */
+  def someOrElse[B](default: => B)(implicit ev: A <:< Option[B], trace: ZTraceElement): ZQuery[R, E, B] =
+    self.map(_.getOrElse(default))
+
+  /**
+   * Extracts the optional value or executes the given 'default' query.
+   */
+  @deprecated("use someOrElseZIO", "0.3.0")
+  final def someOrElseM[B, R1 <: R, E1 >: E](
+    default: ZQuery[R1, E1, B]
+  )(implicit ev: A <:< Option[B], trace: ZTraceElement): ZQuery[R1, E1, B] =
+    someOrElseZIO(default)
+
+  /**
+   * Extracts the optional value or executes the given 'default' query.
+   */
+  final def someOrElseZIO[B, R1 <: R, E1 >: E](
+    default: ZQuery[R1, E1, B]
+  )(implicit ev: A <:< Option[B], trace: ZTraceElement): ZQuery[R1, E1, B] =
+    self.flatMap(ev(_) match {
+      case Some(value) => ZQuery.succeed(value)
+      case None        => default
+    })
+
+  /**
    * Extracts the optional value or fails with the given error `e`.
    */
   final def someOrFail[B, E1 >: E](
@@ -885,6 +911,40 @@ object ZQuery {
 
   /**
    * Collects a collection of queries into a query returning a collection of
+   * their results. Requests will be executed sequentially and will be
+   * pipelined.
+   */
+  def collectAll[R, E, A](as: Set[ZQuery[R, E, A]])(implicit trace: ZTraceElement): ZQuery[R, E, Set[A]] =
+    foreach(as)(identity)
+
+  /**
+   * Collects a collection of queries into a query returning a collection of
+   * their results. Requests will be executed sequentially and will be
+   * pipelined.
+   */
+  def collectAll[R, E, A: ClassTag](as: Array[ZQuery[R, E, A]])(implicit trace: ZTraceElement): ZQuery[R, E, Array[A]] =
+    foreach(as)(identity)
+
+  /**
+   * Collects a collection of queries into a query returning a collection of
+   * their results. Requests will be executed sequentially and will be
+   * pipelined.
+   */
+  def collectAll[R, E, A](as: Option[ZQuery[R, E, A]])(implicit trace: ZTraceElement): ZQuery[R, E, Option[A]] =
+    foreach(as)(identity)
+
+  /**
+   * Collects a collection of queries into a query returning a collection of
+   * their results. Requests will be executed sequentially and will be
+   * pipelined.
+   */
+  def collectAll[R, E, A](as: NonEmptyChunk[ZQuery[R, E, A]])(implicit
+    trace: ZTraceElement
+  ): ZQuery[R, E, NonEmptyChunk[A]] =
+    foreach(as)(identity)
+
+  /**
+   * Collects a collection of queries into a query returning a collection of
    * their results, batching requests to data sources.
    */
   def collectAllBatched[R, E, A, Collection[+Element] <: Iterable[Element]](
@@ -897,6 +957,31 @@ object ZQuery {
 
   /**
    * Collects a collection of queries into a query returning a collection of
+   * their results, batching requests to data sources.
+   */
+  def collectAllBatched[R, E, A](as: Set[ZQuery[R, E, A]])(implicit trace: ZTraceElement): ZQuery[R, E, Set[A]] =
+    foreachBatched(as)(identity)
+
+  /**
+   * Collects a collection of queries into a query returning a collection of
+   * their results, batching requests to data sources.
+   */
+  def collectAllBatched[R, E, A: ClassTag](as: Array[ZQuery[R, E, A]])(implicit
+    trace: ZTraceElement
+  ): ZQuery[R, E, Array[A]] =
+    foreachBatched(as)(identity)
+
+  /**
+   * Collects a collection of queries into a query returning a collection of
+   * their results, batching requests to data sources.
+   */
+  def collectAllBatched[R, E, A](as: NonEmptyChunk[ZQuery[R, E, A]])(implicit
+    trace: ZTraceElement
+  ): ZQuery[R, E, NonEmptyChunk[A]] =
+    foreachBatched(as)(identity)
+
+  /**
+   * Collects a collection of queries into a query returning a collection of
    * their results. Requests will be executed in parallel and will be batched.
    */
   def collectAllPar[R, E, A, Collection[+Element] <: Iterable[Element]](
@@ -905,6 +990,31 @@ object ZQuery {
     bf: BuildFrom[Collection[ZQuery[R, E, A]], A, Collection[A]],
     trace: ZTraceElement
   ): ZQuery[R, E, Collection[A]] =
+    foreachPar(as)(identity)
+
+  /**
+   * Collects a collection of queries into a query returning a collection of
+   * their results. Requests will be executed in parallel and will be batched.
+   */
+  def collectAllPar[R, E, A](as: Set[ZQuery[R, E, A]])(implicit trace: ZTraceElement): ZQuery[R, E, Set[A]] =
+    foreachPar(as)(identity)
+
+  /**
+   * Collects a collection of queries into a query returning a collection of
+   * their results. Requests will be executed in parallel and will be batched.
+   */
+  def collectAllPar[R, E, A: ClassTag](as: Array[ZQuery[R, E, A]])(implicit
+    trace: ZTraceElement
+  ): ZQuery[R, E, Array[A]] =
+    foreachPar(as)(identity)
+
+  /**
+   * Collects a collection of queries into a query returning a collection of
+   * their results. Requests will be executed in parallel and will be batched.
+   */
+  def collectAllPar[R, E, A](as: NonEmptyChunk[ZQuery[R, E, A]])(implicit
+    trace: ZTraceElement
+  ): ZQuery[R, E, NonEmptyChunk[A]] =
     foreachPar(as)(identity)
 
   /**
