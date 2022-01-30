@@ -1421,7 +1421,7 @@ object ZQuery {
   /**
    * Accesses the whole environment of the query.
    */
-  def service[R: Tag: IsNotIntersection](implicit trace: ZTraceElement): ZQuery[R, Nothing, R] =
+  def service[R: Tag](implicit trace: ZTraceElement): ZQuery[R, Nothing, R] =
     ZQuery.fromZIO(ZIO.service)
 
   /**
@@ -1548,21 +1548,21 @@ object ZQuery {
   final class ServiceWithPartiallyApplied[R](private val dummy: Boolean = true) extends AnyVal {
     def apply[A](
       f: R => A
-    )(implicit ev: IsNotIntersection[R], tag: Tag[R], trace: ZTraceElement): ZQuery[R, Nothing, A] =
+    )(implicit tag: Tag[R], trace: ZTraceElement): ZQuery[R, Nothing, A] =
       service[R].map(f)
   }
 
   final class ServiceWithQueryPartiallyApplied[R](private val dummy: Boolean = true) extends AnyVal {
     def apply[E, A](
       f: R => ZQuery[R, E, A]
-    )(implicit ev: IsNotIntersection[R], tag: Tag[R], race: ZTraceElement): ZQuery[R, E, A] =
+    )(implicit tag: Tag[R], race: ZTraceElement): ZQuery[R, E, A] =
       service[R].flatMap(f)
   }
 
   final class ServiceWithZIOPartiallyApplied[R](private val dummy: Boolean = true) extends AnyVal {
     def apply[E, A](
       f: R => ZIO[R, E, A]
-    )(implicit ev: IsNotIntersection[R], tag: Tag[R], trace: ZTraceElement): ZQuery[R, E, A] =
+    )(implicit tag: Tag[R], trace: ZTraceElement): ZQuery[R, E, A] =
       service[R].mapZIO(f)
   }
 
