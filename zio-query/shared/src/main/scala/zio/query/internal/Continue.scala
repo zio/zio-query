@@ -3,7 +3,7 @@ package zio.query.internal
 import zio.query._
 import zio.query.internal.Continue._
 import zio.stacktracer.TracingImplicits.disableAutoTrace
-import zio.{ CanFail, Cause, IO, NeedsEnv, Ref, ZEnvironment, ZIO, ZTraceElement }
+import zio.{ CanFail, Cause, IO, Ref, ZEnvironment, ZIO, ZTraceElement }
 
 /**
  * A `Continue[R, E, A]` models a continuation of a blocked request that
@@ -93,7 +93,7 @@ private[query] sealed trait Continue[-R, +E, +A] { self =>
   @deprecated("use provideSomeEnvironment", "2.0.0")
   final def provideSome[R0](
     f: Described[ZEnvironment[R0] => ZEnvironment[R]]
-  )(implicit ev: NeedsEnv[R], trace: ZTraceElement): Continue[R0, E, A] =
+  )(implicit trace: ZTraceElement): Continue[R0, E, A] =
     provideSomeEnvironment(f)
 
   /**
@@ -101,7 +101,7 @@ private[query] sealed trait Continue[-R, +E, +A] { self =>
    */
   final def provideSomeEnvironment[R0](
     f: Described[ZEnvironment[R0] => ZEnvironment[R]]
-  )(implicit ev: NeedsEnv[R], trace: ZTraceElement): Continue[R0, E, A] =
+  )(implicit trace: ZTraceElement): Continue[R0, E, A] =
     self match {
       case Effect(query) => effect(query.provideSomeEnvironment(f))
       case Get(io)       => get(io)
