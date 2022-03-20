@@ -3,7 +3,7 @@ package zio.query.internal
 import zio.query.internal.Result._
 import zio.query.{ DataSourceAspect, Described }
 import zio.stacktracer.TracingImplicits.disableAutoTrace
-import zio.{ CanFail, Cause, Exit, NeedsEnv, ZEnvironment, ZTraceElement }
+import zio.{ CanFail, Cause, Exit, ZEnvironment, ZTraceElement }
 
 /**
  * A `Result[R, E, A]` is the result of running one step of a `ZQuery`. A
@@ -69,7 +69,7 @@ private[query] sealed trait Result[-R, +E, +A] { self =>
    * Provides this result with its required environment.
    */
   @deprecated("use provideEnvironment", "2.0.0")
-  final def provide(r: Described[ZEnvironment[R]])(implicit ev: NeedsEnv[R], trace: ZTraceElement): Result[Any, E, A] =
+  final def provide(r: Described[ZEnvironment[R]])(implicit trace: ZTraceElement): Result[Any, E, A] =
     provideEnvironment(r)
 
   /**
@@ -77,7 +77,7 @@ private[query] sealed trait Result[-R, +E, +A] { self =>
    */
   final def provideEnvironment(
     r: Described[ZEnvironment[R]]
-  )(implicit ev: NeedsEnv[R], trace: ZTraceElement): Result[Any, E, A] =
+  )(implicit trace: ZTraceElement): Result[Any, E, A] =
     provideSomeEnvironment(Described(_ => r.value, s"_ => ${r.description}"))
 
   /**
@@ -86,7 +86,7 @@ private[query] sealed trait Result[-R, +E, +A] { self =>
   @deprecated("use provideSomeEnvironment", "2.0.0")
   final def provideSome[R0](
     f: Described[ZEnvironment[R0] => ZEnvironment[R]]
-  )(implicit ev: NeedsEnv[R], trace: ZTraceElement): Result[R0, E, A] =
+  )(implicit trace: ZTraceElement): Result[R0, E, A] =
     provideSomeEnvironment(f)
 
   /**
@@ -94,7 +94,7 @@ private[query] sealed trait Result[-R, +E, +A] { self =>
    */
   final def provideSomeEnvironment[R0](
     f: Described[ZEnvironment[R0] => ZEnvironment[R]]
-  )(implicit ev: NeedsEnv[R], trace: ZTraceElement): Result[R0, E, A] =
+  )(implicit trace: ZTraceElement): Result[R0, E, A] =
     self match {
       case Blocked(br, c) => blocked(br.provideSomeEnvironment(f), c.provideSomeEnvironment(f))
       case Done(a)        => done(a)

@@ -377,11 +377,13 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    */
   final def provideLayer[E1 >: E, R0](
     layer: => Described[ZLayer[R0, E1, R]]
-  )(implicit ev: NeedsEnv[R], trace: ZTraceElement): ZQuery[R0, E1, A] =
+  )(implicit trace: ZTraceElement): ZQuery[R0, E1, A] =
     ZQuery {
-      layer.value.build.exit.use {
-        case Exit.Failure(e) => ZIO.succeedNow(Result.fail(e))
-        case Exit.Success(r) => self.provideEnvironment(Described(r, layer.description)).step
+      ZIO.scoped[R0] {
+        layer.value.build.exit.flatMap {
+          case Exit.Failure(e) => ZIO.succeedNow(Result.fail(e))
+          case Exit.Success(r) => self.provideEnvironment(Described(r, layer.description)).step
+        }
       }
     }
 
@@ -399,7 +401,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    */
   final def provideEnvironment(
     r: => Described[ZEnvironment[R]]
-  )(implicit ev: NeedsEnv[R], trace: ZTraceElement): ZQuery[Any, E, A] =
+  )(implicit trace: ZTraceElement): ZQuery[Any, E, A] =
     provideSomeEnvironment(Described(_ => r.value, s"_ => ${r.description}"))
 
   /**
@@ -414,7 +416,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    */
   final def provideSomeEnvironment[R0](
     f: => Described[ZEnvironment[R0] => ZEnvironment[R]]
-  )(implicit ev: NeedsEnv[R], trace: ZTraceElement): ZQuery[R0, E, A] =
+  )(implicit trace: ZTraceElement): ZQuery[R0, E, A] =
     ZQuery(step.map(_.provideSomeEnvironment(f)).provideSomeEnvironment((r => (f.value(r)))))
 
   /**
@@ -1502,7 +1504,7 @@ object ZQuery {
   final class ProvideSomeLayer[R0, -R, +E, +A](private val self: ZQuery[R, E, A]) extends AnyVal {
     def apply[E1 >: E, R1](
       layer: => Described[ZLayer[R0, E1, R1]]
-    )(implicit ev1: R0 with R1 <:< R, ev2: NeedsEnv[R], tag: Tag[R1], trace: ZTraceElement): ZQuery[R0, E1, A] =
+    )(implicit ev: R0 with R1 <:< R, tag: Tag[R1], trace: ZTraceElement): ZQuery[R0, E1, A] =
       self
         .asInstanceOf[ZQuery[R0 with R1, E, A]]
         .provideLayer(Described(ZLayer.environment[R0] ++ layer.value, layer.description))
