@@ -606,14 +606,14 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
   /**
    * Returns a new query that executes this one and times the execution.
    */
-  final def timed(implicit trace: ZTraceElement): ZQuery[R, E, (Duration, A)] =
+  final def timed(implicit trace: ZTraceElement): ZQuery[R with Clock, E, (Duration, A)] =
     summarized(Clock.nanoTime)((start, end) => Duration.fromNanos(end - start))
 
   /**
    * Returns an effect that will timeout this query, returning `None` if the
    * timeout elapses before the query was completed.
    */
-  final def timeout(duration: => Duration)(implicit trace: ZTraceElement): ZQuery[R, E, Option[A]] =
+  final def timeout(duration: => Duration)(implicit trace: ZTraceElement): ZQuery[R with Clock, E, Option[A]] =
     timeoutTo(None)(Some(_))(duration)
 
   /**
@@ -622,7 +622,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    */
   final def timeoutFail[E1 >: E](e: => E1)(duration: => Duration)(implicit
     trace: ZTraceElement
-  ): ZQuery[R, E1, A] =
+  ): ZQuery[R with Clock, E1, A] =
     timeoutTo(ZQuery.fail(e))(ZQuery.succeedNow)(duration).flatten
 
   /**
@@ -631,7 +631,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    */
   final def timeoutFailCause[E1 >: E](cause: => Cause[E1])(duration: => Duration)(implicit
     trace: ZTraceElement
-  ): ZQuery[R, E1, A] =
+  ): ZQuery[R with Clock, E1, A] =
     timeoutTo(ZQuery.failCause(cause))(ZQuery.succeedNow)(duration).flatten
 
   /**
@@ -641,7 +641,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
   @deprecated("use timeoutFailCause", "0.3.0")
   final def timeoutHalt[E1 >: E](cause: => Cause[E1])(duration: => Duration)(implicit
     trace: ZTraceElement
-  ): ZQuery[R, E1, A] =
+  ): ZQuery[R with Clock, E1, A] =
     timeoutFailCause(cause)(duration)
 
   /**
@@ -1513,8 +1513,8 @@ object ZQuery {
   final class TimeoutTo[-R, +E, +A, +B](self: ZQuery[R, E, A], b: () => B) {
     def apply[B1 >: B](
       f: A => B1
-    )(duration: => Duration)(implicit trace: ZTraceElement): ZQuery[R, E, B1] = {
-
+    )(duration: => Duration)(implicit trace: ZTraceElement): ZQuery[R with Clock, E, B1] =
+      ZQuery.environment[Clock].flatMap { clock =>
         def race(
           query: ZQuery[R, E, B1],
           fiber: Fiber[Nothing, B1]
@@ -1543,7 +1543,7 @@ object ZQuery {
             )
           }
 
-      ZQuery.fromZIO(ZIO.sleep(duration).interruptible.as(b()).fork).flatMap(fiber => race(self.map(f), fiber))
+        ZQuery.fromZIO(clock.get.sleep(duration).interruptible.as(b()).fork).flatMap(fiber => race(self.map(f), fiber))
       }
   }
 

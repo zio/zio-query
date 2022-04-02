@@ -169,10 +169,10 @@ object ZQuerySpec extends ZIOBaseSpec {
                        List.tabulate(Sources.totalCount)(id => User(id, "user name", id, id))
                      )
                    )
-          richUsers <- ZQuery.foreachBatched(users) { user =>
+          richUsers <- ZQuery.foreachPar(users) { user =>
                          Sources
                            .getPayment(user.paymentId)
-                           .zip(Sources.getAddress(user.addressId))
+                           .zipPar(Sources.getAddress(user.addressId))
                            .map { case (payment, address) =>
                              (user, payment, address)
                            }
@@ -281,8 +281,8 @@ object ZQuerySpec extends ZIOBaseSpec {
   case object GetAllIds                 extends UserRequest[List[Int]]
   final case class GetNameById(id: Int) extends UserRequest[String]
 
-  val UserRequestDataSource: DataSource[Any, UserRequest[Any]] =
-    DataSource.Batched.make[Any, UserRequest[Any]]("UserRequestDataSource") { requests =>
+  val UserRequestDataSource: DataSource[Console, UserRequest[Any]] =
+    DataSource.Batched.make[Console, UserRequest[Any]]("UserRequestDataSource") { requests =>
       ZIO.when(requests.toSet.size != requests.size)(ZIO.dieMessage("Duplicate requests)")) *>
         Console.printLine(requests.toString).orDie *>
         ZIO.succeed {
@@ -294,25 +294,25 @@ object ZQuerySpec extends ZIOBaseSpec {
         }
     }
 
-  val getAllUserIds: ZQuery[Any, Nothing, List[Int]] =
+  val getAllUserIds: ZQuery[Console, Nothing, List[Int]] =
     ZQuery.fromRequest(GetAllIds)(UserRequestDataSource)
 
-  def getUserNameById(id: Int): ZQuery[Any, Nothing, String] =
+  def getUserNameById(id: Int): ZQuery[Console, Nothing, String] =
     ZQuery.fromRequest(GetNameById(id))(UserRequestDataSource)
 
-  val getAllUserNames: ZQuery[Any, Nothing, List[String]] =
+  val getAllUserNames: ZQuery[Console, Nothing, List[String]] =
     for {
       userIds   <- getAllUserIds
       userNames <- ZQuery.foreachPar(userIds)(getUserNameById)
     } yield userNames
 
   case object GetFoo extends Request[Nothing, String]
-  val getFoo: ZQuery[Any, Nothing, String] = ZQuery.fromRequest(GetFoo)(
+  val getFoo: ZQuery[Console, Nothing, String] = ZQuery.fromRequest(GetFoo)(
     DataSource.fromFunctionZIO("foo")(_ => Console.printLine("Running foo query") *> ZIO.succeed("foo"))
   )
 
   case object GetBar extends Request[Nothing, String]
-  val getBar: ZQuery[Any, Nothing, String] = ZQuery.fromRequest(GetBar)(
+  val getBar: ZQuery[Console, Nothing, String] = ZQuery.fromRequest(GetBar)(
     DataSource.fromFunctionZIO("bar")(_ => Console.printLine("Running bar query") *> ZIO.succeed("bar"))
   )
 
@@ -447,12 +447,12 @@ object ZQuerySpec extends ZIOBaseSpec {
     4 -> "d"
   )
 
-  def backendGetAll: ZIO[Any, Nothing, Map[Int, String]] =
+  def backendGetAll: ZIO[Console, Nothing, Map[Int, String]] =
     for {
       _ <- Console.printLine("getAll called").orDie
     } yield testData
 
-  def backendGetSome(ids: Chunk[Int]): ZIO[Any, Nothing, Map[Int, String]] =
+  def backendGetSome(ids: Chunk[Int]): ZIO[Console, Nothing, Map[Int, String]] =
     for {
       _ <- Console.printLine(s"getSome ${ids.mkString(", ")} called").orDie
     } yield ids.flatMap { id =>
@@ -468,10 +468,10 @@ object ZQuerySpec extends ZIOBaseSpec {
     final case class Get(id: Int) extends Req[String]
   }
 
-  val ds: DataSource.Batched[Any, Req[_]] = new DataSource.Batched[Any, Req[_]] {
+  val ds: DataSource.Batched[Console, Req[_]] = new DataSource.Batched[Console, Req[_]] {
     override def run(
       requests: Chunk[Req[_]]
-    )(implicit trace: ZTraceElement): ZIO[Any, Nothing, CompletedRequestMap] = {
+    )(implicit trace: ZTraceElement): ZIO[Console, Nothing, CompletedRequestMap] = {
       val (all, oneByOne) = requests.partition {
         case Req.GetAll => true
         case Req.Get(_) => false
@@ -505,8 +505,8 @@ object ZQuerySpec extends ZIOBaseSpec {
     override val identifier: String = "test"
   }
 
-  def getAll: ZQuery[Any, DataSourceErrors, Map[Int, String]] =
+  def getAll: ZQuery[Console, DataSourceErrors, Map[Int, String]] =
     ZQuery.fromRequest(Req.GetAll)(ds)
-  def get(id: Int): ZQuery[Any, DataSourceErrors, String] =
+  def get(id: Int): ZQuery[Console, DataSourceErrors, String] =
     ZQuery.fromRequest(Req.Get(id))(ds)
 }
