@@ -169,7 +169,7 @@ object ZQuerySpec extends ZIOBaseSpec {
                        List.tabulate(Sources.totalCount)(id => User(id, "user name", id, id))
                      )
                    )
-          richUsers <- ZQuery.foreachBatched(users) { user =>
+          richUsers <- ZQuery.foreachPar(users) { user =>
                          Sources
                            .getPayment(user.paymentId)
                            .zip(Sources.getAddress(user.addressId))
