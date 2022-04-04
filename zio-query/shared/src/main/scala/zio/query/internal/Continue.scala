@@ -181,8 +181,8 @@ private[query] object Continue {
       .foldLeft[(Chunk[(ZQuery[R, E, A], Int)], Chunk[(IO[E, A], Int)])]((Chunk.empty, Chunk.empty)) {
         case ((queries, ios), (continue, index)) =>
           continue match {
-            case Effect(query) => (queries :+ (query, index), ios)
-            case Get(io)       => (queries, ios :+ (io, index))
+            case Effect(query) => (queries :+ ((query, index)), ios)
+            case Get(io)       => (queries, ios :+ ((io, index)))
           }
       } match {
       case (Chunk(), ios) =>

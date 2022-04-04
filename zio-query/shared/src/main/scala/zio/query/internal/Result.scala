@@ -124,7 +124,7 @@ private[query] object Result {
         (Chunk.empty, Chunk.empty, Chunk.empty)
       ) { case ((blocked, done, fails), (result, index)) =>
         result match {
-          case Blocked(br, c) => (blocked :+ ((br, c), index), done, fails)
+          case Blocked(br, c) => (blocked :+ (((br, c), index)), done, fails)
           case Done(a)        => (blocked, done :+ ((a, index)), fails)
           case Fail(e)        => (blocked, done, fails :+ ((e, index)))
         }
