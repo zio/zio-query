@@ -403,10 +403,10 @@ object ZQuerySpec extends ZIOBaseSpec {
       } yield value
 
     val clear: ZIO[Cache, Nothing, Unit] =
-      ZIO.accessZIO(_.get.clear)
+      ZIO.serviceWithZIO(_.clear)
 
     val log: ZIO[Cache, Nothing, List[List[Set[CacheRequest[Any]]]]] =
-      ZIO.accessZIO(_.get.log)
+      ZIO.serviceWithZIO(_.log)
   }
 
   case class Bearer(value: String)
