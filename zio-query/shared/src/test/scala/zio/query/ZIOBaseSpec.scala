@@ -3,6 +3,6 @@ package zio.query
 import zio._
 import zio.test._
 
-trait ZIOBaseSpec extends DefaultRunnableSpec {
-  override def aspects = List(TestAspect.timeout(60.seconds))
+trait ZIOBaseSpec extends ZIOSpecDefault {
+  override def aspects = Chunk(TestAspect.timeout(60.seconds))
 }
