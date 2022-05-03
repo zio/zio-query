@@ -1,6 +1,6 @@
 package zio.query
 
-import zio.{ Chunk, ZEnvironment, ZIO, ZTraceElement }
+import zio.{ Chunk, Trace, ZEnvironment, ZIO }
 import zio.stacktracer.TracingImplicits.disableAutoTrace
 
 /**
@@ -36,7 +36,7 @@ trait DataSource[-R, -A] { self =>
    * of requests that must be performed sequentially. The inner `Chunk`
    * represents a batch of requests that can be performed in parallel.
    */
-  def runAll(requests: Chunk[Chunk[A]])(implicit trace: ZTraceElement): ZIO[R, Nothing, CompletedRequestMap]
+  def runAll(requests: Chunk[Chunk[A]])(implicit trace: Trace): ZIO[R, Nothing, CompletedRequestMap]
 
   /**
    * Returns a data source that executes at most `n` requests in parallel.
@@ -44,7 +44,7 @@ trait DataSource[-R, -A] { self =>
   def batchN(n: Int): DataSource[R, A] =
     new DataSource[R, A] {
       val identifier = s"${self}.batchN($n)"
-      def runAll(requests: Chunk[Chunk[A]])(implicit trace: ZTraceElement): ZIO[R, Nothing, CompletedRequestMap] =
+      def runAll(requests: Chunk[Chunk[A]])(implicit trace: Trace): ZIO[R, Nothing, CompletedRequestMap] =
         if (n < 1)
           ZIO.die(new IllegalArgumentException("batchN: n must be at least 1"))
         else
@@ -59,7 +59,7 @@ trait DataSource[-R, -A] { self =>
   final def contramap[B](f: Described[B => A]): DataSource[R, B] =
     new DataSource[R, B] {
       val identifier = s"${self.identifier}.contramap(${f.description})"
-      def runAll(requests: Chunk[Chunk[B]])(implicit trace: ZTraceElement): ZIO[R, Nothing, CompletedRequestMap] =
+      def runAll(requests: Chunk[Chunk[B]])(implicit trace: Trace): ZIO[R, Nothing, CompletedRequestMap] =
         self.runAll(requests.map(_.map(f.value)))
     }
 
@@ -80,7 +80,7 @@ trait DataSource[-R, -A] { self =>
   final def contramapZIO[R1 <: R, B](f: Described[B => ZIO[R1, Nothing, A]]): DataSource[R1, B] =
     new DataSource[R1, B] {
       val identifier = s"${self.identifier}.contramapZIO(${f.description})"
-      def runAll(requests: Chunk[Chunk[B]])(implicit trace: ZTraceElement): ZIO[R1, Nothing, CompletedRequestMap] =
+      def runAll(requests: Chunk[Chunk[B]])(implicit trace: Trace): ZIO[R1, Nothing, CompletedRequestMap] =
         ZIO.foreach(requests)(ZIO.foreachPar(_)(f.value)).flatMap(self.runAll)
     }
 
@@ -94,7 +94,7 @@ trait DataSource[-R, -A] { self =>
   )(f: Described[C => Either[A, B]]): DataSource[R1, C] =
     new DataSource[R1, C] {
       val identifier = s"${self.identifier}.eitherWith(${that.identifier})(${f.description})"
-      def runAll(requests: Chunk[Chunk[C]])(implicit trace: ZTraceElement): ZIO[R1, Nothing, CompletedRequestMap] =
+      def runAll(requests: Chunk[Chunk[C]])(implicit trace: Trace): ZIO[R1, Nothing, CompletedRequestMap] =
         ZIO
           .foreach(requests) { requests =>
             val (as, bs) = requests.partitionMap(f.value)
@@ -143,7 +143,7 @@ trait DataSource[-R, -A] { self =>
   ): DataSource[R0, A] =
     new DataSource[R0, A] {
       val identifier = s"${self.identifier}.provideSomeEnvironment(${f.description})"
-      def runAll(requests: Chunk[Chunk[A]])(implicit trace: ZTraceElement): ZIO[R0, Nothing, CompletedRequestMap] =
+      def runAll(requests: Chunk[Chunk[A]])(implicit trace: Trace): ZIO[R0, Nothing, CompletedRequestMap] =
         self.runAll(requests).provideSomeEnvironment(f.value)
     }
 
@@ -155,7 +155,7 @@ trait DataSource[-R, -A] { self =>
   final def race[R1 <: R, A1 <: A](that: DataSource[R1, A1]): DataSource[R1, A1] =
     new DataSource[R1, A1] {
       val identifier = s"${self.identifier}.race(${that.identifier})"
-      def runAll(requests: Chunk[Chunk[A1]])(implicit trace: ZTraceElement): ZIO[R1, Nothing, CompletedRequestMap] =
+      def runAll(requests: Chunk[Chunk[A1]])(implicit trace: Trace): ZIO[R1, Nothing, CompletedRequestMap] =
         self.runAll(requests).race(that.runAll(requests))
     }
 
@@ -171,8 +171,8 @@ object DataSource {
    * performed sequentially.
    */
   trait Batched[-R, -A] extends DataSource[R, A] {
-    def run(requests: Chunk[A])(implicit trace: ZTraceElement): ZIO[R, Nothing, CompletedRequestMap]
-    final def runAll(requests: Chunk[Chunk[A]])(implicit trace: ZTraceElement): ZIO[R, Nothing, CompletedRequestMap] =
+    def run(requests: Chunk[A])(implicit trace: Trace): ZIO[R, Nothing, CompletedRequestMap]
+    final def runAll(requests: Chunk[Chunk[A]])(implicit trace: Trace): ZIO[R, Nothing, CompletedRequestMap] =
       ZIO.foldLeft(requests)(CompletedRequestMap.empty) { case (completedRequestMap, requests) =>
         val newRequests = requests.filterNot(completedRequestMap.contains)
         if (newRequests.isEmpty) ZIO.succeedNow(completedRequestMap)
@@ -189,7 +189,7 @@ object DataSource {
     def make[R, A](name: String)(f: Chunk[A] => ZIO[R, Nothing, CompletedRequestMap]): DataSource[R, A] =
       new DataSource.Batched[R, A] {
         val identifier: String = name
-        def run(requests: Chunk[A])(implicit trace: ZTraceElement): ZIO[R, Nothing, CompletedRequestMap] =
+        def run(requests: Chunk[A])(implicit trace: Trace): ZIO[R, Nothing, CompletedRequestMap] =
           f(requests)
       }
   }
@@ -202,7 +202,7 @@ object DataSource {
   )(f: A => B)(implicit ev: A <:< Request[Nothing, B]): DataSource[Any, A] =
     new DataSource.Batched[Any, A] {
       val identifier: String = name
-      def run(requests: Chunk[A])(implicit trace: ZTraceElement): ZIO[Any, Nothing, CompletedRequestMap] =
+      def run(requests: Chunk[A])(implicit trace: Trace): ZIO[Any, Nothing, CompletedRequestMap] =
         ZIO.succeedNow(requests.foldLeft(CompletedRequestMap.empty)((map, k) => map.insert(k)(Right(f(k)))))
     }
 
@@ -263,7 +263,7 @@ object DataSource {
   )(f: Chunk[A] => ZIO[R, E, Chunk[Option[B]]])(implicit ev: A <:< Request[E, B]): DataSource[R, A] =
     new DataSource.Batched[R, A] {
       val identifier: String = name
-      def run(requests: Chunk[A])(implicit trace: ZTraceElement): ZIO[R, Nothing, CompletedRequestMap] =
+      def run(requests: Chunk[A])(implicit trace: Trace): ZIO[R, Nothing, CompletedRequestMap] =
         f(requests)
           .fold(
             e => requests.map((_, Left(e))),
@@ -317,7 +317,7 @@ object DataSource {
   ): DataSource[R, A] =
     new DataSource.Batched[R, A] {
       val identifier: String = name
-      def run(requests: Chunk[A])(implicit trace: ZTraceElement): ZIO[R, Nothing, CompletedRequestMap] =
+      def run(requests: Chunk[A])(implicit trace: Trace): ZIO[R, Nothing, CompletedRequestMap] =
         f(requests)
           .fold(
             e => requests.map(a => (ev(a), Left(e))),
@@ -339,7 +339,7 @@ object DataSource {
   )(f: Chunk[A] => ZIO[R, E, Chunk[B]])(implicit ev: A <:< Request[E, B]): DataSource[R, A] =
     new DataSource.Batched[R, A] {
       val identifier: String = name
-      def run(requests: Chunk[A])(implicit trace: ZTraceElement): ZIO[R, Nothing, CompletedRequestMap] =
+      def run(requests: Chunk[A])(implicit trace: Trace): ZIO[R, Nothing, CompletedRequestMap] =
         f(requests)
           .fold(
             e => requests.map((_, Left(e))),
@@ -367,7 +367,7 @@ object DataSource {
   )(f: A => ZIO[R, E, B])(implicit ev: A <:< Request[E, B]): DataSource[R, A] =
     new DataSource.Batched[R, A] {
       val identifier: String = name
-      def run(requests: Chunk[A])(implicit trace: ZTraceElement): ZIO[R, Nothing, CompletedRequestMap] =
+      def run(requests: Chunk[A])(implicit trace: Trace): ZIO[R, Nothing, CompletedRequestMap] =
         ZIO
           .foreachPar(requests)(a => f(a).either.map((a, _)))
           .map(_.foldLeft(CompletedRequestMap.empty) { case (map, (k, v)) => map.insert(k)(v) })
@@ -401,7 +401,7 @@ object DataSource {
   )(f: A => ZIO[R, E, Option[B]])(implicit ev: A <:< Request[E, B]): DataSource[R, A] =
     new DataSource.Batched[R, A] {
       val identifier: String = name
-      def run(requests: Chunk[A])(implicit trace: ZTraceElement): ZIO[R, Nothing, CompletedRequestMap] =
+      def run(requests: Chunk[A])(implicit trace: Trace): ZIO[R, Nothing, CompletedRequestMap] =
         ZIO
           .foreachPar(requests)(a => f(a).either.map((a, _)))
           .map(_.foldLeft(CompletedRequestMap.empty) { case (map, (k, v)) =>
@@ -416,7 +416,7 @@ object DataSource {
   def make[R, A](name: String)(f: Chunk[Chunk[A]] => ZIO[R, Nothing, CompletedRequestMap]): DataSource[R, A] =
     new DataSource[R, A] {
       val identifier: String = name
-      def runAll(requests: Chunk[Chunk[A]])(implicit trace: ZTraceElement): ZIO[R, Nothing, CompletedRequestMap] =
+      def runAll(requests: Chunk[Chunk[A]])(implicit trace: Trace): ZIO[R, Nothing, CompletedRequestMap] =
         f(requests)
     }
 
@@ -426,7 +426,7 @@ object DataSource {
   val never: DataSource[Any, Any] =
     new DataSource[Any, Any] {
       val identifier = "never"
-      def runAll(requests: Chunk[Chunk[Any]])(implicit trace: ZTraceElement): ZIO[Any, Nothing, CompletedRequestMap] =
+      def runAll(requests: Chunk[Chunk[Any]])(implicit trace: Trace): ZIO[Any, Nothing, CompletedRequestMap] =
         ZIO.never
     }
 }
