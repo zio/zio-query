@@ -2,7 +2,7 @@ package zio.query.internal
 
 import scala.annotation.tailrec
 
-import zio.{ Ref, ZEnvironment, ZIO, ZTraceElement }
+import zio.{ Ref, Trace, ZEnvironment, ZIO }
 import zio.query.internal.BlockedRequests._
 import zio.query.{ Cache, DataSource, DataSourceAspect, Described, ZQuery }
 import zio.stacktracer.TracingImplicits.disableAutoTrace
@@ -65,7 +65,7 @@ private[query] sealed trait BlockedRequests[-R] { self =>
    * Executes all requests, submitting requests to each data source in
    * parallel.
    */
-  def run(implicit trace: ZTraceElement): ZIO[R, Nothing, Unit] =
+  def run(implicit trace: Trace): ZIO[R, Nothing, Unit] =
     ZQuery.currentCache.get.flatMap { cache =>
       ZIO.foreachDiscard(BlockedRequests.flatten(self)) { requestsByDataSource =>
         ZIO.foreachParDiscard(requestsByDataSource.toIterable) { case (dataSource, sequential) =>

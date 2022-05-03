@@ -17,7 +17,7 @@ private[query] sealed trait Result[-R, +E, +A] { self =>
    */
   final def fold[B](failure: E => B, success: A => B)(implicit
     ev: CanFail[E],
-    trace: ZTraceElement
+    trace: Trace
   ): Result[R, Nothing, B] =
     self match {
       case Blocked(br, c) => blocked(br, c.fold(failure, success))
@@ -28,7 +28,7 @@ private[query] sealed trait Result[-R, +E, +A] { self =>
   /**
    * Maps the specified function over the successful value of this result.
    */
-  final def map[B](f: A => B)(implicit trace: ZTraceElement): Result[R, E, B] =
+  final def map[B](f: A => B)(implicit trace: Trace): Result[R, E, B] =
     self match {
       case Blocked(br, c) => blocked(br, c.map(f))
       case Done(a)        => done(f(a))
@@ -38,7 +38,7 @@ private[query] sealed trait Result[-R, +E, +A] { self =>
   /**
    * Transforms all data sources with the specified data source aspect.
    */
-  def mapDataSources[R1 <: R](f: DataSourceAspect[R1])(implicit trace: ZTraceElement): Result[R1, E, A] =
+  def mapDataSources[R1 <: R](f: DataSourceAspect[R1])(implicit trace: Trace): Result[R1, E, A] =
     self match {
       case Blocked(br, c) => Result.blocked(br.mapDataSources(f), c.mapDataSources(f))
       case Done(a)        => Result.done(a)
@@ -48,7 +48,7 @@ private[query] sealed trait Result[-R, +E, +A] { self =>
   /**
    * Maps the specified function over the failed value of this result.
    */
-  final def mapError[E1](f: E => E1)(implicit ev: CanFail[E], trace: ZTraceElement): Result[R, E1, A] =
+  final def mapError[E1](f: E => E1)(implicit ev: CanFail[E], trace: Trace): Result[R, E1, A] =
     self match {
       case Blocked(br, c) => blocked(br, c.mapError(f))
       case Done(a)        => done(a)
@@ -58,7 +58,7 @@ private[query] sealed trait Result[-R, +E, +A] { self =>
   /**
    * Maps the specified function over the failure cause of this result.
    */
-  def mapErrorCause[E1](f: Cause[E] => Cause[E1])(implicit trace: ZTraceElement): Result[R, E1, A] =
+  def mapErrorCause[E1](f: Cause[E] => Cause[E1])(implicit trace: Trace): Result[R, E1, A] =
     self match {
       case Blocked(br, c) => blocked(br, c.mapErrorCause(f))
       case Done(a)        => done(a)
@@ -69,7 +69,7 @@ private[query] sealed trait Result[-R, +E, +A] { self =>
    * Provides this result with its required environment.
    */
   @deprecated("use provideEnvironment", "2.0.0")
-  final def provide(r: Described[ZEnvironment[R]])(implicit trace: ZTraceElement): Result[Any, E, A] =
+  final def provide(r: Described[ZEnvironment[R]])(implicit trace: Trace): Result[Any, E, A] =
     provideEnvironment(r)
 
   /**
@@ -77,7 +77,7 @@ private[query] sealed trait Result[-R, +E, +A] { self =>
    */
   final def provideEnvironment(
     r: Described[ZEnvironment[R]]
-  )(implicit trace: ZTraceElement): Result[Any, E, A] =
+  )(implicit trace: Trace): Result[Any, E, A] =
     provideSomeEnvironment(Described(_ => r.value, s"_ => ${r.description}"))
 
   /**
@@ -86,7 +86,7 @@ private[query] sealed trait Result[-R, +E, +A] { self =>
   @deprecated("use provideSomeEnvironment", "2.0.0")
   final def provideSome[R0](
     f: Described[ZEnvironment[R0] => ZEnvironment[R]]
-  )(implicit trace: ZTraceElement): Result[R0, E, A] =
+  )(implicit trace: Trace): Result[R0, E, A] =
     provideSomeEnvironment(f)
 
   /**
@@ -94,7 +94,7 @@ private[query] sealed trait Result[-R, +E, +A] { self =>
    */
   final def provideSomeEnvironment[R0](
     f: Described[ZEnvironment[R0] => ZEnvironment[R]]
-  )(implicit trace: ZTraceElement): Result[R0, E, A] =
+  )(implicit trace: Trace): Result[R0, E, A] =
     self match {
       case Blocked(br, c) => blocked(br.provideSomeEnvironment(f), c.provideSomeEnvironment(f))
       case Done(a)        => done(a)
@@ -117,7 +117,7 @@ private[query] object Result {
    */
   def collectAllPar[R, E, A, Collection[+Element] <: Iterable[Element]](results: Collection[Result[R, E, A]])(implicit
     bf: BuildFrom[Collection[Result[R, E, A]], A, Collection[A]],
-    trace: ZTraceElement
+    trace: Trace
   ): Result[R, E, Collection[A]] =
     results.zipWithIndex
       .foldLeft[(Chunk[((BlockedRequests[R], Continue[R, E, A]), Int)], Chunk[(A, Int)], Chunk[(Cause[E], Int)])](

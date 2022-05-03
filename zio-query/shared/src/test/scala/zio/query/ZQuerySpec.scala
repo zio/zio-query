@@ -9,7 +9,7 @@ import zio.test.{ TestClock, TestConsole, TestEnvironment }
 
 object ZQuerySpec extends ZIOBaseSpec {
 
-  override def spec: ZSpec[TestEnvironment, Any] =
+  override def spec: Spec[TestEnvironment, Any] =
     suite("ZQuerySpec")(
       test("N + 1 selects problem") {
         for {
@@ -62,19 +62,19 @@ object ZQuerySpec extends ZIOBaseSpec {
         } @@ nonFlaky,
         test("requests are executed in order") {
           val query = Cache.put(0, 1) *> Cache.getAll <* Cache.put(1, -1)
-          assertM(query.run)(equalTo(Map(0 -> 1)))
+          assertZIO(query.run)(equalTo(Map(0 -> 1)))
         } @@ after(Cache.clear) @@ nonFlaky,
         test("requests are pipelined") {
           val query = Cache.put(0, 1) *> Cache.getAll <* Cache.put(1, -1)
-          assertM(query.run *> Cache.log)(hasSize(equalTo(1)))
+          assertZIO(query.run *> Cache.log)(hasSize(equalTo(1)))
         } @@ after(Cache.clear) @@ nonFlaky,
         test("intervening flatMap prevents pipelining") {
           val query = Cache.put(0, 1).flatMap(ZQuery.succeed(_)) *> Cache.getAll <* Cache.put(1, -1)
-          assertM(query.run *> Cache.log)(hasSize(equalTo(2)))
+          assertZIO(query.run *> Cache.log)(hasSize(equalTo(2)))
         } @@ after(Cache.clear) @@ nonFlaky,
         test("trailing flatMap does not prevent pipelining") {
           val query = Cache.put(0, 1) *> Cache.getAll <* Cache.put(1, -1).flatMap(ZQuery.succeed(_))
-          assertM(query.run *> Cache.log)(hasSize(equalTo(1)))
+          assertZIO(query.run *> Cache.log)(hasSize(equalTo(1)))
         } @@ after(Cache.clear) @@ nonFlaky,
         test("short circuits on failure") {
           for {
@@ -86,7 +86,7 @@ object ZQuerySpec extends ZIOBaseSpec {
         } @@ nonFlaky,
         test("does not deduplicate uncached requests") {
           val query = Cache.getAll *> Cache.put(0, 1) *> Cache.getAll
-          assertM(query.uncached.run)(equalTo(Map(0 -> 1)))
+          assertZIO(query.uncached.run)(equalTo(Map(0 -> 1)))
         } @@ nonFlaky
       ).provideCustom(Cache.live),
       suite("zipBatched")(
@@ -139,7 +139,7 @@ object ZQuerySpec extends ZIOBaseSpec {
             } yield acc + i
           }
           .run
-        assertM(effect)(equalTo(705082704))
+        assertZIO(effect)(equalTo(705082704))
       },
       test("data sources can be raced") {
         for {
@@ -178,7 +178,7 @@ object ZQuerySpec extends ZIOBaseSpec {
                            }
                        }
         } yield richUsers.size
-        assertM(query.run)(equalTo(Sources.totalCount))
+        assertZIO(query.run)(equalTo(Sources.totalCount))
       },
       test("data sources can return additional results") {
         val getSome = ZQuery.foreachPar(List(3, 4))(get).map(_.toSet)
@@ -242,7 +242,7 @@ object ZQuerySpec extends ZIOBaseSpec {
       suite("race")(
         test("race with never") {
           val query = ZQuery.never.race(ZQuery.succeed(()))
-          assertM(query.run)(anything)
+          assertZIO(query.run)(anything)
         },
         test("interruption of loser") {
           for {
@@ -365,7 +365,7 @@ object ZQuerySpec extends ZIOBaseSpec {
           val identifier: String =
             "CacheDataSource"
           def runAll(requests: Chunk[Chunk[CacheRequest[Any]]])(implicit
-            trace: ZTraceElement
+            trace: Trace
           ): ZIO[Any, Nothing, CompletedRequestMap] =
             ref.update(requests.map(_.toSet).toList :: _) *>
               ZIO
@@ -471,7 +471,7 @@ object ZQuerySpec extends ZIOBaseSpec {
   val ds: DataSource.Batched[Any, Req[_]] = new DataSource.Batched[Any, Req[_]] {
     override def run(
       requests: Chunk[Req[_]]
-    )(implicit trace: ZTraceElement): ZIO[Any, Nothing, CompletedRequestMap] = {
+    )(implicit trace: Trace): ZIO[Any, Nothing, CompletedRequestMap] = {
       val (all, oneByOne) = requests.partition {
         case Req.GetAll => true
         case Req.Get(_) => false
