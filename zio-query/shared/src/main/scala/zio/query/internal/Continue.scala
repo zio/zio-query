@@ -90,15 +90,6 @@ private[query] sealed trait Continue[-R, +E, +A] { self =>
   /**
    * Purely contramaps over the environment type of this continuation.
    */
-  @deprecated("use provideSomeEnvironment", "2.0.0")
-  final def provideSome[R0](
-    f: Described[ZEnvironment[R0] => ZEnvironment[R]]
-  )(implicit trace: Trace): Continue[R0, E, A] =
-    provideSomeEnvironment(f)
-
-  /**
-   * Purely contramaps over the environment type of this continuation.
-   */
   final def provideSomeEnvironment[R0](
     f: Described[ZEnvironment[R0] => ZEnvironment[R]]
   )(implicit trace: Trace): Continue[R0, E, A] =

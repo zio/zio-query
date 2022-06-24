@@ -68,26 +68,10 @@ private[query] sealed trait Result[-R, +E, +A] { self =>
   /**
    * Provides this result with its required environment.
    */
-  @deprecated("use provideEnvironment", "2.0.0")
-  final def provide(r: Described[ZEnvironment[R]])(implicit trace: Trace): Result[Any, E, A] =
-    provideEnvironment(r)
-
-  /**
-   * Provides this result with its required environment.
-   */
   final def provideEnvironment(
     r: Described[ZEnvironment[R]]
   )(implicit trace: Trace): Result[Any, E, A] =
     provideSomeEnvironment(Described(_ => r.value, s"_ => ${r.description}"))
-
-  /**
-   * Provides this result with part of its required environment.
-   */
-  @deprecated("use provideSomeEnvironment", "2.0.0")
-  final def provideSome[R0](
-    f: Described[ZEnvironment[R0] => ZEnvironment[R]]
-  )(implicit trace: Trace): Result[R0, E, A] =
-    provideSomeEnvironment(f)
 
   /**
    * Provides this result with part of its required environment.

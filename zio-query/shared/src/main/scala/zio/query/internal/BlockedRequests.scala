@@ -46,13 +46,6 @@ private[query] sealed trait BlockedRequests[-R] { self =>
   /**
    * Provides each data source with part of its required environment.
    */
-  @deprecated("use provideSomeEnvironment", "2.0.0")
-  final def provideSome[R0](f: Described[ZEnvironment[R0] => ZEnvironment[R]]): BlockedRequests[R0] =
-    provideSomeEnvironment(f)
-
-  /**
-   * Provides each data source with part of its required environment.
-   */
   final def provideSomeEnvironment[R0](f: Described[ZEnvironment[R0] => ZEnvironment[R]]): BlockedRequests[R0] =
     self match {
       case Empty          => Empty

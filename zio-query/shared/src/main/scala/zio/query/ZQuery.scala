@@ -93,13 +93,6 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     zip(that)
 
   /**
-   * A symbolic alias for `flatMap`.
-   */
-  @deprecated("use flatMap", "0.3.0")
-  final def >>=[R1 <: R, E1 >: E, B](f: A => ZQuery[R1, E1, B])(implicit trace: Trace): ZQuery[R1, E1, B] =
-    flatMap(f)
-
-  /**
    * Returns a query which submerges the error case of `Either` into the error channel of the query
    *
    * The inverse of [[ZQuery.either]]
@@ -120,14 +113,6 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    */
   def asSomeError(implicit trace: Trace): ZQuery[R, Option[E], A] =
     mapError(Some(_))
-
-  /**
-   * Returns a query whose failure and success channels have been mapped by the
-   * specified pair of functions, `f` and `g`.
-   */
-  @deprecated("use mapBoth", "0.3.0")
-  final def bimap[E1, B](f: E => E1, g: A => B)(implicit ev: CanFail[E], trace: Trace): ZQuery[R, E1, B] =
-    mapBoth(f, g)
 
   /**
    * Enables caching for this query. Note that caching is enabled by default
@@ -157,15 +142,6 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     trace: Trace
   ): ZQuery[R1, E2, A1] =
     self.foldCauseQuery[R1, E2, A1](h, ZQuery.succeed(_))
-
-  /**
-   * Moves a `None` value in the error channel into the value channel while converting the existing value into a `Some`
-   *
-   * Inverse of [[ZQuery.some]]
-   */
-  @deprecated("use unoption", "0.3.0")
-  def collectSome[E1](implicit ev: E IsSubtypeOfError Option[E1], trace: Trace): ZQuery[R, E1, Option[A]] =
-    unoption
 
   /**
    * Returns a query whose failure and success have been lifted into an
@@ -234,17 +210,6 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     foldQuery(e => ZQuery.succeed(failure(e)), a => ZQuery.succeed(success(a)))
 
   /**
-   * A more powerful version of `foldM` that allows recovering from any type
-   * of failure except interruptions.
-   */
-  @deprecated("use foldCauseQuery", "0.3.0")
-  final def foldCauseM[R1 <: R, E1, B](
-    failure: Cause[E] => ZQuery[R1, E1, B],
-    success: A => ZQuery[R1, E1, B]
-  )(implicit trace: Trace): ZQuery[R1, E1, B] =
-    foldCauseQuery(failure, success)
-
-  /**
    * A more powerful version of `foldQuery` that allows recovering from any
    * type of failure except interruptions.
    */
@@ -262,17 +227,6 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
         }
       )
     }
-
-  /**
-   * Recovers from errors by accepting one query to execute for the case of an
-   * error, and one query to execute for the case of success.
-   */
-  @deprecated("use foldQuery", "0.3.0")
-  final def foldM[R1 <: R, E1, B](failure: E => ZQuery[R1, E1, B], success: A => ZQuery[R1, E1, B])(implicit
-    ev: CanFail[E],
-    trace: Trace
-  ): ZQuery[R1, E1, B] =
-    foldQuery(failure, success)
 
   /**
    * Recovers from errors by accepting one query to execute for the case of an
@@ -331,13 +285,6 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    */
   def mapErrorCause[E2](h: Cause[E] => Cause[E2])(implicit trace: Trace): ZQuery[R, E2, A] =
     self.foldCauseQuery(c => ZQuery.failCause(h(c)), ZQuery.succeedNow)
-
-  /**
-   * Maps the specified effectual function over the result of this query.
-   */
-  @deprecated("use mapQuery", "0.3.0")
-  final def mapM[R1 <: R, E1 >: E, B](f: A => ZIO[R1, E1, B])(implicit trace: Trace): ZQuery[R1, E1, B] =
-    mapZIO(f)
 
   /**
    * Maps the specified effectual function over the result of this query.
@@ -547,15 +494,6 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
   /**
    * Extracts the optional value or executes the given 'default' query.
    */
-  @deprecated("use someOrElseZIO", "0.3.0")
-  final def someOrElseM[B, R1 <: R, E1 >: E](
-    default: ZQuery[R1, E1, B]
-  )(implicit ev: A <:< Option[B], trace: Trace): ZQuery[R1, E1, B] =
-    someOrElseZIO(default)
-
-  /**
-   * Extracts the optional value or executes the given 'default' query.
-   */
   final def someOrElseZIO[B, R1 <: R, E1 >: E](
     default: ZQuery[R1, E1, B]
   )(implicit ev: A <:< Option[B], trace: Trace): ZQuery[R1, E1, B] =
@@ -624,16 +562,6 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     trace: Trace
   ): ZQuery[R, E1, A] =
     timeoutTo(ZQuery.failCause(cause))(ZQuery.succeedNow)(duration).flatten
-
-  /**
-   * The same as [[timeout]], but instead of producing a `None` in the event
-   * of timeout, it will produce the specified failure.
-   */
-  @deprecated("use timeoutFailCause", "0.3.0")
-  final def timeoutHalt[E1 >: E](cause: => Cause[E1])(duration: => Duration)(implicit
-    trace: Trace
-  ): ZQuery[R, E1, A] =
-    timeoutFailCause(cause)(duration)
 
   /**
    * Returns a query that will timeout this query, returning either the default
@@ -871,23 +799,6 @@ object ZQuery {
 
   final def absolve[R, E, A](v: => ZQuery[R, E, Either[E, A]])(implicit trace: Trace): ZQuery[R, E, A] =
     ZQuery.suspend(v).flatMap(fromEither(_))
-
-  /**
-   * Accesses the environment of the effect.
-   * {{{
-   * val portNumber = effect.access(_.config.portNumber)
-   * }}}
-   */
-  @deprecated("use environmentWith", "2..0.0")
-  final def access[R]: EnvironmentWithPartiallyApplied[R] =
-    environmentWith
-
-  /**
-   * Effectfully accesses the environment of the effect.
-   */
-  @deprecated("use environmentWithQuery", "0.3.0")
-  final def accessM[R]: EnvironmentWithQueryPartiallyApplied[R] =
-    environmentWithQuery
 
   /**
    * Collects a collection of queries into a query returning a collection of
@@ -1256,13 +1167,6 @@ object ZQuery {
     foreachPar[R, E, A, B, Chunk](as)(fn).map(NonEmptyChunk.nonEmpty)
 
   /**
-   * Constructs a query from an effect.
-   */
-  @deprecated("use fromZIO", "0.3.0")
-  def fromEffect[R, E, A](effect: => ZIO[R, E, A])(implicit trace: Trace): ZQuery[R, E, A] =
-    fromZIO(effect)
-
-  /**
    * Constructs a query from an either
    */
   def fromEither[E, A](either: => Either[E, A])(implicit trace: Trace): ZQuery[Any, E, A] =
@@ -1333,13 +1237,6 @@ object ZQuery {
     ZQuery(ZIO.suspendSucceed(effect).foldCause(Result.fail, Result.done))
 
   /**
-   * Constructs a query that fails with the specified cause.
-   */
-  @deprecated("use failCause", "0.3.0")
-  def halt[E](cause: => Cause[E])(implicit trace: Trace): ZQuery[Any, E, Nothing] =
-    ZQuery(ZIO.succeed(Result.fail(cause)))
-
-  /**
    * Constructs a query that never completes.
    */
   def never(implicit trace: Trace): ZQuery[Any, Nothing, Nothing] =
@@ -1350,32 +1247,6 @@ object ZQuery {
    */
   val none: ZQuery[Any, Nothing, Option[Nothing]] =
     succeedNow(None)
-
-  /**
-   * Performs a query for each element in a collection, collecting the results
-   * into a collection of failed results and a collection of successful
-   * results. Requests will be executed sequentially and will be pipelined.
-   */
-  @deprecated("use partitionQuery", "0.3.0")
-  def partitionM[R, E, A, B](
-    as: Iterable[A]
-  )(
-    f: A => ZQuery[R, E, B]
-  )(implicit ev: CanFail[E], trace: Trace): ZQuery[R, Nothing, (Iterable[E], Iterable[B])] =
-    partitionQuery(as)(f)
-
-  /**
-   * Performs a query for each element in a collection, collecting the results
-   * into a collection of failed results and a collection of successful
-   * results. Requests will be executed in parallel and will be batched.
-   */
-  @deprecated("use partitionQueryPar", "0.3.0")
-  def partitionMPar[R, E, A, B](
-    as: Iterable[A]
-  )(
-    f: A => ZQuery[R, E, B]
-  )(implicit ev: CanFail[E], trace: Trace): ZQuery[R, Nothing, (Iterable[E], Iterable[B])] =
-    partitionQueryPar(as)(f)
 
   /**
    * Performs a query for each element in a collection, collecting the results
