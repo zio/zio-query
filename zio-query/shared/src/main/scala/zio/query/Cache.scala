@@ -1,6 +1,6 @@
 package zio.query
 
-import zio.{ IO, Ref, Trace, UIO, ZIO }
+import zio._
 import zio.stacktracer.TracingImplicits.disableAutoTrace
 
 /**
@@ -77,5 +77,5 @@ object Cache {
   }
 
   private[query] def unsafeMake(): Cache =
-    new Default(Ref.unsafeMake(Map.empty[Any, Any]))
+    new Default(Ref.unsafe.make(Map.empty[Any, Any])(Unsafe.unsafe))
 }

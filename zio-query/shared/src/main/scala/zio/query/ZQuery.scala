@@ -388,15 +388,6 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     }
 
   /**
-   * Provides the part of the environment that is not part of the `ZEnv`,
-   * leaving a query that only depends on the `ZEnv`.
-   */
-  final def provideCustomLayer[E1 >: E, R1](
-    layer: => Described[ZLayer[ZEnv, E1, R1]]
-  )(implicit ev: ZEnv with R1 <:< R, tag: Tag[R1], trace: Trace): ZQuery[ZEnv, E1, A] =
-    provideSomeLayer(layer)
-
-  /**
    * Provides this query with its required environment.
    */
   final def provideEnvironment(
@@ -431,7 +422,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
       exit: Exit[Nothing, Result[R1, E1, A1]],
       fiber: Fiber[Nothing, Result[R1, E1, A1]]
     ): ZIO[R1, Nothing, Result[R1, E1, A1]] =
-      exit.foldZIO(
+      exit.foldExitZIO(
         cause => fiber.join.map(_.mapErrorCause(_ && cause)),
         {
           case Result.Blocked(blockedRequests, continue) =>
@@ -1512,7 +1503,7 @@ object ZQuery {
         ZQuery {
           query.step.raceWith[R, Nothing, Nothing, B1, Result[R, E, B1]](fiber.join)(
             (leftExit, rightFiber) =>
-              leftExit.foldZIO(
+              leftExit.foldExitZIO(
                 cause => rightFiber.interrupt *> ZIO.succeedNow(Result.fail(cause)),
                 result =>
                   result match {
@@ -1586,8 +1577,8 @@ object ZQuery {
     ZQuery(ZIO.succeedNow(Result.done(value)))
 
   private[query] val cachingEnabled: FiberRef[Boolean] =
-    FiberRef.unsafeMake(true)
+    FiberRef.unsafe.make(true)(Unsafe.unsafe)
 
   private[query] val currentCache: FiberRef[Cache] =
-    FiberRef.unsafeMake(Cache.unsafeMake())
+    FiberRef.unsafe.make(Cache.unsafeMake())(Unsafe.unsafe)
 }

@@ -170,7 +170,7 @@ private[query] object Result {
    * Lifts an `Exit` into a result.
    */
   def fromExit[E, A](exit: Exit[E, A]): Result[Any, E, A] =
-    exit.fold(Result.fail, Result.done)
+    exit.foldExit(Result.fail, Result.done)
 
   final case class Blocked[-R, +E, +A](blockedRequests: BlockedRequests[R], continue: Continue[R, E, A])
       extends Result[R, E, A]
