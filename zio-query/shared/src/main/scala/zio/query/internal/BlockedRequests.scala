@@ -2,9 +2,10 @@ package zio.query.internal
 
 import scala.annotation.tailrec
 
-import zio.{ Ref, ZIO }
+import zio.{ Ref, Trace, ZEnvironment, ZIO }
 import zio.query.internal.BlockedRequests._
-import zio.query.{ Cache, DataSource, DataSourceAspect, Described }
+import zio.query.{ Cache, DataSource, DataSourceAspect, Described, ZQuery }
+import zio.stacktracer.TracingImplicits.disableAutoTrace
 
 /**
  * `BlockedRequests` captures a collection of blocked requests as a data
@@ -45,30 +46,30 @@ private[query] sealed trait BlockedRequests[-R] { self =>
   /**
    * Provides each data source with part of its required environment.
    */
-  final def provideSome[R0](f: Described[R0 => R]): BlockedRequests[R0] =
+  final def provideSomeEnvironment[R0](f: Described[ZEnvironment[R0] => ZEnvironment[R]]): BlockedRequests[R0] =
     self match {
       case Empty          => Empty
-      case Both(l, r)     => Both(l.provideSome(f), r.provideSome(f))
-      case Then(l, r)     => Then(l.provideSome(f), r.provideSome(f))
-      case Single(ds, br) => Single(ds.provideSome(f), br)
+      case Both(l, r)     => Both(l.provideSomeEnvironment(f), r.provideSomeEnvironment(f))
+      case Then(l, r)     => Then(l.provideSomeEnvironment(f), r.provideSomeEnvironment(f))
+      case Single(ds, br) => Single(ds.provideSomeEnvironment(f), br)
     }
 
   /**
    * Executes all requests, submitting requests to each data source in
    * parallel.
    */
-  def run(cache: Cache): ZIO[R, Nothing, Unit] =
-    ZIO.effectSuspendTotal {
-      ZIO.foreach_(BlockedRequests.flatten(self)) { requestsByDataSource =>
-        ZIO.foreachPar_(requestsByDataSource.toIterable) { case (dataSource, sequential) =>
+  def run(implicit trace: Trace): ZIO[R, Nothing, Unit] =
+    ZQuery.currentCache.get.flatMap { cache =>
+      ZIO.foreachDiscard(BlockedRequests.flatten(self)) { requestsByDataSource =>
+        ZIO.foreachParDiscard(requestsByDataSource.toIterable) { case (dataSource, sequential) =>
           for {
             completedRequests <- dataSource.runAll(sequential.map(_.map(_.request)))
             blockedRequests    = sequential.flatten
             leftovers          = completedRequests.requests -- blockedRequests.map(_.request)
-            _ <- ZIO.foreach_(blockedRequests) { blockedRequest =>
+            _ <- ZIO.foreachDiscard(blockedRequests) { blockedRequest =>
                    blockedRequest.result.set(completedRequests.lookup(blockedRequest.request))
                  }
-            _ <- ZIO.foreach_(leftovers) { request =>
+            _ <- ZIO.foreachDiscard(leftovers) { request =>
                    Ref.make(completedRequests.lookup(request)).flatMap(cache.put(request, _))
                  }
           } yield ()

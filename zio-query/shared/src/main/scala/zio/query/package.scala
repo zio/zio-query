@@ -1,5 +1,7 @@
 package zio
 
+import zio.stacktracer.TracingImplicits.disableAutoTrace
+
 package object query {
 
   type RQuery[-R, +A]  = ZQuery[R, Throwable, A]

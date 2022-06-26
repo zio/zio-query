@@ -2,6 +2,7 @@ package zio.query.internal
 
 import zio.Chunk
 import zio.query.DataSource
+import zio.stacktracer.TracingImplicits.disableAutoTrace
 
 /**
  * A `Sequential[R]` maintains a mapping from data sources to batches of

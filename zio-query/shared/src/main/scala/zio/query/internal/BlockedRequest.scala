@@ -2,6 +2,7 @@ package zio.query.internal
 
 import zio.Ref
 import zio.query.Request
+import zio.stacktracer.TracingImplicits.disableAutoTrace
 
 /**
  * A `BlockedRequest[A]` keeps track of a request of type `A` along with a
