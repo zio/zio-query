@@ -1,5 +1,7 @@
 package zio.query
 
+import zio.stacktracer.TracingImplicits.disableAutoTrace
+
 /**
  * A `Request[E, A]` is a request from a data source for a value of type `A`
  * that may fail with an `E`.

@@ -23,7 +23,7 @@ inThisBuild(
 addCommandAlias("fmt", "all scalafmtSbt scalafmt test:scalafmt")
 addCommandAlias("check", "all scalafmtSbtCheck scalafmtCheck test:scalafmtCheck")
 
-val zioVersion = "1.0.12"
+val zioVersion = "2.0.0"
 
 lazy val root = project
   .in(file("."))
@@ -49,6 +49,14 @@ lazy val zioQuery = crossProject(JSPlatform, JVMPlatform)
     )
   )
   .settings(testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework"))
+  .settings(
+    scalacOptions ++= {
+      if (scalaVersion.value == ScalaDotty)
+        Seq.empty
+      else
+        Seq("-P:silencer:globalFilters=[zio.stacktracer.TracingImplicits.disableAutoTrace]")
+    }
+  )
 
 lazy val zioQueryJS = zioQuery.js
   .settings(dottySettings)

@@ -1,5 +1,7 @@
 package zio.query
 
+import zio.stacktracer.TracingImplicits.disableAutoTrace
+
 /**
  * `QueryFailure` keeps track of details relevant to query failures.
  */

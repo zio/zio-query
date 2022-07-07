@@ -28,7 +28,7 @@ Now let's build the corresponding `DataSource`. We will create a `Batched` data 
 ```scala mdoc:silent
 lazy val UserDataSource = new DataSource.Batched[Any, GetUserName] {
   val identifier: String = ???
-  def run(requests: Chunk[GetUserName]): ZIO[Any, Nothing, CompletedRequestMap] = ???
+  def run(requests: Chunk[GetUserName])(implicit trace: Trace): ZIO[Any, Nothing, CompletedRequestMap] = ???
 }
 ```
 
