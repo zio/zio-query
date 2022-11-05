@@ -12,4 +12,4 @@ addSbtPlugin("com.github.cb372"                  % "sbt-explicit-dependencies" %
 addSbtPlugin("com.thoughtworks.sbt-api-mappings" % "sbt-api-mappings"          % "3.0.0")
 addSbtPlugin("ch.epfl.scala"                     % "sbt-scalafix"              % "0.9.31")
 
-libraryDependencies += "org.snakeyaml" % "snakeyaml-engine" % "2.3"
+libraryDependencies += "org.snakeyaml" % "snakeyaml-engine" % "2.5"
