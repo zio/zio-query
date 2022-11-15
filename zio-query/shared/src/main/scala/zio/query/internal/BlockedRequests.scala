@@ -31,9 +31,9 @@ private[query] sealed trait BlockedRequests[-R] { self =>
     Then(self, that)
 
   /**
-    * Folds over the cases of this collection of blocked requests with the
-    * specified functions.
-    */
+   * Folds over the cases of this collection of blocked requests with the
+   * specified functions.
+   */
   final def fold[Z](
     emptyCase: => Z,
     singleCase: (DataSource[R, Any], BlockedRequest[Any]) => Z
