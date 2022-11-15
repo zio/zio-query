@@ -1,6 +1,6 @@
 package zio.query
 
-import zio.{ Chunk, Trace, ZIO }
+import zio.{Chunk, Trace, ZIO}
 import zio.stacktracer.TracingImplicits.disableAutoTrace
 
 /**

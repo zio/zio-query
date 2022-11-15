@@ -3,9 +3,9 @@ package zio.query
 import zio._
 import zio.query.DataSourceAspect._
 import zio.test.Assertion._
-import zio.test.TestAspect.{ after, nonFlaky, silent }
+import zio.test.TestAspect.{after, nonFlaky, silent}
 import zio.test._
-import zio.test.{ TestClock, TestConsole, TestEnvironment }
+import zio.test.{TestClock, TestConsole, TestEnvironment}
 
 object ZQuerySpec extends ZIOBaseSpec {
 

@@ -11,9 +11,9 @@ import scalafix.sbt.ScalafixPlugin.autoImport.scalafixSemanticdb
 object BuildHelper {
 
   private val versions: Map[String, String] = {
-    import org.snakeyaml.engine.v2.api.{ Load, LoadSettings }
+    import org.snakeyaml.engine.v2.api.{Load, LoadSettings}
 
-    import java.util.{ List => JList, Map => JMap }
+    import java.util.{List => JList, Map => JMap}
     import scala.jdk.CollectionConverters._
 
     val doc = new Load(LoadSettings.builder().build())
@@ -25,13 +25,13 @@ object BuildHelper {
   val Scala211: String   = versions("2.11")
   val Scala212: String   = versions("2.12")
   val Scala213: String   = versions("2.13")
-  val ScalaDotty: String = versions("3.1")
+  val ScalaDotty: String = versions("3.2")
 
   def buildInfoSettings(packageName: String) =
     Seq(
-      buildInfoKeys := Seq[BuildInfoKey](name, version, scalaVersion, sbtVersion, isSnapshot),
+      buildInfoKeys    := Seq[BuildInfoKey](name, version, scalaVersion, sbtVersion, isSnapshot),
       buildInfoPackage := packageName,
-      buildInfoObject := "BuildInfo"
+      buildInfoObject  := "BuildInfo"
     )
 
   private val stdOptions = Seq(
@@ -182,18 +182,18 @@ object BuildHelper {
   )
 
   def stdSettings(prjName: String) = Seq(
-    name := s"$prjName",
-    scalacOptions := stdOptions,
-    crossScalaVersions := Seq(Scala213, Scala212, Scala211),
+    name                     := s"$prjName",
+    scalacOptions            := stdOptions,
+    crossScalaVersions       := Seq(Scala213, Scala212, Scala211),
     ThisBuild / scalaVersion := crossScalaVersions.value.head,
-    scalacOptions := stdOptions ++ extraOptions(scalaVersion.value, optimize = !isSnapshot.value),
+    scalacOptions            := stdOptions ++ extraOptions(scalaVersion.value, optimize = !isSnapshot.value),
     libraryDependencies ++= {
       if (scalaVersion.value == ScalaDotty)
-        Seq("com.github.ghik" % s"silencer-lib_$Scala213" % "1.7.5" % Provided)
+        Seq("com.github.ghik" % s"silencer-lib_$Scala213" % "1.7.12" % Provided)
       else
         Seq(
-          "com.github.ghik" % "silencer-lib" % "1.7.7" % Provided cross CrossVersion.full,
-          compilerPlugin("com.github.ghik" % "silencer-plugin" % "1.7.7" cross CrossVersion.full),
+          "com.github.ghik" % "silencer-lib" % "1.7.12" % Provided cross CrossVersion.full,
+          compilerPlugin("com.github.ghik" % "silencer-plugin" % "1.7.12" cross CrossVersion.full),
           compilerPlugin(scalafixSemanticdb)
         )
     },
