@@ -2,9 +2,9 @@ package zio.query.internal
 
 import scala.annotation.tailrec
 
-import zio.{ Ref, Trace, ZEnvironment, ZIO }
+import zio.{Ref, Trace, ZEnvironment, ZIO}
 import zio.query.internal.BlockedRequests._
-import zio.query.{ Cache, DataSource, DataSourceAspect, Described, ZQuery }
+import zio.query.{Cache, DataSource, DataSourceAspect, Described, ZQuery}
 import zio.stacktracer.TracingImplicits.disableAutoTrace
 
 /**
@@ -82,8 +82,7 @@ private[query] sealed trait BlockedRequests[-R] { self =>
     fold(Folder.ProvideSomeEnvironment(f))
 
   /**
-   * Executes all requests, submitting requests to each data source in
-   * parallel.
+   * Executes all requests, submitting requests to each data source in parallel.
    */
   def run(implicit trace: Trace): ZIO[R, Nothing, Unit] =
     ZQuery.currentCache.get.flatMap { cache =>
@@ -191,8 +190,8 @@ private[query] object BlockedRequests {
 
   /**
    * Takes one step in evaluating a collection of blocked requests, returning a
-   * collection of blocked requests that can be performed in parallel and a
-   * list of blocked requests that must be performed sequentially after those
+   * collection of blocked requests that can be performed in parallel and a list
+   * of blocked requests that must be performed sequentially after those
    * requests.
    */
   private def step[R](
@@ -228,9 +227,9 @@ private[query] object BlockedRequests {
 
   /**
    * Merges a collection of requests that must be executed sequentially with a
-   * collection of requests that can be executed in parallel. If the
-   * collections are both from the same single data source then the requests
-   * can be pipelined while preserving ordering guarantees.
+   * collection of requests that can be executed in parallel. If the collections
+   * are both from the same single data source then the requests can be
+   * pipelined while preserving ordering guarantees.
    */
   private def merge[R](sequential: List[Sequential[R]], parallel: Parallel[R]): List[Sequential[R]] =
     if (sequential.isEmpty)

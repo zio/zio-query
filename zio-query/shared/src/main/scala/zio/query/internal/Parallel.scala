@@ -5,16 +5,16 @@ import zio.query.DataSource
 import zio.stacktracer.TracingImplicits.disableAutoTrace
 
 /**
- * A `Parallel[R]` maintains a mapping from data sources to requests from
- * those data sources that can be executed in parallel.
+ * A `Parallel[R]` maintains a mapping from data sources to requests from those
+ * data sources that can be executed in parallel.
  */
 private[query] final class Parallel[-R](private val map: Map[DataSource[Any, Any], Chunk[BlockedRequest[Any]]]) {
   self =>
 
   /**
-   * Combines this collection of requests that can be executed in parallel
-   * with that collection of requests that can be executed in parallel to
-   * return a new collection of requests that can be executed in parallel.
+   * Combines this collection of requests that can be executed in parallel with
+   * that collection of requests that can be executed in parallel to return a
+   * new collection of requests that can be executed in parallel.
    */
   def ++[R1 <: R](that: Parallel[R1]): Parallel[R1] =
     new Parallel(
@@ -37,17 +37,17 @@ private[query] final class Parallel[-R](private val map: Map[DataSource[Any, Any
     map.keys
 
   /**
-   * Converts this collection of requests that can be executed in parallel to
-   * a batch of requests in a collection of requests that must be executed
+   * Converts this collection of requests that can be executed in parallel to a
+   * batch of requests in a collection of requests that must be executed
    * sequentially.
    */
   def sequential: Sequential[R] =
     new Sequential(map.map { case (k, v) => (k, Chunk(v)) })
 
   /**
-   * Converts this collection of requests that can be executed in parallel to
-   * an `Iterable` containing mappings from data sources to requests from
-   * those data sources.
+   * Converts this collection of requests that can be executed in parallel to an
+   * `Iterable` containing mappings from data sources to requests from those
+   * data sources.
    */
   def toIterable: Iterable[(DataSource[R, Any], Chunk[BlockedRequest[Any]])] =
     map

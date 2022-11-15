@@ -12,19 +12,19 @@ import zio.stacktracer.TracingImplicits.disableAutoTrace
 trait Cache {
 
   /**
-   * Looks up a request in the cache, failing with the unit value if the
-   * request is not in the cache, succeeding with `Ref(None)` if the request is
-   * in the cache but has not been executed yet, or `Ref(Some(value))` if the
-   * request has been executed.
+   * Looks up a request in the cache, failing with the unit value if the request
+   * is not in the cache, succeeding with `Ref(None)` if the request is in the
+   * cache but has not been executed yet, or `Ref(Some(value))` if the request
+   * has been executed.
    */
   def get[E, A](request: Request[E, A])(implicit trace: Trace): IO[Unit, Ref[Option[Either[E, A]]]]
 
   /**
-   * Looks up a request in the cache. If the request is not in the cache
-   * returns a `Left` with a `Ref` that can be set with a `Some` to complete
-   * the request. If the request is in the cache returns a `Right` with a `Ref`
-   * that either contains `Some` with a result if the request has been executed
-   * or `None` if the request has not been executed yet.
+   * Looks up a request in the cache. If the request is not in the cache returns
+   * a `Left` with a `Ref` that can be set with a `Some` to complete the
+   * request. If the request is in the cache returns a `Right` with a `Ref` that
+   * either contains `Some` with a result if the request has been executed or
+   * `None` if the request has not been executed yet.
    */
   def lookup[R, E, A, B](request: A)(implicit
     ev: A <:< Request[E, B],

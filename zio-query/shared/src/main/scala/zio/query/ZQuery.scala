@@ -93,7 +93,8 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     zip(that)
 
   /**
-   * Returns a query which submerges the error case of `Either` into the error channel of the query
+   * Returns a query which submerges the error case of `Either` into the error
+   * channel of the query
    *
    * The inverse of [[ZQuery.either]]
    */
@@ -107,17 +108,16 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     map(_ => b)
 
   /**
-   * Lifts the error channel into a `Some` value for composition with other optional queries
-   *
-   * @see [[ZQuery.some]]
+   * Lifts the error channel into a `Some` value for composition with other
+   * optional queries
    */
   def asSomeError(implicit trace: Trace): ZQuery[R, Option[E], A] =
     mapError(Some(_))
 
   /**
-   * Enables caching for this query. Note that caching is enabled by default
-   * so this will only be effective to enable caching in part of a larger
-   * query in which caching has been disabled.
+   * Enables caching for this query. Note that caching is enabled by default so
+   * this will only be effective to enable caching in part of a larger query in
+   * which caching has been disabled.
    */
   def cached(implicit trace: Trace): ZQuery[R, E, A] =
     for {
@@ -135,8 +135,6 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
 
   /**
    * Recovers from all errors with provided Cause.
-   *
-   * @see [[ZQuery.sandbox]] - other functions that can recover from defects
    */
   def catchAllCause[R1 <: R, E2, A1 >: A](h: Cause[E] => ZQuery[R1, E2, A1])(implicit
     trace: Trace
@@ -210,8 +208,8 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     foldQuery(e => ZQuery.succeed(failure(e)), a => ZQuery.succeed(success(a)))
 
   /**
-   * A more powerful version of `foldQuery` that allows recovering from any
-   * type of failure except interruptions.
+   * A more powerful version of `foldQuery` that allows recovering from any type
+   * of failure except interruptions.
    */
   final def foldCauseQuery[R1 <: R, E1, B](
     failure: Cause[E] => ZQuery[R1, E1, B],
@@ -277,11 +275,9 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     mapBoth(f, identity)
 
   /**
-   * Returns a query with its full cause of failure mapped using the
-   * specified function. This can be used to transform errors while
-   * preserving the original structure of `Cause`.
-   *
-   * @see [[sandbox]], [[catchAllCause]] - other functions for dealing with defects
+   * Returns a query with its full cause of failure mapped using the specified
+   * function. This can be used to transform errors while preserving the
+   * original structure of `Cause`.
    */
   def mapErrorCause[E2](h: Cause[E] => Cause[E2])(implicit trace: Trace): ZQuery[R, E2, A] =
     self.foldCauseQuery(c => ZQuery.failCause(h(c)), ZQuery.succeedNow)
@@ -402,8 +398,8 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     refineOrDieWith(pf)(ev1)
 
   /**
-   * Keeps some of the errors, and terminates the query with the rest, using
-   * the specified function to convert the `E` into a `Throwable`.
+   * Keeps some of the errors, and terminates the query with the rest, using the
+   * specified function to convert the `E` into a `Throwable`.
    */
   def refineOrDieWith[E1](pf: PartialFunction[E, E1])(
     f: E => Throwable
@@ -472,7 +468,8 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     ZQuery.unsandbox(f(self.sandbox))
 
   /**
-   * Extracts a Some value into the value channel while moving the None into the error channel for easier composition
+   * Extracts a Some value into the value channel while moving the None into the
+   * error channel for easier composition
    *
    * Inverse of [[ZQuery.unoption]]
    */
@@ -516,9 +513,9 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     }
 
   /**
-   * Summarizes a query by computing some value before and after execution,
-   * and then combining the values to produce a summary, together with the
-   * result of execution.
+   * Summarizes a query by computing some value before and after execution, and
+   * then combining the values to produce a summary, together with the result of
+   * execution.
    */
   final def summarized[R1 <: R, E1 >: E, B, C](
     summary0: ZIO[R1, E1, B]
@@ -546,8 +543,8 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     timeoutTo(None)(Some(_))(duration)
 
   /**
-   * The same as [[timeout]], but instead of producing a `None` in the event
-   * of timeout, it will produce the specified error.
+   * The same as [[timeout]], but instead of producing a `None` in the event of
+   * timeout, it will produce the specified error.
    */
   final def timeoutFail[E1 >: E](e: => E1)(duration: => Duration)(implicit
     trace: Trace
@@ -555,8 +552,8 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     timeoutTo(ZQuery.fail(e))(ZQuery.succeedNow)(duration).flatten
 
   /**
-   * The same as [[timeout]], but instead of producing a `None` in the event
-   * of timeout, it will produce the specified failure.
+   * The same as [[timeout]], but instead of producing a `None` in the event of
+   * timeout, it will produce the specified failure.
    */
   final def timeoutFailCause[E1 >: E](cause: => Cause[E1])(duration: => Duration)(implicit
     trace: Trace
@@ -581,8 +578,8 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     } yield a
 
   /**
-   * Converts a `ZQuery[R, Either[E, B], A]` into a
-   * `ZQuery[R, E, Either[A, B]]`. The inverse of `left`.
+   * Converts a `ZQuery[R, Either[E, B], A]` into a `ZQuery[R, E, Either[A,
+   * B]]`. The inverse of `left`.
    */
   final def unleft[E1, B](implicit
     ev: E IsSubtypeOfError Either[E1, B],
@@ -628,8 +625,8 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     }
 
   /**
-   * Converts a `ZQuery[R, Either[B, E], A]` into a
-   * `ZQuery[R, E, Either[B, A]]`. The inverse of `right`.
+   * Converts a `ZQuery[R, Either[B, E], A]` into a `ZQuery[R, E, Either[B,
+   * A]]`. The inverse of `right`.
    */
   final def unright[E1, B](implicit
     ev: E IsSubtypeOfError Either[B, E1],
@@ -652,8 +649,8 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
 
   /**
    * Returns a query that models the execution of this query and the specified
-   * query, batching requests to data sources and combining their results into
-   * a tuple.
+   * query, batching requests to data sources and combining their results into a
+   * tuple.
    */
   final def zipBatched[R1 <: R, E1 >: E, B](that: => ZQuery[R1, E1, B])(implicit
     zippable: Zippable[A, B],
@@ -989,11 +986,11 @@ object ZQuery {
     }
 
   /**
-   * Applies the function `f` to each element of the `Set[A]` and
-   * returns the results in a new `Set[B]`.
+   * Applies the function `f` to each element of the `Set[A]` and returns the
+   * results in a new `Set[B]`.
    *
-   * For a parallel version of this method, see `foreachPar`.
-   * If you do not need the results, see `foreach_` for a more efficient implementation.
+   * For a parallel version of this method, see `foreachPar`. If you do not need
+   * the results, see `foreach_` for a more efficient implementation.
    */
   final def foreach[R, E, A, B](in: Set[A])(f: A => ZQuery[R, E, B])(implicit
     trace: Trace
@@ -1001,11 +998,11 @@ object ZQuery {
     foreach[R, E, A, B, Iterable](in)(f).map(_.toSet)
 
   /**
-   * Applies the function `f` to each element of the `Array[A]` and
-   * returns the results in a new `Array[B]`.
+   * Applies the function `f` to each element of the `Array[A]` and returns the
+   * results in a new `Array[B]`.
    *
-   * For a parallel version of this method, see `foreachPar`.
-   * If you do not need the results, see `foreach_` for a more efficient implementation.
+   * For a parallel version of this method, see `foreachPar`. If you do not need
+   * the results, see `foreach_` for a more efficient implementation.
    */
   final def foreach[R, E, A, B: ClassTag](in: Array[A])(f: A => ZQuery[R, E, B])(implicit
     trace: Trace
@@ -1016,8 +1013,8 @@ object ZQuery {
    * Applies the function `f` to each element of the `Map[Key, Value]` and
    * returns the results in a new `Map[Key2, Value2]`.
    *
-   * For a parallel version of this method, see `foreachPar`. If you do not
-   * need the results, see `foreach_` for a more efficient implementation.
+   * For a parallel version of this method, see `foreachPar`. If you do not need
+   * the results, see `foreach_` for a more efficient implementation.
    */
   def foreach[R, E, Key, Key2, Value, Value2](
     map: Map[Key, Value]
@@ -1025,8 +1022,8 @@ object ZQuery {
     foreach[R, E, (Key, Value), (Key2, Value2), Iterable](map)(f.tupled).map(_.toMap)
 
   /**
-   * Applies the function `f` if the argument is non-empty and
-   * returns the results in a new `Option[B]`.
+   * Applies the function `f` if the argument is non-empty and returns the
+   * results in a new `Option[B]`.
    */
   final def foreach[R, E, A, B](in: Option[A])(f: A => ZQuery[R, E, B])(implicit
     trace: Trace
@@ -1037,8 +1034,8 @@ object ZQuery {
    * Applies the function `f` to each element of the `NonEmptyChunk[A]` and
    * returns the results in a new `NonEmptyChunk[B]`.
    *
-   * For a parallel version of this method, see `foreachPar`.
-   * If you do not need the results, see `foreach_` for a more efficient implementation.
+   * For a parallel version of this method, see `foreachPar`. If you do not need
+   * the results, see `foreach_` for a more efficient implementation.
    */
   final def foreach[R, E, A, B](in: NonEmptyChunk[A])(f: A => ZQuery[R, E, B])(implicit
     trace: Trace
@@ -1047,8 +1044,8 @@ object ZQuery {
 
   /**
    * Performs a query for each element in a collection, batching requests to
-   * data sources and collecting the results into a query returning a
-   * collection of their results.
+   * data sources and collecting the results into a query returning a collection
+   * of their results.
    */
   def foreachBatched[R, E, A, B, Collection[+Element] <: Iterable[Element]](
     as: Collection[A]
@@ -1073,9 +1070,9 @@ object ZQuery {
     foreachBatched[R, E, A, B, Iterable](as)(fn).map(_.toSet)
 
   /**
-   * Performs a query for each element in an Array, batching requests to
-   * data sources and collecting the results into a query returning a
-   * collection of their results.
+   * Performs a query for each element in an Array, batching requests to data
+   * sources and collecting the results into a query returning a collection of
+   * their results.
    *
    * For a sequential version of this method, see `foreach`.
    */
@@ -1085,9 +1082,9 @@ object ZQuery {
     foreachBatched[R, E, A, B, Iterable](as)(f).map(_.toArray)
 
   /**
-   * Performs a query for each element in a Map, batching requests to
-   * data sources and collecting the results into a query returning a
-   * collection of their results.
+   * Performs a query for each element in a Map, batching requests to data
+   * sources and collecting the results into a query returning a collection of
+   * their results.
    *
    * For a sequential version of this method, see `foreach`.
    */
@@ -1098,8 +1095,8 @@ object ZQuery {
 
   /**
    * Performs a query for each element in a NonEmptyChunk, batching requests to
-   * data sources and collecting the results into a query returning a
-   * collection of their results.
+   * data sources and collecting the results into a query returning a collection
+   * of their results.
    *
    * For a sequential version of this method, see `foreach`.
    */
@@ -1121,9 +1118,9 @@ object ZQuery {
     ZQuery(ZIO.foreachPar(Chunk.fromIterable(as))(f(_).step).map(Result.collectAllPar(_).map(bf.fromSpecific(as))))
 
   /**
-   * Performs a query for each element in a Set, collecting the results
-   * into a query returning a collection of their results. Requests will be
-   * executed in parallel and will be batched.
+   * Performs a query for each element in a Set, collecting the results into a
+   * query returning a collection of their results. Requests will be executed in
+   * parallel and will be batched.
    */
   final def foreachPar[R, E, A, B](as: Set[A])(fn: A => ZQuery[R, E, B])(implicit
     trace: Trace
@@ -1131,9 +1128,9 @@ object ZQuery {
     foreachPar[R, E, A, B, Iterable](as)(fn).map(_.toSet)
 
   /**
-   * Performs a query for each element in an Array, collecting the results
-   * into a query returning a collection of their results. Requests will be
-   * executed in parallel and will be batched.
+   * Performs a query for each element in an Array, collecting the results into
+   * a query returning a collection of their results. Requests will be executed
+   * in parallel and will be batched.
    *
    * For a sequential version of this method, see `foreach`.
    */
@@ -1143,9 +1140,9 @@ object ZQuery {
     foreachPar[R, E, A, B, Iterable](as)(f).map(_.toArray)
 
   /**
-   * Performs a query for each element in a Map, collecting the results
-   * into a query returning a collection of their results. Requests will be
-   * executed in parallel and will be batched.
+   * Performs a query for each element in a Map, collecting the results into a
+   * query returning a collection of their results. Requests will be executed in
+   * parallel and will be batched.
    *
    * For a sequential version of this method, see `foreach`.
    */
@@ -1155,9 +1152,9 @@ object ZQuery {
     foreachPar[R, E, (Key, Value), (Key2, Value2), Iterable](map)(f.tupled).map(_.toMap)
 
   /**
-   * Performs a query for each element in a NonEmptyChunk, collecting the results
-   * into a query returning a collection of their results. Requests will be
-   * executed in parallel and will be batched.
+   * Performs a query for each element in a NonEmptyChunk, collecting the
+   * results into a query returning a collection of their results. Requests will
+   * be executed in parallel and will be batched.
    *
    * For a sequential version of this method, see `foreach`.
    */
@@ -1250,8 +1247,8 @@ object ZQuery {
 
   /**
    * Performs a query for each element in a collection, collecting the results
-   * into a collection of failed results and a collection of successful
-   * results. Requests will be executed sequentially and will be pipelined.
+   * into a collection of failed results and a collection of successful results.
+   * Requests will be executed sequentially and will be pipelined.
    */
   def partitionQuery[R, E, A, B](
     as: Iterable[A]
@@ -1262,8 +1259,8 @@ object ZQuery {
 
   /**
    * Performs a query for each element in a collection, collecting the results
-   * into a collection of failed results and a collection of successful
-   * results. Requests will be executed in parallel and will be batched.
+   * into a collection of failed results and a collection of successful results.
+   * Requests will be executed in parallel and will be batched.
    */
   def partitionQueryPar[R, E, A, B](
     as: Iterable[A]
@@ -1306,7 +1303,7 @@ object ZQuery {
     succeed(Some(a))
 
   /**
-   *  Constructs a query that succeeds with the specified value.
+   * Constructs a query that succeeds with the specified value.
    */
   def succeed[A](value: => A)(implicit trace: Trace): ZQuery[Any, Nothing, A] =
     ZQuery(ZIO.succeed(Result.done(value)))

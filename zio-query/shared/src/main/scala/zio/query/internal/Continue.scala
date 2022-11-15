@@ -8,11 +8,11 @@ import zio.stacktracer.TracingImplicits.disableAutoTrace
 /**
  * A `Continue[R, E, A]` models a continuation of a blocked request that
  * requires an environment `R` and may either fail with an `E` or succeed with
- * an `A`. A continuation may either be a `Get` that merely gets the result of
- * a blocked request (potentially transforming it with pure functions) or an
+ * an `A`. A continuation may either be a `Get` that merely gets the result of a
+ * blocked request (potentially transforming it with pure functions) or an
  * `Effect` that may perform arbitrary effects. This is used by the library
- * internally to determine whether it is safe to pipeline two requests that
- * must be executed sequentially.
+ * internally to determine whether it is safe to pipeline two requests that must
+ * be executed sequentially.
  */
 private[query] sealed trait Continue[-R, +E, +A] { self =>
 

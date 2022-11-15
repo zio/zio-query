@@ -2,13 +2,13 @@ package zio.query.internal
 
 import zio._
 import zio.query.internal.Result._
-import zio.query.{ DataSourceAspect, Described }
+import zio.query.{DataSourceAspect, Described}
 import zio.stacktracer.TracingImplicits.disableAutoTrace
 
 /**
- * A `Result[R, E, A]` is the result of running one step of a `ZQuery`. A
- * result may either by done with a value `A`, blocked on a set of requests
- * to data sources that require an environment `R`, or failed with an `E`.
+ * A `Result[R, E, A]` is the result of running one step of a `ZQuery`. A result
+ * may either by done with a value `A`, blocked on a set of requests to data
+ * sources that require an environment `R`, or failed with an `E`.
  */
 private[query] sealed trait Result[-R, +E, +A] { self =>
 
@@ -96,8 +96,8 @@ private[query] object Result {
     Blocked(blockedRequests, continue)
 
   /**
-   * Collects a collection of results into a single result. Blocked requests
-   * and their continuations will be executed in parallel.
+   * Collects a collection of results into a single result. Blocked requests and
+   * their continuations will be executed in parallel.
    */
   def collectAllPar[R, E, A, Collection[+Element] <: Iterable[Element]](results: Collection[Result[R, E, A]])(implicit
     bf: BuildFrom[Collection[Result[R, E, A]], A, Collection[A]],

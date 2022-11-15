@@ -1,6 +1,6 @@
 package zio.query
 
-import zio.{ Chunk, Trace, ZEnvironment, ZIO }
+import zio.{Chunk, Trace, ZEnvironment, ZIO}
 import zio.stacktracer.TracingImplicits.disableAutoTrace
 
 /**
@@ -9,11 +9,11 @@ import zio.stacktracer.TracingImplicits.disableAutoTrace
  *
  * Data sources must implement the method `runAll` which takes a collection of
  * requests and returns an effect with a `CompletedRequestMap` containing a
- * mapping from requests to results. The type of the collection of requests is
- * a `Chunk[Chunk[A]]`. The outer `Chunk` represents batches of requests that
- * must be performed sequentially. The inner `Chunk` represents a batch of
- * requests that can be performed in parallel. This allows data sources to
- * introspect on all the requests being executed and optimize the query.
+ * mapping from requests to results. The type of the collection of requests is a
+ * `Chunk[Chunk[A]]`. The outer `Chunk` represents batches of requests that must
+ * be performed sequentially. The inner `Chunk` represents a batch of requests
+ * that can be performed in parallel. This allows data sources to introspect on
+ * all the requests being executed and optimize the query.
  *
  * Data sources will typically be parameterized on a subtype of `Request[A]`,
  * though that is not strictly necessarily as long as the data source can map
@@ -21,8 +21,8 @@ import zio.stacktracer.TracingImplicits.disableAutoTrace
  * the collection of requests to determine the information requested, execute
  * the query, and place the results into the `CompletedRequestsMap` using
  * [[CompletedRequestMap.empty]] and [[CompletedRequestMap.insert]]. Data
- * sources must provide results for all requests received. Failure to do so
- * will cause a query to die with a `QueryFailure` when run.
+ * sources must provide results for all requests received. Failure to do so will
+ * cause a query to die with a `QueryFailure` when run.
  */
 trait DataSource[-R, -A] { self =>
 
@@ -32,9 +32,9 @@ trait DataSource[-R, -A] { self =>
   val identifier: String
 
   /**
-   * Execute a collection of requests. The outer `Chunk` represents batches
-   * of requests that must be performed sequentially. The inner `Chunk`
-   * represents a batch of requests that can be performed in parallel.
+   * Execute a collection of requests. The outer `Chunk` represents batches of
+   * requests that must be performed sequentially. The inner `Chunk` represents
+   * a batch of requests that can be performed in parallel.
    */
   def runAll(requests: Chunk[Chunk[A]])(implicit trace: Trace): ZIO[R, Nothing, CompletedRequestMap]
 
@@ -77,8 +77,8 @@ trait DataSource[-R, -A] { self =>
 
   /**
    * Returns a new data source that executes requests of type `C` using the
-   * specified function to transform `C` requests into requests that either
-   * this data source or that data source can execute.
+   * specified function to transform `C` requests into requests that either this
+   * data source or that data source can execute.
    */
   final def eitherWith[R1 <: R, B, C](
     that: DataSource[R1, B]
@@ -124,8 +124,8 @@ trait DataSource[-R, -A] { self =>
 
   /**
    * Returns a new data source that executes requests by sending them to this
-   * data source and that data source, returning the results from the first
-   * data source to complete and safely interrupting the loser.
+   * data source and that data source, returning the results from the first data
+   * source to complete and safely interrupting the loser.
    */
   final def race[R1 <: R, A1 <: A](that: DataSource[R1, A1]): DataSource[R1, A1] =
     new DataSource[R1, A1] {
@@ -182,10 +182,9 @@ object DataSource {
     }
 
   /**
-   * Constructs a data source from a pure function that takes a list of
-   * requests and returns a list of results of the same size. Each item in the
-   * result list must correspond to the item at the same index in the request
-   * list.
+   * Constructs a data source from a pure function that takes a list of requests
+   * and returns a list of results of the same size. Each item in the result
+   * list must correspond to the item at the same index in the request list.
    */
   def fromFunctionBatched[A, B](
     name: String
@@ -193,10 +192,10 @@ object DataSource {
     fromFunctionBatchedZIO(name)(as => ZIO.succeedNow(f(as)))
 
   /**
-   * Constructs a data source from a pure function that takes a list of
-   * requests and returns a list of optional results of the same size. Each
-   * item in the result list must correspond to the item at the same index in
-   * the request list.
+   * Constructs a data source from a pure function that takes a list of requests
+   * and returns a list of optional results of the same size. Each item in the
+   * result list must correspond to the item at the same index in the request
+   * list.
    */
   def fromFunctionBatchedOption[A, B](
     name: String
@@ -205,9 +204,9 @@ object DataSource {
 
   /**
    * Constructs a data source from an effectual function that takes a list of
-   * requests and returns a list of optional results of the same size. Each
-   * item in the result list must correspond to the item at the same index in
-   * the request list.
+   * requests and returns a list of optional results of the same size. Each item
+   * in the result list must correspond to the item at the same index in the
+   * request list.
    */
   def fromFunctionBatchedOptionZIO[R, E, A, B](
     name: String
@@ -241,10 +240,10 @@ object DataSource {
 
   /**
    * Constructs a data source from an effectual function that takes a list of
-   * requests and returns a list of results of the same size. Uses the
-   * specified function to associate each result with the corresponding effect,
-   * allowing the function to return the list of results in a different order
-   * than the list of requests.
+   * requests and returns a list of results of the same size. Uses the specified
+   * function to associate each result with the corresponding effect, allowing
+   * the function to return the list of results in a different order than the
+   * list of requests.
    */
   def fromFunctionBatchedWithZIO[R, E, A, B](
     name: String
