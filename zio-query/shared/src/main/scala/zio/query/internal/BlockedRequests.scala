@@ -31,28 +31,72 @@ private[query] sealed trait BlockedRequests[-R] { self =>
     Then(self, that)
 
   /**
+    * Folds over the cases of this collection of blocked requests with the
+    * specified functions.
+    */
+  final def fold[Z](
+    emptyCase: => Z,
+    singleCase: (DataSource[R, Any], BlockedRequest[Any]) => Z
+  )(
+    bothCase: (Z, Z) => Z,
+    thenCase: (Z, Z) => Z
+  ): Z = {
+    sealed trait BlockedRequestsCase
+
+    case object BothCase extends BlockedRequestsCase
+    case object ThenCase extends BlockedRequestsCase
+
+    @tailrec
+    def loop(in: List[BlockedRequests[R]], out: List[Either[BlockedRequestsCase, Z]]): List[Z] =
+      in match {
+        case Empty :: blockedRequests =>
+          loop(blockedRequests, Right(emptyCase) :: out)
+        case Single(dataSource, blockedRequest) :: blockedRequests =>
+          loop(blockedRequests, Right(singleCase(dataSource, blockedRequest)) :: out)
+        case Both(left, right) :: blockedRequests =>
+          loop(left :: right :: blockedRequests, Left(BothCase) :: out)
+        case Then(left, right) :: blockedRequests =>
+          loop(left :: right :: blockedRequests, Left(ThenCase) :: out)
+        case Nil =>
+          out.foldLeft[List[Z]](List.empty) {
+            case (acc, Right(blockedRequests)) => blockedRequests :: acc
+            case (acc, Left(BothCase)) =>
+              val left :: right :: blockedRequests = (acc: @unchecked)
+              bothCase(left, right) :: blockedRequests
+            case (acc, Left(ThenCase)) =>
+              val left :: right :: blockedRequests = (acc: @unchecked)
+              thenCase(left, right) :: blockedRequests
+          }
+      }
+
+    loop(List(self), List.empty).head
+  }
+
+  /**
    * Transforms all data sources with the specified data source aspect, which
    * can change the environment type of data sources but must preserve the
    * request type of each data source.
    */
   final def mapDataSources[R1 <: R](f: DataSourceAspect[R1]): BlockedRequests[R1] =
-    self match {
-      case Empty          => Empty
-      case Both(l, r)     => Both(l.mapDataSources(f), r.mapDataSources(f))
-      case Then(l, r)     => Then(l.mapDataSources(f), r.mapDataSources(f))
-      case Single(ds, br) => Single(f(ds), br)
-    }
+    fold(
+      Empty,
+      (dataSource, blockedRequest) => Single(f(dataSource), blockedRequest)
+    )(
+      (left, right) => Both(left, right),
+      (left, right) => Then(left, right)
+    )
 
   /**
    * Provides each data source with part of its required environment.
    */
   final def provideSomeEnvironment[R0](f: Described[ZEnvironment[R0] => ZEnvironment[R]]): BlockedRequests[R0] =
-    self match {
-      case Empty          => Empty
-      case Both(l, r)     => Both(l.provideSomeEnvironment(f), r.provideSomeEnvironment(f))
-      case Then(l, r)     => Then(l.provideSomeEnvironment(f), r.provideSomeEnvironment(f))
-      case Single(ds, br) => Single(ds.provideSomeEnvironment(f), br)
-    }
+    fold(
+      Empty,
+      (dataSource, blockedRequest) => Single(dataSource.provideSomeEnvironment(f), blockedRequest)
+    )(
+      (left, right) => Both(left, right),
+      (left, right) => Then(left, right)
+    )
 
   /**
    * Executes all requests, submitting requests to each data source in
