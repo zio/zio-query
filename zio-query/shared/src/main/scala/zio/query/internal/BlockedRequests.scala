@@ -34,13 +34,7 @@ private[query] sealed trait BlockedRequests[-R] { self =>
    * Folds over the cases of this collection of blocked requests with the
    * specified functions.
    */
-  final def fold[Z](
-    emptyCase: => Z,
-    singleCase: (DataSource[R, Any], BlockedRequest[Any]) => Z
-  )(
-    bothCase: (Z, Z) => Z,
-    thenCase: (Z, Z) => Z
-  ): Z = {
+  final def fold[Z](folder: Folder[R, Z]): Z = {
     sealed trait BlockedRequestsCase
 
     case object BothCase extends BlockedRequestsCase
@@ -50,22 +44,23 @@ private[query] sealed trait BlockedRequests[-R] { self =>
     def loop(in: List[BlockedRequests[R]], out: List[Either[BlockedRequestsCase, Z]]): List[Z] =
       in match {
         case Empty :: blockedRequests =>
-          loop(blockedRequests, Right(emptyCase) :: out)
+          loop(blockedRequests, Right(folder.emptyCase) :: out)
         case Single(dataSource, blockedRequest) :: blockedRequests =>
-          loop(blockedRequests, Right(singleCase(dataSource, blockedRequest)) :: out)
+          loop(blockedRequests, Right(folder.singleCase(dataSource, blockedRequest)) :: out)
         case Both(left, right) :: blockedRequests =>
           loop(left :: right :: blockedRequests, Left(BothCase) :: out)
         case Then(left, right) :: blockedRequests =>
           loop(left :: right :: blockedRequests, Left(ThenCase) :: out)
         case Nil =>
           out.foldLeft[List[Z]](List.empty) {
-            case (acc, Right(blockedRequests)) => blockedRequests :: acc
+            case (acc, Right(blockedRequests)) =>
+              blockedRequests :: acc
             case (acc, Left(BothCase)) =>
               val left :: right :: blockedRequests = (acc: @unchecked)
-              bothCase(left, right) :: blockedRequests
+              folder.bothCase(left, right) :: blockedRequests
             case (acc, Left(ThenCase)) =>
               val left :: right :: blockedRequests = (acc: @unchecked)
-              thenCase(left, right) :: blockedRequests
+              folder.thenCase(left, right) :: blockedRequests
           }
       }
 
@@ -78,25 +73,13 @@ private[query] sealed trait BlockedRequests[-R] { self =>
    * request type of each data source.
    */
   final def mapDataSources[R1 <: R](f: DataSourceAspect[R1]): BlockedRequests[R1] =
-    fold(
-      Empty,
-      (dataSource, blockedRequest) => Single(f(dataSource), blockedRequest)
-    )(
-      (left, right) => Both(left, right),
-      (left, right) => Then(left, right)
-    )
+    fold(Folder.MapDataSources(f))
 
   /**
    * Provides each data source with part of its required environment.
    */
   final def provideSomeEnvironment[R0](f: Described[ZEnvironment[R0] => ZEnvironment[R]]): BlockedRequests[R0] =
-    fold(
-      Empty,
-      (dataSource, blockedRequest) => Single(dataSource.provideSomeEnvironment(f), blockedRequest)
-    )(
-      (left, right) => Both(left, right),
-      (left, right) => Then(left, right)
-    )
+    fold(Folder.ProvideSomeEnvironment(f))
 
   /**
    * Executes all requests, submitting requests to each data source in
@@ -145,6 +128,39 @@ private[query] object BlockedRequests {
       extends BlockedRequests[R]
 
   final case class Then[-R](left: BlockedRequests[R], right: BlockedRequests[R]) extends BlockedRequests[R]
+
+  trait Folder[+R, Z] {
+    def emptyCase: Z
+    def singleCase[A](dataSource: DataSource[R, A], blockedRequest: BlockedRequest[A]): Z
+    def bothCase(left: Z, right: Z): Z
+    def thenCase(left: Z, right: Z): Z
+  }
+
+  object Folder {
+
+    final case class MapDataSources[R](f: DataSourceAspect[R]) extends Folder[R, BlockedRequests[R]] {
+      def emptyCase: BlockedRequests[R] =
+        Empty
+      def singleCase[A](dataSource: DataSource[R, A], blockedRequest: BlockedRequest[A]): BlockedRequests[R] =
+        Single(f(dataSource), blockedRequest)
+      def bothCase(left: BlockedRequests[R], right: BlockedRequests[R]): BlockedRequests[R] =
+        Both(left, right)
+      def thenCase(left: BlockedRequests[R], right: BlockedRequests[R]): BlockedRequests[R] =
+        Then(left, right)
+    }
+
+    final case class ProvideSomeEnvironment[R0, R](f: Described[ZEnvironment[R0] => ZEnvironment[R]])
+        extends Folder[R, BlockedRequests[R0]] {
+      def emptyCase: BlockedRequests[R0] =
+        Empty
+      def singleCase[A](dataSource: DataSource[R, A], blockedRequest: BlockedRequest[A]): BlockedRequests[R0] =
+        Single(dataSource.provideSomeEnvironment(f), blockedRequest)
+      def bothCase(left: BlockedRequests[R0], right: BlockedRequests[R0]): BlockedRequests[R0] =
+        Both(left, right)
+      def thenCase(left: BlockedRequests[R0], right: BlockedRequests[R0]): BlockedRequests[R0] =
+        Then(left, right)
+    }
+  }
 
   /**
    * Flattens a collection of blocked requests into a collection of pipelined
