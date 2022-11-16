@@ -1,5 +1,5 @@
 ---
-id: overview_creating_data_sources
+id: creating-data-sources
 title: "Creating Data Sources"
 ---
 

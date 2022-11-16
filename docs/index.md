@@ -1,6 +1,7 @@
 ---
-id: overview_index
-title: "Summary"
+id: index
+title: "Introduction to ZIO Query"
+sidebar_label: "ZIO Query"
 ---
 
 A `ZQuery[R, E, A]` is a purely functional description of an effectual query that may contain requests from one or more data sources, requires an environment `R`, and may fail with an `E` or succeed with an `A`.
@@ -31,5 +32,5 @@ This would normally require N + 1 queries, one for `getAllUserIds` and one for e
 Include ZIO Query in your project by adding the following to your `build.sbt` file:
 
 ```scala
-libraryDependencies += "dev.zio" %% "zio-query" % "0.2.0"
+libraryDependencies += "dev.zio" %% "zio-query" % "@VERSION@"
 ```
