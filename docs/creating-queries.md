@@ -1,5 +1,5 @@
 ---
-id: overview_creating_queries
+id: creating-queries
 title: "Creating Queries"
 ---
 

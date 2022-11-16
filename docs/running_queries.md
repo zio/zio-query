@@ -1,5 +1,5 @@
 ---
-id: overview_running_queries
+id: running-queries
 title: "Running Queries"
 ---
 
