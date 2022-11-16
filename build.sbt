@@ -32,7 +32,6 @@ lazy val root = project
     unusedCompileDependenciesFilter -= moduleFilter("org.scala-js", "scalajs-library")
   )
   .aggregate(
-    docs,
     zioQueryJVM,
     zioQueryJS
   )
