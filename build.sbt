@@ -61,6 +61,14 @@ lazy val zioQuery = crossProject(JSPlatform, JVMPlatform)
 lazy val zioQueryJS = zioQuery.js
   .settings(dottySettings)
   .settings(scalaJSUseMainModuleInitializer := true)
+  .settings(
+    scalacOptions ++= {
+      if (scalaVersion.value == ScalaDotty)
+        Seq("-scalajs")
+      else
+        Seq.empty
+    }
+  )
 
 lazy val zioQueryJVM = zioQuery.jvm
   .settings(dottySettings)
