@@ -82,7 +82,15 @@ lazy val docs = project
     scalacOptions -= "-Xfatal-warnings",
     libraryDependencies ++= Seq(
       "dev.zio" %% "zio" % zioVersion
-    )
+    ),
+    projectName := "ZIO Query",
+    badgeInfo := Some(
+      BadgeInfo(
+        artifact = "zio-query_2.12",
+        projectStage = ProjectStage.ProductionReady
+      )
+    ),
+    docsPublishBranch := "master"
   )
   .dependsOn(zioQueryJVM)
   .enablePlugins(WebsitePlugin)
