@@ -86,7 +86,7 @@ lazy val docs = project
     projectName := "ZIO Query",
     badgeInfo := Some(
       BadgeInfo(
-        artifact = "zio-query.12",
+        artifact = "zio-query_2.12",
         projectStage = ProjectStage.ProductionReady
       )
     ),
