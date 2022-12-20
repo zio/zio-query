@@ -1,9 +1,16 @@
 const sidebars = {
   sidebar: [
-    "index",
-    "creating-data-sources",
-    "creating-queries",
-    "running-queries"
+      type: "category",
+      label: "ZIO Query",
+      collapsed: false,
+      link: { type: "doc", id: "index" },
+      items: [
+        "index",
+        "creating-data-sources",
+        "creating-queries",
+        "running-queries"
+      ]
+    }
   ]
 };
 
