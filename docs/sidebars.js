@@ -1,5 +1,6 @@
 const sidebars = {
   sidebar: [
+    {
       type: "category",
       label: "ZIO Query",
       collapsed: false,
