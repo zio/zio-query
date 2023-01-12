@@ -33,7 +33,8 @@ lazy val root = project
   )
   .aggregate(
     zioQueryJVM,
-    zioQueryJS
+    zioQueryJS,
+    docs
   )
 
 lazy val zioQuery = crossProject(JSPlatform, JVMPlatform)
@@ -76,14 +77,13 @@ lazy val zioQueryJVM = zioQuery.jvm
 lazy val docs = project
   .in(file("zio-query-docs"))
   .settings(
-    publish / skip := true,
-    moduleName     := "zio-query-docs",
+    moduleName := "zio-query-docs",
     scalacOptions -= "-Yno-imports",
     scalacOptions -= "-Xfatal-warnings",
     libraryDependencies ++= Seq(
       "dev.zio" %% "zio" % zioVersion
     ),
-    projectName                                := "ZIO Schema",
+    projectName                                := "ZIO Query",
     mainModuleName                             := (zioQueryJVM / moduleName).value,
     projectStage                               := ProjectStage.Development,
     ScalaUnidoc / unidoc / unidocProjectFilter := inProjects(zioQueryJVM)
