@@ -7,7 +7,7 @@ name := "zio-query"
 inThisBuild(
   List(
     organization := "dev.zio",
-    homepage     := Some(url("https://zio.github.io/zio-query/")),
+    homepage     := Some(url("https://zio.dev/zio-query/")),
     licenses     := List("Apache-2.0" -> url("http://www.apache.org/licenses/LICENSE-2.0")),
     developers := List(
       Developer(
