@@ -86,7 +86,8 @@ lazy val docs = project
     projectName                                := "ZIO Query",
     mainModuleName                             := (zioQueryJVM / moduleName).value,
     projectStage                               := ProjectStage.Development,
-    ScalaUnidoc / unidoc / unidocProjectFilter := inProjects(zioQueryJVM)
+    ScalaUnidoc / unidoc / unidocProjectFilter := inProjects(zioQueryJVM),
+    docsPublishBranch                          := "series/2.x"
   )
   .dependsOn(zioQueryJVM)
   .enablePlugins(WebsitePlugin)
