@@ -9,7 +9,7 @@ name: Website
     - published
   push:
     branches:
-    - main
+    - series/2.x
   pull_request: {}
 jobs:
   build:
