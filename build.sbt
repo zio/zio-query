@@ -82,7 +82,11 @@ lazy val docs = project
     scalacOptions -= "-Xfatal-warnings",
     libraryDependencies ++= Seq(
       "dev.zio" %% "zio" % zioVersion
-    )
+    ),
+    projectName := "ZIO Schema",
+    mainModuleName := (zioQueryJVM / moduleName).value,
+    projectStage := ProjectStage.Development,
+    ScalaUnidoc / unidoc / unidocProjectFilter := inProjects(zioQueryJVM)
   )
   .dependsOn(zioQueryJVM)
   .enablePlugins(WebsitePlugin)
