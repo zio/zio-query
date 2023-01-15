@@ -85,8 +85,7 @@ lazy val docs = project
     crossScalaVersions                         := Seq(Scala212, Scala213, ScalaDotty),
     projectStage                               := ProjectStage.Development,
     ScalaUnidoc / unidoc / unidocProjectFilter := inProjects(zioQueryJVM),
-    docsPublishBranch                          := "series/2.x",
-    update / skip                              := true
+    docsPublishBranch                          := "series/2.x"
   )
   .dependsOn(zioQueryJVM)
   .enablePlugins(WebsitePlugin)
