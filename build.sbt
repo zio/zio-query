@@ -80,9 +80,6 @@ lazy val docs = project
     moduleName := "zio-query-docs",
     scalacOptions -= "-Yno-imports",
     scalacOptions -= "-Xfatal-warnings",
-    libraryDependencies ++= Seq(
-      "dev.zio" %% "zio" % zioVersion
-    ),
     projectName                                := "ZIO Query",
     mainModuleName                             := (zioQueryJVM / moduleName).value,
     crossScalaVersions                         := Seq(Scala213, Scala212, ScalaDotty),
