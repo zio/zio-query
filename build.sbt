@@ -29,7 +29,8 @@ lazy val root = project
   .in(file("."))
   .settings(
     publish / skip := true,
-    unusedCompileDependenciesFilter -= moduleFilter("org.scala-js", "scalajs-library")
+    unusedCompileDependenciesFilter -= moduleFilter("org.scala-js", "scalajs-library"),
+    crossScalaVersions := Seq(Scala213, Scala212, Scala211)
   )
   .aggregate(
     zioQueryJVM,
