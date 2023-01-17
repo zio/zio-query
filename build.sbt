@@ -29,8 +29,7 @@ lazy val root = project
   .in(file("."))
   .settings(
     publish / skip := true,
-    unusedCompileDependenciesFilter -= moduleFilter("org.scala-js", "scalajs-library"),
-    crossScalaVersions := Seq(Scala213, Scala212, Scala211)
+    unusedCompileDependenciesFilter -= moduleFilter("org.scala-js", "scalajs-library")
   )
   .aggregate(
     zioQueryJVM,
@@ -81,8 +80,6 @@ lazy val docs = project
     moduleName := "zio-query-docs",
     scalacOptions -= "-Yno-imports",
     scalacOptions -= "-Xfatal-warnings",
-    test / aggregate                           := false,
-    update / aggregate                         := false,
     projectName                                := "ZIO Query",
     mainModuleName                             := (zioQueryJVM / moduleName).value,
     crossScalaVersions                         := Seq(Scala212, Scala213, ScalaDotty),
