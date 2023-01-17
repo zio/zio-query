@@ -81,6 +81,7 @@ lazy val docs = project
     scalacOptions -= "-Yno-imports",
     scalacOptions -= "-Xfatal-warnings",
     test / aggregate                           := false,
+    update / aggregate                         := false,
     projectName                                := "ZIO Query",
     mainModuleName                             := (zioQueryJVM / moduleName).value,
     crossScalaVersions                         := Seq(Scala212, Scala213, ScalaDotty),
