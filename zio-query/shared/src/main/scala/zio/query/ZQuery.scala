@@ -1131,7 +1131,14 @@ object ZQuery {
   )(
     f: A => ZQuery[R, E, B]
   )(implicit bf: BuildFrom[Collection[A], B, Collection[B]], trace: Trace): ZQuery[R, E, Collection[B]] =
-    ZQuery(ZIO.foreachPar(Chunk.fromIterable(as))(f(_).step).map(Result.collectAllPar(_).map(bf.fromSpecific(as))))
+    ZQuery.suspend {
+      if (as.isEmpty)
+        ZQuery.succeed(bf.newBuilder(as).result())
+      else if (as.sizeCompare(1) == 0)
+        f(as.head).map(bf.newBuilder(as) += _).map(_.result())
+      else
+        ZQuery(ZIO.foreachPar(Chunk.fromIterable(as))(f(_).step).map(Result.collectAllPar(_).map(bf.fromSpecific(as))))
+    }
 
   /**
    * Performs a query for each element in a Set, collecting the results into a
