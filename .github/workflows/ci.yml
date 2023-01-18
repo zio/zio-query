@@ -61,7 +61,7 @@ jobs:
       - name: Cache scala dependencies
         uses: coursier/cache-action@v6
       - name: Run tests
-        run: sbt ++${{ matrix.scala }}! test
+        run: sbt ++${{ matrix.scala }} zioQueryJVM/test zioQueryJS/test
 
   ci:
     runs-on: ubuntu-20.04

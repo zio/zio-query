@@ -7,7 +7,7 @@ name := "zio-query"
 inThisBuild(
   List(
     organization := "dev.zio",
-    homepage     := Some(url("https://zio.github.io/zio-query/")),
+    homepage     := Some(url("https://zio.dev/zio-query/")),
     licenses     := List("Apache-2.0" -> url("http://www.apache.org/licenses/LICENSE-2.0")),
     developers := List(
       Developer(
@@ -33,7 +33,8 @@ lazy val root = project
   )
   .aggregate(
     zioQueryJVM,
-    zioQueryJS
+    zioQueryJS,
+    docs
   )
 
 lazy val zioQuery = crossProject(JSPlatform, JVMPlatform)
@@ -76,21 +77,15 @@ lazy val zioQueryJVM = zioQuery.jvm
 lazy val docs = project
   .in(file("zio-query-docs"))
   .settings(
-    publish / skip := true,
-    moduleName     := "zio-query-docs",
+    moduleName := "zio-query-docs",
     scalacOptions -= "-Yno-imports",
     scalacOptions -= "-Xfatal-warnings",
-    libraryDependencies ++= Seq(
-      "dev.zio" %% "zio" % zioVersion
-    ),
-    projectName := "ZIO Query",
-    badgeInfo := Some(
-      BadgeInfo(
-        artifact = "zio-query_2.12",
-        projectStage = ProjectStage.ProductionReady
-      )
-    ),
-    docsPublishBranch := "master"
+    projectName                                := "ZIO Query",
+    mainModuleName                             := (zioQueryJVM / moduleName).value,
+    crossScalaVersions                         := Seq(Scala212, Scala213, ScalaDotty),
+    projectStage                               := ProjectStage.Development,
+    ScalaUnidoc / unidoc / unidocProjectFilter := inProjects(zioQueryJVM),
+    docsPublishBranch                          := "series/2.x"
   )
   .dependsOn(zioQueryJVM)
   .enablePlugins(WebsitePlugin)
