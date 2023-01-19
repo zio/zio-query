@@ -1134,7 +1134,7 @@ object ZQuery {
     ZQuery.suspend {
       if (as.isEmpty)
         ZQuery.succeed(bf.newBuilder(as).result())
-      else if (as.sizeCompare(1) == 0)
+      else if (as.iterator.drop(1).isEmpty)
         f(as.head).map(bf.newBuilder(as) += _).map(_.result())
       else
         ZQuery(ZIO.foreachPar(Chunk.fromIterable(as))(f(_).step).map(Result.collectAllPar(_).map(bf.fromSpecific(as))))
