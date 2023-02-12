@@ -16,7 +16,7 @@
 
 package zio.query
 
-import zio.{Chunk, Trace, ZEnvironment, ZIO}
+import zio.{Chunk, Exit, Trace, ZEnvironment, ZIO}
 import zio.stacktracer.TracingImplicits.disableAutoTrace
 
 /**
@@ -166,7 +166,7 @@ object DataSource {
     final def runAll(requests: Chunk[Chunk[A]])(implicit trace: Trace): ZIO[R, Nothing, CompletedRequestMap] =
       ZIO.foldLeft(requests)(CompletedRequestMap.empty) { case (completedRequestMap, requests) =>
         val newRequests = requests.filterNot(completedRequestMap.contains)
-        if (newRequests.isEmpty) ZIO.succeedNow(completedRequestMap)
+        if (newRequests.isEmpty) ZIO.succeed(completedRequestMap)
         else run(newRequests).map(completedRequestMap ++ _)
       }
   }
@@ -194,7 +194,7 @@ object DataSource {
     new DataSource.Batched[Any, A] {
       val identifier: String = name
       def run(requests: Chunk[A])(implicit trace: Trace): ZIO[Any, Nothing, CompletedRequestMap] =
-        ZIO.succeedNow(requests.foldLeft(CompletedRequestMap.empty)((map, k) => map.insert(k)(Right(f(k)))))
+        ZIO.succeed(requests.foldLeft(CompletedRequestMap.empty)((map, k) => map.insert(k)(Right(f(k)))))
     }
 
   /**
@@ -205,7 +205,7 @@ object DataSource {
   def fromFunctionBatched[A, B](
     name: String
   )(f: Chunk[A] => Chunk[B])(implicit ev: A <:< Request[Nothing, B]): DataSource[Any, A] =
-    fromFunctionBatchedZIO(name)(as => ZIO.succeedNow(f(as)))
+    fromFunctionBatchedZIO(name)(as => Exit.succeed(f(as)))
 
   /**
    * Constructs a data source from a pure function that takes a list of requests
@@ -216,7 +216,7 @@ object DataSource {
   def fromFunctionBatchedOption[A, B](
     name: String
   )(f: Chunk[A] => Chunk[Option[B]])(implicit ev: A <:< Request[Nothing, B]): DataSource[Any, A] =
-    fromFunctionBatchedOptionZIO(name)(as => ZIO.succeedNow(f(as)))
+    fromFunctionBatchedOptionZIO(name)(as => Exit.succeed(f(as)))
 
   /**
    * Constructs a data source from an effectual function that takes a list of
@@ -252,7 +252,7 @@ object DataSource {
   )(f: Chunk[A] => Chunk[B], g: B => Request[Nothing, B])(implicit
     ev: A <:< Request[Nothing, B]
   ): DataSource[Any, A] =
-    fromFunctionBatchedWithZIO(name)(as => ZIO.succeedNow(f(as)), g)
+    fromFunctionBatchedWithZIO(name)(as => Exit.succeed(f(as)), g)
 
   /**
    * Constructs a data source from an effectual function that takes a list of
@@ -322,7 +322,7 @@ object DataSource {
   def fromFunctionOption[A, B](
     name: String
   )(f: A => Option[B])(implicit ev: A <:< Request[Nothing, B]): DataSource[Any, A] =
-    fromFunctionOptionZIO(name)(a => ZIO.succeedNow(f(a)))
+    fromFunctionOptionZIO(name)(a => Exit.succeed(f(a)))
 
   /**
    * Constructs a data source from an effectual function that may not provide
