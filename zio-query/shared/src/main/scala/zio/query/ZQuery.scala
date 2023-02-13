@@ -655,6 +655,26 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     )
 
   /**
+   * Sets the parallelism for this query to the specified maximum number of
+   * fibers.
+   */
+  def withParallelism(n: => Int)(implicit trace: Trace): ZQuery[R, E, A] =
+    for {
+      parallelism <- ZQuery.fromZIO(ZIO.Parallelism.getAndSet(Some(n)))
+      a           <- self.ensuring(ZQuery.fromZIO(ZIO.Parallelism.set(parallelism)))
+    } yield a
+
+  /**
+   * Sets the parallelism for this query to the specified maximum number of
+   * fibers.
+   */
+  def withParallelismUnbounded(implicit trace: Trace): ZQuery[R, E, A] =
+    for {
+      parallelism <- ZQuery.fromZIO(ZIO.Parallelism.getAndSet(None))
+      a           <- self.ensuring(ZQuery.fromZIO(ZIO.Parallelism.set(parallelism)))
+    } yield a
+
+  /**
    * Returns a query that models the execution of this query and the specified
    * query sequentially, combining their results into a tuple.
    */
@@ -1139,7 +1159,11 @@ object ZQuery {
       else if (size == 1)
         f(as.head).map(bf.newBuilder(as) += _).map(_.result())
       else
-        ZQuery(ZIO.foreachPar(Chunk.fromIterable(as))(f(_).step).map(Result.collectAllPar(_).map(bf.fromSpecific(as))))
+        ZQuery(
+          ZIO
+            .foreachPar[R, Nothing, A, Result[R, E, B], Iterable](as)(f(_).step)
+            .map(Result.collectAllPar(_).map(bf.fromSpecific(as)))
+        )
     }
 
   /**
