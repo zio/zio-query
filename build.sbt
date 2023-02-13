@@ -74,6 +74,11 @@ lazy val zioQueryJS = zioQuery.js
 lazy val zioQueryJVM = zioQuery.jvm
   .settings(dottySettings)
 
+lazy val benchmarks = project.module
+  .in(file("benchmarks"))
+  .dependsOn(zioQueryJVM)
+  .enablePlugins(JmhPlugin)
+
 lazy val docs = project
   .in(file("zio-query-docs"))
   .settings(
