@@ -20,6 +20,7 @@ import zio._
 import zio.query.internal._
 import zio.stacktracer.TracingImplicits.disableAutoTrace
 
+import scala.annotation.tailrec
 import scala.collection.mutable.Builder
 import scala.reflect.ClassTag
 
@@ -1132,9 +1133,10 @@ object ZQuery {
     f: A => ZQuery[R, E, B]
   )(implicit bf: BuildFrom[Collection[A], B, Collection[B]], trace: Trace): ZQuery[R, E, Collection[B]] =
     ZQuery.suspend {
-      if (as.isEmpty)
+      val size = as.size
+      if (size == 0)
         ZQuery.succeed(bf.newBuilder(as).result())
-      else if (as.iterator.drop(1).isEmpty)
+      else if (size == 1)
         f(as.head).map(bf.newBuilder(as) += _).map(_.result())
       else
         ZQuery(ZIO.foreachPar(Chunk.fromIterable(as))(f(_).step).map(Result.collectAllPar(_).map(bf.fromSpecific(as))))
