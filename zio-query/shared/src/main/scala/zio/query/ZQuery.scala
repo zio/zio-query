@@ -1452,18 +1452,18 @@ object ZQuery {
       service[R].map(f)
   }
 
-  final class ServiceWithQueryPartiallyApplied[R](private val dummy: Boolean = true) extends AnyVal {
-    def apply[E, A](
-      f: R => ZQuery[R, E, A]
-    )(implicit tag: Tag[R], race: Trace): ZQuery[R, E, A] =
-      service[R].flatMap(f)
+  final class ServiceWithQueryPartiallyApplied[Service](private val dummy: Boolean = true) extends AnyVal {
+    def apply[R <: Service, E, A](
+      f: Service => ZQuery[R, E, A]
+    )(implicit tag: Tag[Service], race: Trace): ZQuery[R with Service, E, A] =
+      service[Service].flatMap(f)
   }
 
-  final class ServiceWithZIOPartiallyApplied[R](private val dummy: Boolean = true) extends AnyVal {
-    def apply[E, A](
-      f: R => ZIO[R, E, A]
-    )(implicit tag: Tag[R], trace: Trace): ZQuery[R, E, A] =
-      service[R].mapZIO(f)
+  final class ServiceWithZIOPartiallyApplied[Service](private val dummy: Boolean = true) extends AnyVal {
+    def apply[R <: Service, E, A](
+      f: Service => ZIO[R, E, A]
+    )(implicit tag: Tag[Service], trace: Trace): ZQuery[R with Service, E, A] =
+      service[Service].mapZIO(f)
   }
 
   /**
