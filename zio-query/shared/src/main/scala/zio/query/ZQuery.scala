@@ -1455,7 +1455,7 @@ object ZQuery {
   final class ServiceWithQueryPartiallyApplied[Service](private val dummy: Boolean = true) extends AnyVal {
     def apply[R <: Service, E, A](
       f: Service => ZQuery[R, E, A]
-    )(implicit tag: Tag[Service], race: Trace): ZQuery[R with Service, E, A] =
+    )(implicit tag: Tag[Service], trace: Trace): ZQuery[R with Service, E, A] =
       service[Service].flatMap(f)
   }
 
