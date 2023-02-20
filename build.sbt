@@ -52,7 +52,7 @@ lazy val zioQuery = crossProject(JSPlatform, JVMPlatform)
       "dev.zio" %% "zio" % zioVersion
     )
   )
-  .settings(enableZIO(zioVersion, true))
+  .settings(enableZIO(zioVersion, enableTesting = true))
   .settings(
     scalacOptions ++= {
       if (scalaVersion.value == Scala3)
