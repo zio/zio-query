@@ -60,11 +60,10 @@ import scala.reflect.ClassTag
  */
 final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result[R, E, A]]) { self =>
 
-  /**
-   * Syntax for adding aspects.
-   */
-  final def @@[R1 <: R](aspect: => DataSourceAspect[R1])(implicit trace: Trace): ZQuery[R1, E, A] =
-    mapDataSources(aspect)
+  final def @@[LowerR <: UpperR, UpperR <: R, LowerE >: E, UpperE >: LowerE, LowerA >: A, UpperA >: LowerA](
+    aspect: => QueryAspect[LowerR, UpperR, LowerE, UpperE, LowerA, UpperA]
+  )(implicit trace: Trace): ZQuery[UpperR, LowerE, LowerA] =
+    ZQuery.suspend(aspect(self))
 
   /**
    * A symbolic alias for `zipParRight`.

@@ -1,7 +1,7 @@
 package zio.query
 
 import zio._
-import zio.query.DataSourceAspect._
+import zio.query.QueryAspect._
 import zio.test.Assertion._
 import zio.test.TestAspect.{after, nonFlaky, silent}
 import zio.test._
@@ -263,7 +263,7 @@ object ZQuerySpec extends ZIOBaseSpec {
 
             afterRef    <- Ref.make(0)
             after        = (v: Int) => afterRef.set(v * 2)
-            aspect       = DataSourceAspect.around(Described(before, "before effect"))(Described(after, "after effect"))
+            aspect       = QueryAspect.aroundDataSource(Described(before, "before effect"))(Described(after, "after effect"))
             query        = getUserNameById(1) @@ aspect
             _           <- query.run
             isBeforeRan <- beforeRef.get
