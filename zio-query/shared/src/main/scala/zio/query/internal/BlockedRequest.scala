@@ -35,7 +35,7 @@ private[query] sealed trait BlockedRequest[+A] {
 
   def result: Ref[Option[Either[Failure, Success]]]
 
-  override final def toString =
+  override final def toString: String =
     s"BlockedRequest($request, $result)"
 }
 

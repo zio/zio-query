@@ -16,12 +16,12 @@
 
 package zio.query.internal
 
-import scala.annotation.tailrec
-
-import zio.{Ref, Trace, ZEnvironment, ZIO}
 import zio.query.internal.BlockedRequests._
 import zio.query.{Cache, DataSource, DataSourceAspect, Described, ZQuery}
 import zio.stacktracer.TracingImplicits.disableAutoTrace
+import zio.{Ref, Trace, ZEnvironment, ZIO}
+
+import scala.annotation.tailrec
 
 /**
  * `BlockedRequests` captures a collection of blocked requests as a data

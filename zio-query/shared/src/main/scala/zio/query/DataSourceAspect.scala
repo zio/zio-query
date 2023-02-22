@@ -16,8 +16,8 @@
 
 package zio.query
 
-import zio.{Chunk, Trace, ZIO}
 import zio.stacktracer.TracingImplicits.disableAutoTrace
+import zio.{Chunk, Trace, ZIO}
 
 /**
  * A `DataSourceAspect` is an aspect that can be weaved into queries. You can
