@@ -65,6 +65,7 @@ lazy val zioQuery = crossProject(JSPlatform, JVMPlatform)
 lazy val zioQueryJS = zioQuery.js
   .settings(scalaJSUseMainModuleInitializer := true)
   .settings(
+    crossScalaVersions -= scala211.value,
     scalacOptions ++= {
       if (scalaVersion.value == Scala3)
         Seq("-scalajs")
