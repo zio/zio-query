@@ -1,15 +1,15 @@
 import Versions._
 import explicitdeps.ExplicitDepsPlugin.autoImport.moduleFilterRemoveValue
 import sbtcrossproject.CrossPlugin.autoImport.crossProject
+import zio.sbt.Versions.SilencerVersion
 
 enablePlugins(ZioSbtEcosystemPlugin, ZioSbtCiPlugin)
 
+crossScalaVersions := Seq.empty
+
 inThisBuild(
   List(
-    name               := "zio-query",
-    scalaVersion       := Scala213,
-    crossScalaVersions := Seq(Scala211, Scala212, Scala213, Scala3),
-    organization       := "dev.zio",
+    name := "ZIO Query",
     developers := List(
       Developer(
         "adamgfraser",
@@ -46,7 +46,9 @@ lazy val root = project
 
 lazy val zioQuery = crossProject(JSPlatform, JVMPlatform)
   .in(file("zio-query"))
-  .settings(stdSettings(name = "zio-query", packageName = Some("zio.query"), enableSilencer = true))
+  .settings(
+    stdSettings(name = "zio-query", packageName = Some("zio.query"), enableSilencer = true, enableCrossProject = true)
+  )
   .settings(
     libraryDependencies ++= Seq(
       "dev.zio" %% "zio" % zioVersion
@@ -55,7 +57,7 @@ lazy val zioQuery = crossProject(JSPlatform, JVMPlatform)
   .settings(enableZIO(zioVersion, enableTesting = true))
   .settings(
     scalacOptions ++= {
-      if (scalaVersion.value == Scala3)
+      if (scalaBinaryVersion.value == "3")
         Seq.empty
       else
         Seq("-P:silencer:globalFilters=[zio.stacktracer.TracingImplicits.disableAutoTrace]")
@@ -63,8 +65,9 @@ lazy val zioQuery = crossProject(JSPlatform, JVMPlatform)
   )
 
 lazy val zioQueryJS = zioQuery.js
-  .settings(scalaJSUseMainModuleInitializer := true)
   .settings(
+    scala3Settings,
+    scalaJSUseMainModuleInitializer := true,
     crossScalaVersions -= scala211.value,
     scalacOptions ++= {
       if (scalaVersion.value == Scala3)
@@ -87,9 +90,10 @@ lazy val docs = project
     moduleName := "zio-query-docs",
     scalacOptions -= "-Yno-imports",
     scalacOptions -= "-Xfatal-warnings",
-    projectName    := "ZIO Query",
-    mainModuleName := (zioQueryJVM / moduleName).value,
-    crossScalaVersions -= Scala211,
+    projectName                                := (ThisBuild / name).value,
+    mainModuleName                             := (zioQueryJVM / moduleName).value,
+    scalaVersion                               := scala213.value,
+    crossScalaVersions                         := Seq(scala213.value),
     projectStage                               := ProjectStage.Development,
     ScalaUnidoc / unidoc / unidocProjectFilter := inProjects(zioQueryJVM)
   )
