@@ -86,7 +86,7 @@ lazy val docs = project
   .settings(
     moduleName := "zio-query-docs",
     scalacOptions -= "-Yno-imports",
-    scalacOptions -= "-Xfatal-warnings",
+    scalacOptions := scalacOptions.value.filterNot(_ == "-Xfatal-warnings"),
     projectName    := "ZIO Query",
     mainModuleName := (zioQueryJVM / moduleName).value,
     crossScalaVersions -= Scala211,
