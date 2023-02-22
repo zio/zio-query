@@ -4,8 +4,7 @@ import zio._
 import zio.query.QueryAspect._
 import zio.test.Assertion._
 import zio.test.TestAspect.{after, nonFlaky, silent}
-import zio.test._
-import zio.test.{TestClock, TestConsole, TestEnvironment}
+import zio.test.{TestClock, TestConsole, TestEnvironment, _}
 
 object ZQuerySpec extends ZIOBaseSpec {
 
