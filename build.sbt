@@ -46,7 +46,7 @@ lazy val root = project
 
 lazy val zioQuery = crossProject(JSPlatform, JVMPlatform)
   .in(file("zio-query"))
-  .settings(stdSettings(name = "zio-query", packageName = "zio.query", enableSilencer = true))
+  .settings(stdSettings(name = "zio-query", packageName = Some("zio.query"), enableSilencer = true))
   .settings(
     libraryDependencies ++= Seq(
       "dev.zio" %% "zio" % zioVersion
