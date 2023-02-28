@@ -138,10 +138,9 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * which caching has been disabled.
    */
   def cached(implicit trace: Trace): ZQuery[R, E, A] =
-    for {
-      cachingEnabled <- ZQuery.fromZIO(ZQuery.cachingEnabled.getAndSet(true))
-      a              <- self.ensuring(ZQuery.fromZIO(ZQuery.cachingEnabled.set(cachingEnabled)))
-    } yield a
+    ZQuery.acquireReleaseWith[R, E, Boolean, A](ZQuery.cachingEnabled.getAndSet(true))(ZQuery.cachingEnabled.set)(_ =>
+      self
+    )
 
   /**
    * Recovers from all errors.
@@ -172,19 +171,8 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * executed immediately after this query completes execution, whether by
    * success or failure.
    */
-  final def ensuring[R1 <: R](finalizer: => ZQuery[R1, Nothing, Any])(implicit trace: Trace): ZQuery[R1, E, A] =
-    self.foldCauseQuery(
-      cause1 =>
-        finalizer.foldCauseQuery(
-          cause2 => ZQuery.failCause(cause1 ++ cause2),
-          _ => ZQuery.failCause(cause1)
-        ),
-      value =>
-        finalizer.foldCauseQuery(
-          cause => ZQuery.failCause(cause),
-          _ => ZQuery.succeed(value)
-        )
-    )
+  final def ensuring[R1 <: R](finalizer: => ZIO[R1, Nothing, Any])(implicit trace: Trace): ZQuery[R1, E, A] =
+    ZQuery.acquireReleaseWith[R1, E, Unit, A](ZIO.unit)(_ => finalizer)(_ => self)
 
   /**
    * Returns a query that models execution of this query, followed by passing
@@ -596,10 +584,9 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * Disables caching for this query.
    */
   def uncached(implicit trace: Trace): ZQuery[R, E, A] =
-    for {
-      cachingEnabled <- ZQuery.fromZIO(ZQuery.cachingEnabled.getAndSet(false))
-      a              <- self.ensuring(ZQuery.fromZIO(ZQuery.cachingEnabled.set(cachingEnabled)))
-    } yield a
+    ZQuery.acquireReleaseWith[R, E, Boolean, A](ZQuery.cachingEnabled.getAndSet(false))(ZQuery.cachingEnabled.set)(_ =>
+      self
+    )
 
   /**
    * Converts a `ZQuery[R, Either[E, B], A]` into a `ZQuery[R, E, Either[A,
