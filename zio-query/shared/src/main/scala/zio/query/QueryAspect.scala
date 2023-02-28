@@ -73,7 +73,7 @@ object QueryAspect {
 
   /**
    * A query aspect that executes queries between two effects, `before` and
-   * `after`..
+   * `after`.
    */
   def around[R, A](
     before: ZIO[R, Nothing, A]
