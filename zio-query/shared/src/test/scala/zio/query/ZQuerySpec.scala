@@ -274,13 +274,13 @@ object ZQuerySpec extends ZIOBaseSpec {
       test("acquireReleaseWith") {
         def query(n: Int): ZQuery[Cache, Nothing, Unit] =
           if (n == 0) ZQuery.unit
-          else ZQuery.fromZIO(Random.nextInt).flatMap(Cache.get(_).flatMap(_ => workflow(n - 1)))
+          else ZQuery.fromZIO(Random.nextInt).flatMap(Cache.get(_).flatMap(_ => query(n - 1)))
         for {
           ref    <- Ref.make(0)
           acquire = ref.update(_ + 1)
           release = ref.update(_ - 1)
           fiber <- ZQuery
-                     .acquireReleaseWith[Cache, Nothing, Unit, Unit](acquire)(_ => release)(_ => workflow(100))
+                     .acquireReleaseWith[Cache, Nothing, Unit, Unit](acquire)(_ => release)(_ => query(100))
                      .run
                      .fork
           _     <- fiber.interrupt

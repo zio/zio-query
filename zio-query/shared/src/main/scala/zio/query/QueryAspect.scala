@@ -73,14 +73,14 @@ object QueryAspect {
 
   /**
    * A query aspect that executes queries between two effects, `before` and
-   * `after`.
+   * `after`, where the result of `before` can be used by `after`.
    */
   def around[R, A](
     before: ZIO[R, Nothing, A]
-  )(after: ZIO[R, Nothing, Any]): QueryAspect[Nothing, R, Nothing, Any, Nothing, Any] =
+  )(after: A => ZIO[R, Nothing, Any]): QueryAspect[Nothing, R, Nothing, Any, Nothing, Any] =
     new QueryAspect[Nothing, R, Nothing, Any, Nothing, Any] {
       def apply[R1 <: R, E, B](query: ZQuery[R1, E, B])(implicit trace: Trace): ZQuery[R1, E, B] =
-        ZQuery.acquireReleaseWith[R1, E, A, B](before)(_ => after)(_ => query)
+        ZQuery.acquireReleaseWith[R1, E, A, B](before)(after)(_ => query)
     }
 
   /**
