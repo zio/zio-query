@@ -1,11 +1,8 @@
 import Versions._
 import explicitdeps.ExplicitDepsPlugin.autoImport.moduleFilterRemoveValue
 import sbtcrossproject.CrossPlugin.autoImport.crossProject
-import zio.sbt.Versions.SilencerVersion
 
 enablePlugins(ZioSbtEcosystemPlugin, ZioSbtCiPlugin)
-
-crossScalaVersions := Seq.empty
 
 inThisBuild(
   List(
@@ -27,10 +24,7 @@ inThisBuild(
   )
 )
 
-//addCommandAlias("fmt", "all scalafmtSbt scalafmt test:scalafmt")
-//addCommandAlias("check", "all scalafmtSbtCheck scalafmtCheck test:scalafmtCheck")
-
-val zioVersion = "2.0.10"
+val zioVersion = "2.0.9"
 
 lazy val root = project
   .in(file("."))
@@ -47,11 +41,11 @@ lazy val root = project
 lazy val zioQuery = crossProject(JSPlatform, JVMPlatform)
   .in(file("zio-query"))
   .settings(
-    stdSettings(name = "zio-query", packageName = Some("zio.query"), enableSilencer = true, enableCrossProject = true)
-  )
-  .settings(
-    libraryDependencies ++= Seq(
-      "dev.zio" %% "zio" % zioVersion
+    stdSettings(
+      name = "zio-query",
+      packageName = Some("zio.query"),
+      enableSilencer = true,
+      enableCrossProject = true
     )
   )
   .settings(enableZIO(zioVersion, enableTesting = true))
