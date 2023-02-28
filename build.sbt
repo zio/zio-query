@@ -48,7 +48,7 @@ lazy val zioQuery = crossProject(JSPlatform, JVMPlatform)
       enableCrossProject = true
     )
   )
-  .settings(enableZIO(zioVersion, enableTesting = true))
+  .settings(enableZIO())
   .settings(
     scalacOptions ++= {
       if (scalaBinaryVersion.value == "3")
