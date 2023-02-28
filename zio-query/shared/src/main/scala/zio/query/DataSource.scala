@@ -43,6 +43,12 @@ import zio.stacktracer.TracingImplicits.disableAutoTrace
 trait DataSource[-R, -A] { self =>
 
   /**
+   * Syntax for adding aspects.
+   */
+  final def @@[R1 <: R](aspect: => DataSourceAspect[R1])(implicit trace: Trace): DataSource[R1, A] =
+    aspect(self)
+
+  /**
    * The data source's identifier.
    */
   val identifier: String

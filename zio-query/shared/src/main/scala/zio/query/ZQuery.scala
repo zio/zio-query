@@ -60,6 +60,9 @@ import scala.reflect.ClassTag
  */
 final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result[R, E, A]]) { self =>
 
+  /**
+   * Syntax for adding aspects.
+   */
   final def @@[LowerR <: UpperR, UpperR <: R, LowerE >: E, UpperE >: LowerE, LowerA >: A, UpperA >: LowerA](
     aspect: => QueryAspect[LowerR, UpperR, LowerE, UpperE, LowerA, UpperA]
   )(implicit trace: Trace): ZQuery[UpperR, LowerE, LowerA] =
