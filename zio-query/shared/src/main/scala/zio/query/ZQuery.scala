@@ -138,9 +138,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * which caching has been disabled.
    */
   def cached(implicit trace: Trace): ZQuery[R, E, A] =
-    ZQuery.acquireReleaseWith[R, E, Boolean, A](ZQuery.cachingEnabled.getAndSet(true))(ZQuery.cachingEnabled.set)(_ =>
-      self
-    )
+    ZQuery.acquireReleaseWith(ZQuery.cachingEnabled.getAndSet(true))(ZQuery.cachingEnabled.set)(_ => self)
 
   /**
    * Recovers from all errors.
@@ -172,7 +170,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * success or failure.
    */
   final def ensuring[R1 <: R](finalizer: => ZIO[R1, Nothing, Any])(implicit trace: Trace): ZQuery[R1, E, A] =
-    ZQuery.acquireReleaseWith[R1, E, Unit, A](ZIO.unit)(_ => finalizer)(_ => self)
+    ZQuery.acquireReleaseWith(ZIO.unit)(_ => finalizer)(_ => self)
 
   /**
    * Returns a query that models execution of this query, followed by passing
@@ -584,9 +582,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * Disables caching for this query.
    */
   def uncached(implicit trace: Trace): ZQuery[R, E, A] =
-    ZQuery.acquireReleaseWith[R, E, Boolean, A](ZQuery.cachingEnabled.getAndSet(false))(ZQuery.cachingEnabled.set)(_ =>
-      self
-    )
+    ZQuery.acquireReleaseWith(ZQuery.cachingEnabled.getAndSet(false))(ZQuery.cachingEnabled.set)(_ => self)
 
   /**
    * Converts a `ZQuery[R, Either[E, B], A]` into a `ZQuery[R, E, Either[A,
@@ -813,52 +809,16 @@ object ZQuery {
    * releases it after the query completes execution, whether by success,
    * failure, or interruption.
    */
-  def acquireReleaseExitWith[R, E, A, B](acquire: => ZIO[R, E, A])(release: (A, Exit[E, B]) => ZIO[R, Nothing, Any])(
-    use: A => ZQuery[R, E, B]
-  )(implicit trace: Trace): ZQuery[R, E, B] =
-    ZQuery.unwrap {
-      ZQuery.currentScope.getWith { scope =>
-        ZIO.environmentWithZIO[R] { environment =>
-          Ref.make(true).flatMap { ref =>
-            ZIO.uninterruptible {
-              acquire.tap { a =>
-                scope.addFinalizerExit {
-                  case Exit.Failure(cause) =>
-                    release(a, Exit.failCause(cause.stripFailures))
-                      .provideEnvironment(environment)
-                      .whenZIO(ref.getAndSet(false))
-                  case Exit.Success(_) =>
-                    ZIO.unit
-                }
-              }
-            }.map { a =>
-              use(a).foldCauseQuery(
-                cause =>
-                  ZQuery.fromZIO {
-                    release(a, Exit.failCause(cause)).whenZIO(ref.getAndSet(false)) *>
-                      ZIO.refailCause(cause)
-                  },
-                b =>
-                  ZQuery.fromZIO {
-                    release(a, Exit.succeed(b)).whenZIO(ref.getAndSet(false)) *>
-                      ZIO.succeed(b)
-                  }
-              )
-            }
-          }
-        }
-      }
-    }
+  def acquireReleaseExitWith[R, E, A](acquire: => ZIO[R, E, A]): ZQuery.AcquireExit[R, E, A] =
+    new ZQuery.AcquireExit(() => acquire)
 
   /**
    * Acquires the specified resource before the query begins execution and
    * releases it after the query completes execution, whether by success,
    * failure, or interruption.
    */
-  def acquireReleaseWith[R, E, A, B](acquire: => ZIO[R, E, A])(release: A => ZIO[R, Nothing, Any])(
-    use: A => ZQuery[R, E, B]
-  )(implicit trace: Trace): ZQuery[R, E, B] =
-    acquireReleaseExitWith[R, E, A, B](acquire)((a, _) => release(a))(use)
+  def acquireReleaseWith[R, E, A](acquire: => ZIO[R, E, A]): ZQuery.Acquire[R, E, A] =
+    new ZQuery.Acquire(() => acquire)
 
   /**
    * Collects a collection of queries into a query returning a collection of
@@ -1516,4 +1476,61 @@ object ZQuery {
 
   private[query] val currentScope: FiberRef[Scope] =
     FiberRef.unsafe.make[Scope](Scope.global)(Unsafe.unsafe)
+
+  final class Acquire[-R, +E, +A](private val acquire: () => ZIO[R, E, A]) extends AnyVal {
+    def apply[R1](release: A => URIO[R1, Any]): Release[R with R1, E, A] =
+      new Release[R with R1, E, A](acquire, release)
+  }
+  final class Release[-R, +E, +A](acquire: () => ZIO[R, E, A], release: A => URIO[R, Any]) {
+    def apply[R1 <: R, E1 >: E, B](use: A => ZQuery[R1, E1, B])(implicit trace: Trace): ZQuery[R1, E1, B] =
+      acquireReleaseExitWith(acquire())((a: A, _: Exit[E1, B]) => release(a))(use)
+  }
+
+  final class AcquireExit[-R, +E, +A](private val acquire: () => ZIO[R, E, A]) extends AnyVal {
+    def apply[R1 <: R, E1 >: E, B](
+      release: (A, Exit[E1, B]) => URIO[R1, Any]
+    ): ReleaseExit[R1, E, E1, A, B] =
+      new ReleaseExit(acquire, release)
+  }
+  final class ReleaseExit[-R, +E, E1, +A, B](
+    acquire: () => ZIO[R, E, A],
+    release: (A, Exit[E1, B]) => URIO[R, Any]
+  ) {
+    def apply[R1 <: R, E2 >: E <: E1, B1 <: B](use: A => ZQuery[R1, E2, B1])(implicit
+      trace: Trace
+    ): ZQuery[R1, E2, B1] =
+      ZQuery.unwrap {
+        ZQuery.currentScope.getWith { scope =>
+          ZIO.environmentWithZIO[R] { environment =>
+            Ref.make(true).flatMap { ref =>
+              ZIO.uninterruptible {
+                acquire().tap { a =>
+                  scope.addFinalizerExit {
+                    case Exit.Failure(cause) =>
+                      release(a, Exit.failCause(cause.stripFailures))
+                        .provideEnvironment(environment)
+                        .whenZIO(ref.getAndSet(false))
+                    case Exit.Success(_) =>
+                      ZIO.unit
+                  }
+                }
+              }.map { a =>
+                use(a).foldCauseQuery(
+                  cause =>
+                    ZQuery.fromZIO {
+                      release(a, Exit.failCause(cause)).whenZIO(ref.getAndSet(false)) *>
+                        ZIO.refailCause(cause)
+                    },
+                  b =>
+                    ZQuery.fromZIO {
+                      release(a, Exit.succeed(b)).whenZIO(ref.getAndSet(false)) *>
+                        ZIO.succeed(b)
+                    }
+                )
+              }
+            }
+          }
+        }
+      }
+  }
 }

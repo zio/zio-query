@@ -80,7 +80,7 @@ object QueryAspect {
   )(after: A => ZIO[R, Nothing, Any]): QueryAspect[Nothing, R, Nothing, Any, Nothing, Any] =
     new QueryAspect[Nothing, R, Nothing, Any, Nothing, Any] {
       def apply[R1 <: R, E, B](query: ZQuery[R1, E, B])(implicit trace: Trace): ZQuery[R1, E, B] =
-        ZQuery.acquireReleaseWith[R1, E, A, B](before)(after)(_ => query)
+        ZQuery.acquireReleaseWith(before)(after)(_ => query)
     }
 
   /**

@@ -280,7 +280,7 @@ object ZQuerySpec extends ZIOBaseSpec {
           acquire = ref.update(_ + 1)
           release = ref.update(_ - 1)
           fiber <- ZQuery
-                     .acquireReleaseWith[Cache, Nothing, Unit, Unit](acquire)(_ => release)(_ => query(100))
+                     .acquireReleaseWith(acquire)(_ => release)(_ => query(100))
                      .run
                      .fork
           _     <- fiber.interrupt
