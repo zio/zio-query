@@ -72,12 +72,25 @@ trait QueryAspect[+LowerR, -UpperR, +LowerE, -UpperE, +LowerA, -UpperA] { self =
 
 object QueryAspect {
 
+  /**
+   * Executes the specified workflows before and after the query.
+   */
+  def around[R, A](
+    before: ZIO[R, Nothing, A]
+  )(after: ZIO[R, Nothing, Any]): QueryAspect[Nothing, R, Nothing, Any, Nothing, Any] =
+    new QueryAspect[Nothing, R, Nothing, Any, Nothing, Any] {
+      def apply[R1 <: R, E, B](query: ZQuery[R1, E, B])(implicit trace: Trace): ZQuery[R1, E, B] =
+        ZQuery.acquireReleaseWith[R1, E, A, B](before)(_ => after)(_ => query)
+    }
+
   def aroundDataSource[R, A](
     before: Described[ZIO[R, Nothing, A]]
   )(after: Described[A => ZIO[R, Nothing, Any]]): QueryAspect[Nothing, R, Nothing, Any, Nothing, Any] =
     fromDataSourceAspect(DataSourceAspect.around(before)(after))
 
-  def fromDataSourceAspect[R](dataSourceAspect: DataSourceAspect[R]): QueryAspect[Nothing, R, Nothing, Any, Nothing, Any] =
+  def fromDataSourceAspect[R](
+    dataSourceAspect: DataSourceAspect[R]
+  ): QueryAspect[Nothing, R, Nothing, Any, Nothing, Any] =
     new QueryAspect[Nothing, R, Nothing, Any, Nothing, Any] {
       def apply[R1 <: R, E, A](query: ZQuery[R1, E, A])(implicit trace: Trace): ZQuery[R1, E, A] =
         query.mapDataSources(dataSourceAspect)

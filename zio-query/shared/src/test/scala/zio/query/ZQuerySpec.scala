@@ -270,7 +270,23 @@ object ZQuerySpec extends ZIOBaseSpec {
             isAfterRan  <- afterRef.get
           } yield assert(isBeforeRan)(equalTo(1)) && assert(isAfterRan)(equalTo(2))
         }
-      ) @@ nonFlaky
+      ) @@ nonFlaky,
+      test("acquireReleaseWith") {
+        def query(n: Int): ZQuery[Cache, Nothing, Unit] =
+          if (n == 0) ZQuery.unit
+          else ZQuery.fromZIO(Random.nextInt).flatMap(Cache.get(_).flatMap(_ => workflow(n - 1)))
+        for {
+          ref    <- Ref.make(0)
+          acquire = ref.update(_ + 1)
+          release = ref.update(_ - 1)
+          fiber <- ZQuery
+                     .acquireReleaseWith[Cache, Nothing, Unit, Unit](acquire)(_ => release)(_ => workflow(100))
+                     .run
+                     .fork
+          _     <- fiber.interrupt
+          value <- ref.get
+        } yield assertTrue(value == 0)
+      }.provideLayer(Cache.live) @@ nonFlaky
     ) @@ silent
 
   val userIds: List[Int]          = (1 to 26).toList

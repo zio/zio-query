@@ -454,7 +454,13 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
         case Result.Fail(e)                         => ZIO.failCause(e)
       }
 
-    ZQuery.currentCache.locally(cache)(run(self))
+    ZIO.acquireReleaseExitWith {
+      Scope.make
+    } { (scope: Scope.Closeable, exit: Exit[E, A]) =>
+      scope.close(exit)
+    } { scope =>
+      ZQuery.currentScope.locally(scope)(ZQuery.currentCache.locally(cache)(run(self)))
+    }
   }
 
   /**
@@ -811,6 +817,58 @@ object ZQuery {
 
   final def absolve[R, E, A](v: => ZQuery[R, E, Either[E, A]])(implicit trace: Trace): ZQuery[R, E, A] =
     ZQuery.suspend(v).flatMap(fromEither(_))
+
+  /**
+   * Acquires the specified resource before the query begins execution and
+   * releases it after the query completes execution, whether by success,
+   * failure, or interruption.
+   */
+  def acquireReleaseExitWith[R, E, A, B](acquire: => ZIO[R, E, A])(release: (A, Exit[E, B]) => ZIO[R, Nothing, Any])(
+    use: A => ZQuery[R, E, B]
+  )(implicit trace: Trace): ZQuery[R, E, B] =
+    ZQuery.unwrap {
+      ZQuery.currentScope.getWith { scope =>
+        ZIO.environmentWithZIO[R] { environment =>
+          Ref.make(true).flatMap { ref =>
+            ZIO.uninterruptible {
+              acquire.tap { a =>
+                scope.addFinalizerExit {
+                  case Exit.Failure(cause) =>
+                    release(a, Exit.failCause(cause.stripFailures))
+                      .provideEnvironment(environment)
+                      .whenZIO(ref.getAndSet(false))
+                  case Exit.Success(_) =>
+                    ZIO.unit
+                }
+              }
+            }.map { a =>
+              use(a).foldCauseQuery(
+                cause =>
+                  ZQuery.fromZIO {
+                    release(a, Exit.failCause(cause)).whenZIO(ref.getAndSet(false)) *>
+                      ZIO.refailCause(cause)
+                  },
+                b =>
+                  ZQuery.fromZIO {
+                    release(a, Exit.succeed(b)).whenZIO(ref.getAndSet(false)) *>
+                      ZIO.succeed(b)
+                  }
+              )
+            }
+          }
+        }
+      }
+    }
+
+  /**
+   * Acquires the specified resource before the query begins execution and
+   * releases it after the query completes execution, whether by success,
+   * failure, or interruption.
+   */
+  def acquireReleaseWith[R, E, A, B](acquire: => ZIO[R, E, A])(release: A => ZIO[R, Nothing, Any])(
+    use: A => ZQuery[R, E, B]
+  )(implicit trace: Trace): ZQuery[R, E, B] =
+    acquireReleaseExitWith[R, E, A, B](acquire)((a, _) => release(a))(use)
 
   /**
    * Collects a collection of queries into a query returning a collection of
@@ -1465,4 +1523,7 @@ object ZQuery {
 
   private[query] val currentCache: FiberRef[Cache] =
     FiberRef.unsafe.make(Cache.unsafeMake())(Unsafe.unsafe)
+
+  private[query] val currentScope: FiberRef[Scope] =
+    FiberRef.unsafe.make[Scope](Scope.global)(Unsafe.unsafe)
 }
