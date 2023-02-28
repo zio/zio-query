@@ -23,7 +23,7 @@ inThisBuild(
 addCommandAlias("fmt", "all scalafmtSbt scalafmt test:scalafmt")
 addCommandAlias("check", "all scalafmtSbtCheck scalafmtCheck test:scalafmtCheck")
 
-val zioVersion = "2.0.8"
+val zioVersion = "2.0.9"
 
 lazy val root = project
   .in(file("."))
@@ -73,6 +73,11 @@ lazy val zioQueryJS = zioQuery.js
 
 lazy val zioQueryJVM = zioQuery.jvm
   .settings(dottySettings)
+
+lazy val benchmarks = project.module
+  .in(file("benchmarks"))
+  .dependsOn(zioQueryJVM)
+  .enablePlugins(JmhPlugin)
 
 lazy val docs = project
   .in(file("zio-query-docs"))

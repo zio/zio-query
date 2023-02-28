@@ -271,6 +271,15 @@ object ZQuerySpec extends ZIOBaseSpec {
           } yield assert(isBeforeRan)(equalTo(1)) && assert(isAfterRan)(equalTo(2))
         }
       ) @@ nonFlaky,
+      test("service methods works with multiple services") {
+        def getFoo: ZQuery[Int with String, Nothing, Unit] =
+          ZQuery.serviceWithQuery[Int](_ => ZQuery.service[String].as(()))
+
+        def getBar: ZQuery[Int with String, Nothing, Unit] =
+          ZQuery.serviceWithZIO[String](_ => ZIO.service[String].unit)
+
+        assertCompletes
+      },
       test("acquireReleaseWith") {
         def query(n: Int): ZQuery[Cache, Nothing, Unit] =
           if (n == 0) ZQuery.unit

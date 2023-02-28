@@ -20,6 +20,7 @@ import zio._
 import zio.query.internal._
 import zio.stacktracer.TracingImplicits.disableAutoTrace
 
+import scala.annotation.tailrec
 import scala.collection.mutable.Builder
 import scala.reflect.ClassTag
 
@@ -645,6 +646,20 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     )
 
   /**
+   * Sets the parallelism for this query to the specified maximum number of
+   * fibers.
+   */
+  def withParallelism(n: => Int)(implicit trace: Trace): ZQuery[R, E, A] =
+    ZQuery.acquireReleaseWith(ZIO.Parallelism.getAndSet(Some(n)))(ZIO.Parallelism.set)(_ => self)
+
+  /**
+   * Sets the parallelism for this query to the specified maximum number of
+   * fibers.
+   */
+  def withParallelismUnbounded(implicit trace: Trace): ZQuery[R, E, A] =
+    ZQuery.acquireReleaseWith(ZIO.Parallelism.getAndSet(None))(ZIO.Parallelism.set)(_ => self)
+
+  /**
    * Returns a query that models the execution of this query and the specified
    * query sequentially, combining their results into a tuple.
    */
@@ -1139,12 +1154,17 @@ object ZQuery {
     f: A => ZQuery[R, E, B]
   )(implicit bf: BuildFrom[Collection[A], B, Collection[B]], trace: Trace): ZQuery[R, E, Collection[B]] =
     ZQuery.suspend {
-      if (as.isEmpty)
+      val size = as.size
+      if (size == 0)
         ZQuery.succeed(bf.newBuilder(as).result())
-      else if (as.iterator.drop(1).isEmpty)
+      else if (size == 1)
         f(as.head).map(bf.newBuilder(as) += _).map(_.result())
       else
-        ZQuery(ZIO.foreachPar(Chunk.fromIterable(as))(f(_).step).map(Result.collectAllPar(_).map(bf.fromSpecific(as))))
+        ZQuery(
+          ZIO
+            .foreachPar[R, Nothing, A, Result[R, E, B], Iterable](as)(f(_).step)
+            .map(Result.collectAllPar(_).map(bf.fromSpecific(as)))
+        )
     }
 
   /**
@@ -1433,18 +1453,18 @@ object ZQuery {
       service[R].map(f)
   }
 
-  final class ServiceWithQueryPartiallyApplied[R](private val dummy: Boolean = true) extends AnyVal {
-    def apply[E, A](
-      f: R => ZQuery[R, E, A]
-    )(implicit tag: Tag[R], race: Trace): ZQuery[R, E, A] =
-      service[R].flatMap(f)
+  final class ServiceWithQueryPartiallyApplied[Service](private val dummy: Boolean = true) extends AnyVal {
+    def apply[R <: Service, E, A](
+      f: Service => ZQuery[R, E, A]
+    )(implicit tag: Tag[Service], trace: Trace): ZQuery[R with Service, E, A] =
+      service[Service].flatMap(f)
   }
 
-  final class ServiceWithZIOPartiallyApplied[R](private val dummy: Boolean = true) extends AnyVal {
-    def apply[E, A](
-      f: R => ZIO[R, E, A]
-    )(implicit tag: Tag[R], trace: Trace): ZQuery[R, E, A] =
-      service[R].mapZIO(f)
+  final class ServiceWithZIOPartiallyApplied[Service](private val dummy: Boolean = true) extends AnyVal {
+    def apply[R <: Service, E, A](
+      f: Service => ZIO[R, E, A]
+    )(implicit tag: Tag[Service], trace: Trace): ZQuery[R with Service, E, A] =
+      service[Service].mapZIO(f)
   }
 
   /**
