@@ -1504,7 +1504,7 @@ object ZQuery {
           ZIO.environmentWithZIO[R] { environment =>
             Ref.make(true).flatMap { ref =>
               ZIO.uninterruptible {
-                acquire().tap { a =>
+                ZIO.suspendSucceed(acquire()).tap { a =>
                   scope.addFinalizerExit {
                     case Exit.Failure(cause) =>
                       release(a, Exit.failCause(cause.stripFailures))
@@ -1515,18 +1515,25 @@ object ZQuery {
                   }
                 }
               }.map { a =>
-                use(a).foldCauseQuery(
-                  cause =>
-                    ZQuery.fromZIO {
-                      release(a, Exit.failCause(cause)).whenZIO(ref.getAndSet(false)) *>
-                        ZIO.refailCause(cause)
-                    },
-                  b =>
-                    ZQuery.fromZIO {
-                      release(a, Exit.succeed(b)).whenZIO(ref.getAndSet(false)) *>
-                        ZIO.succeed(b)
-                    }
-                )
+                ZQuery
+                  .suspend(use(a))
+                  .foldCauseQuery(
+                    cause =>
+                      ZQuery.fromZIO {
+                        ZIO
+                          .suspendSucceed(release(a, Exit.failCause(cause)))
+                          .whenZIO(ref.getAndSet(false))
+                          .mapErrorCause(cause ++ _) *>
+                          ZIO.refailCause(cause)
+                      },
+                    b =>
+                      ZQuery.fromZIO {
+                        ZIO
+                          .suspendSucceed(release(a, Exit.succeed(b)))
+                          .whenZIO(ref.getAndSet(false)) *>
+                          ZIO.succeed(b)
+                      }
+                  )
               }
             }
           }
