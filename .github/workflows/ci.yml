@@ -69,12 +69,11 @@ jobs:
         - '17'
         scala-project:
         - ++2.11.12 zioQueryJVM
-        - ++2.12.15 zioQueryJVM
-        - ++2.13.8 zioQueryJVM
-        - ++3.2.1 zioQueryJVM
-        - ++2.12.15 zioQueryJS
-        - ++2.13.8 zioQueryJS
-        - ++3.2.1 zioQueryJS
+        - ++2.12.17 zioQueryJVM
+        - ++2.13.10 zioQueryJVM
+        - ++2.12.17 zioQueryJS
+        - ++2.13.10 zioQueryJS
+        - ++3.2.2 zioQueryJS
     steps:
     - name: Setup Scala
       uses: actions/setup-java@v3.10.0
