@@ -4,6 +4,8 @@ import sbtcrossproject.CrossPlugin.autoImport.crossProject
 
 enablePlugins(ZioSbtEcosystemPlugin, ZioSbtCiPlugin)
 
+crossScalaVersions := Seq.empty
+
 inThisBuild(
   List(
     name := "ZIO Query",
