@@ -64,8 +64,10 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
   /**
    * Syntax for adding aspects.
    */
-  final def @@[R1 <: R](aspect: => DataSourceAspect[R1])(implicit trace: Trace): ZQuery[R1, E, A] =
-    mapDataSources(aspect)
+  final def @@[LowerR <: UpperR, UpperR <: R, LowerE >: E, UpperE >: LowerE, LowerA >: A, UpperA >: LowerA](
+    aspect: => QueryAspect[LowerR, UpperR, LowerE, UpperE, LowerA, UpperA]
+  )(implicit trace: Trace): ZQuery[UpperR, LowerE, LowerA] =
+    ZQuery.suspend(aspect(self))
 
   /**
    * A symbolic alias for `zipParRight`.
@@ -137,10 +139,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * which caching has been disabled.
    */
   def cached(implicit trace: Trace): ZQuery[R, E, A] =
-    for {
-      cachingEnabled <- ZQuery.fromZIO(ZQuery.cachingEnabled.getAndSet(true))
-      a              <- self.ensuring(ZQuery.fromZIO(ZQuery.cachingEnabled.set(cachingEnabled)))
-    } yield a
+    ZQuery.acquireReleaseWith(ZQuery.cachingEnabled.getAndSet(true))(ZQuery.cachingEnabled.set)(_ => self)
 
   /**
    * Recovers from all errors.
@@ -171,19 +170,8 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * executed immediately after this query completes execution, whether by
    * success or failure.
    */
-  final def ensuring[R1 <: R](finalizer: => ZQuery[R1, Nothing, Any])(implicit trace: Trace): ZQuery[R1, E, A] =
-    self.foldCauseQuery(
-      cause1 =>
-        finalizer.foldCauseQuery(
-          cause2 => ZQuery.failCause(cause1 ++ cause2),
-          _ => ZQuery.failCause(cause1)
-        ),
-      value =>
-        finalizer.foldCauseQuery(
-          cause => ZQuery.failCause(cause),
-          _ => ZQuery.succeed(value)
-        )
-    )
+  final def ensuring[R1 <: R](finalizer: => ZIO[R1, Nothing, Any])(implicit trace: Trace): ZQuery[R1, E, A] =
+    ZQuery.acquireReleaseWith(ZIO.unit)(_ => finalizer)(_ => self)
 
   /**
    * Returns a query that models execution of this query, followed by passing
@@ -456,7 +444,13 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
         case Result.Fail(e)                         => ZIO.failCause(e)
       }
 
-    ZQuery.currentCache.locally(cache)(run(self))
+    ZIO.acquireReleaseExitWith {
+      Scope.make
+    } { (scope: Scope.Closeable, exit: Exit[E, A]) =>
+      scope.close(exit)
+    } { scope =>
+      ZQuery.currentScope.locally(scope)(ZQuery.currentCache.locally(cache)(run(self)))
+    }
   }
 
   /**
@@ -589,10 +583,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * Disables caching for this query.
    */
   def uncached(implicit trace: Trace): ZQuery[R, E, A] =
-    for {
-      cachingEnabled <- ZQuery.fromZIO(ZQuery.cachingEnabled.getAndSet(false))
-      a              <- self.ensuring(ZQuery.fromZIO(ZQuery.cachingEnabled.set(cachingEnabled)))
-    } yield a
+    ZQuery.acquireReleaseWith(ZQuery.cachingEnabled.getAndSet(false))(ZQuery.cachingEnabled.set)(_ => self)
 
   /**
    * Converts a `ZQuery[R, Either[E, B], A]` into a `ZQuery[R, E, Either[A,
@@ -659,20 +650,14 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * fibers.
    */
   def withParallelism(n: => Int)(implicit trace: Trace): ZQuery[R, E, A] =
-    for {
-      parallelism <- ZQuery.fromZIO(ZIO.Parallelism.getAndSet(Some(n)))
-      a           <- self.ensuring(ZQuery.fromZIO(ZIO.Parallelism.set(parallelism)))
-    } yield a
+    ZQuery.acquireReleaseWith(ZIO.Parallelism.getAndSet(Some(n)))(ZIO.Parallelism.set)(_ => self)
 
   /**
    * Sets the parallelism for this query to the specified maximum number of
    * fibers.
    */
   def withParallelismUnbounded(implicit trace: Trace): ZQuery[R, E, A] =
-    for {
-      parallelism <- ZQuery.fromZIO(ZIO.Parallelism.getAndSet(None))
-      a           <- self.ensuring(ZQuery.fromZIO(ZIO.Parallelism.set(parallelism)))
-    } yield a
+    ZQuery.acquireReleaseWith(ZIO.Parallelism.getAndSet(None))(ZIO.Parallelism.set)(_ => self)
 
   /**
    * Returns a query that models the execution of this query and the specified
@@ -833,6 +818,22 @@ object ZQuery {
 
   final def absolve[R, E, A](v: => ZQuery[R, E, Either[E, A]])(implicit trace: Trace): ZQuery[R, E, A] =
     ZQuery.suspend(v).flatMap(fromEither(_))
+
+  /**
+   * Acquires the specified resource before the query begins execution and
+   * releases it after the query completes execution, whether by success,
+   * failure, or interruption.
+   */
+  def acquireReleaseExitWith[R, E, A](acquire: => ZIO[R, E, A]): ZQuery.AcquireExit[R, E, A] =
+    new ZQuery.AcquireExit(() => acquire)
+
+  /**
+   * Acquires the specified resource before the query begins execution and
+   * releases it after the query completes execution, whether by success,
+   * failure, or interruption.
+   */
+  def acquireReleaseWith[R, E, A](acquire: => ZIO[R, E, A]): ZQuery.Acquire[R, E, A] =
+    new ZQuery.Acquire(() => acquire)
 
   /**
    * Collects a collection of queries into a query returning a collection of
@@ -1492,4 +1493,71 @@ object ZQuery {
 
   private[query] val currentCache: FiberRef[Cache] =
     FiberRef.unsafe.make(Cache.unsafeMake())(Unsafe.unsafe)
+
+  private[query] val currentScope: FiberRef[Scope] =
+    FiberRef.unsafe.make[Scope](Scope.global)(Unsafe.unsafe)
+
+  final class Acquire[-R, +E, +A](private val acquire: () => ZIO[R, E, A]) extends AnyVal {
+    def apply[R1](release: A => URIO[R1, Any]): Release[R with R1, E, A] =
+      new Release[R with R1, E, A](acquire, release)
+  }
+  final class Release[-R, +E, +A](acquire: () => ZIO[R, E, A], release: A => URIO[R, Any]) {
+    def apply[R1 <: R, E1 >: E, B](use: A => ZQuery[R1, E1, B])(implicit trace: Trace): ZQuery[R1, E1, B] =
+      acquireReleaseExitWith(acquire())((a: A, _: Exit[E1, B]) => release(a))(use)
+  }
+
+  final class AcquireExit[-R, +E, +A](private val acquire: () => ZIO[R, E, A]) extends AnyVal {
+    def apply[R1 <: R, E1 >: E, B](
+      release: (A, Exit[E1, B]) => URIO[R1, Any]
+    ): ReleaseExit[R1, E, E1, A, B] =
+      new ReleaseExit(acquire, release)
+  }
+  final class ReleaseExit[-R, +E, E1, +A, B](
+    acquire: () => ZIO[R, E, A],
+    release: (A, Exit[E1, B]) => URIO[R, Any]
+  ) {
+    def apply[R1 <: R, E2 >: E <: E1, B1 <: B](use: A => ZQuery[R1, E2, B1])(implicit
+      trace: Trace
+    ): ZQuery[R1, E2, B1] =
+      ZQuery.unwrap {
+        ZQuery.currentScope.getWith { scope =>
+          ZIO.environmentWithZIO[R] { environment =>
+            Ref.make(true).flatMap { ref =>
+              ZIO.uninterruptible {
+                ZIO.suspendSucceed(acquire()).tap { a =>
+                  scope.addFinalizerExit {
+                    case Exit.Failure(cause) =>
+                      release(a, Exit.failCause(cause.stripFailures))
+                        .provideEnvironment(environment)
+                        .whenZIO(ref.getAndSet(false))
+                    case Exit.Success(_) =>
+                      ZIO.unit
+                  }
+                }
+              }.map { a =>
+                ZQuery
+                  .suspend(use(a))
+                  .foldCauseQuery(
+                    cause =>
+                      ZQuery.fromZIO {
+                        ZIO
+                          .suspendSucceed(release(a, Exit.failCause(cause)))
+                          .whenZIO(ref.getAndSet(false))
+                          .mapErrorCause(cause ++ _) *>
+                          ZIO.refailCause(cause)
+                      },
+                    b =>
+                      ZQuery.fromZIO {
+                        ZIO
+                          .suspendSucceed(release(a, Exit.succeed(b)))
+                          .whenZIO(ref.getAndSet(false)) *>
+                          ZIO.succeed(b)
+                      }
+                  )
+              }
+            }
+          }
+        }
+      }
+  }
 }
