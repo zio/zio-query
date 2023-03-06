@@ -67,7 +67,7 @@ lazy val userQuery: ZQuery[Any, Nothing, List[String]] = for {
 In order to use this library, we need to add the following line in our `build.sbt` file:
 
 ```scala
-libraryDependencies += "dev.zio" %% "zio-query" % "0.3.6"
+libraryDependencies += "dev.zio" %% "zio-query" % "0.4.0"
 ```
 
 ## Example
