@@ -1,7 +1,7 @@
 package zio.query
 
 import zio._
-import zio.query.DataSourceAspect._
+import zio.query.QueryAspect._
 import zio.test.Assertion._
 import zio.test.TestAspect.{after, nonFlaky, silent}
 import zio.test._
@@ -263,7 +263,7 @@ object ZQuerySpec extends ZIOBaseSpec {
 
             afterRef    <- Ref.make(0)
             after        = (v: Int) => afterRef.set(v * 2)
-            aspect       = DataSourceAspect.around(Described(before, "before effect"))(Described(after, "after effect"))
+            aspect       = QueryAspect.aroundDataSource(Described(before, "before effect"))(Described(after, "after effect"))
             query        = getUserNameById(1) @@ aspect
             _           <- query.run
             isBeforeRan <- beforeRef.get
@@ -279,7 +279,23 @@ object ZQuerySpec extends ZIOBaseSpec {
           ZQuery.serviceWithZIO[String](_ => ZIO.service[String].unit)
 
         assertCompletes
-      }
+      },
+      test("acquireReleaseWith") {
+        def query(n: Int): ZQuery[Cache, Nothing, Unit] =
+          if (n == 0) ZQuery.unit
+          else ZQuery.fromZIO(Random.nextInt).flatMap(Cache.get(_).flatMap(_ => query(n - 1)))
+        for {
+          ref    <- Ref.make(0)
+          acquire = ref.update(_ + 1)
+          release = ref.update(_ - 1)
+          fiber <- ZQuery
+                     .acquireReleaseWith(acquire)(_ => release)(_ => query(100))
+                     .run
+                     .fork
+          _     <- fiber.interrupt
+          value <- ref.get
+        } yield assertTrue(value == 0)
+      }.provideLayer(Cache.live) @@ nonFlaky
     ) @@ silent
 
   val userIds: List[Int]          = (1 to 26).toList
