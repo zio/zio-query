@@ -9,6 +9,7 @@ crossScalaVersions := Seq.empty
 inThisBuild(
   List(
     name := "ZIO Query",
+    zioVersion := "2.0.10",
     developers := List(
       Developer(
         "adamgfraser",
@@ -25,8 +26,6 @@ inThisBuild(
       )
   )
 )
-
-val zioVersion = "2.0.9"
 
 lazy val root = project
   .in(file("."))
