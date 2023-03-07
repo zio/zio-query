@@ -1,4 +1,3 @@
-import Versions._
 import explicitdeps.ExplicitDepsPlugin.autoImport.moduleFilterRemoveValue
 import sbtcrossproject.CrossPlugin.autoImport.crossProject
 
@@ -8,7 +7,7 @@ crossScalaVersions := Seq.empty
 
 inThisBuild(
   List(
-    name := "ZIO Query",
+    name       := "ZIO Query",
     zioVersion := "2.0.10",
     developers := List(
       Developer(
@@ -65,7 +64,7 @@ lazy val zioQueryJS = zioQuery.js
     scalaJSUseMainModuleInitializer := true,
     crossScalaVersions -= scala211.value,
     scalacOptions ++= {
-      if (scalaVersion.value == Scala3)
+      if (scalaBinaryVersion.value == "3")
         Seq("-scalajs")
       else
         Seq.empty
