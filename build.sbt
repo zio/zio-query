@@ -1,14 +1,14 @@
-import BuildHelper._
 import explicitdeps.ExplicitDepsPlugin.autoImport.moduleFilterRemoveValue
 import sbtcrossproject.CrossPlugin.autoImport.crossProject
 
-name := "zio-query"
+enablePlugins(ZioSbtEcosystemPlugin, ZioSbtCiPlugin)
+
+crossScalaVersions := Seq.empty
 
 inThisBuild(
   List(
-    organization := "dev.zio",
-    homepage     := Some(url("https://zio.dev/zio-query/")),
-    licenses     := List("Apache-2.0" -> url("http://www.apache.org/licenses/LICENSE-2.0")),
+    name       := "ZIO Query",
+    zioVersion := "2.0.10",
     developers := List(
       Developer(
         "adamgfraser",
@@ -16,14 +16,15 @@ inThisBuild(
         "adam.fraser@gmail.com",
         url("https://github.com/adamgfraser")
       )
-    )
+    ),
+    ciEnabledBranches := Seq("series/2.x"),
+    supportedScalaVersions :=
+      Map(
+        (zioQueryJVM / thisProject).value.id -> (zioQueryJVM / crossScalaVersions).value,
+        (zioQueryJS / thisProject).value.id  -> (zioQueryJS / crossScalaVersions).value
+      )
   )
 )
-
-addCommandAlias("fmt", "all scalafmtSbt scalafmt test:scalafmt")
-addCommandAlias("check", "all scalafmtSbtCheck scalafmtCheck test:scalafmtCheck")
-
-val zioVersion = "2.0.10"
 
 lazy val root = project
   .in(file("."))
@@ -39,20 +40,18 @@ lazy val root = project
 
 lazy val zioQuery = crossProject(JSPlatform, JVMPlatform)
   .in(file("zio-query"))
-  .settings(stdSettings("zio-query"))
-  .settings(crossProjectSettings)
-  .settings(buildInfoSettings("zio.query"))
   .settings(
-    libraryDependencies ++= Seq(
-      "dev.zio" %% "zio"          % zioVersion,
-      "dev.zio" %% "zio-test"     % zioVersion % "test",
-      "dev.zio" %% "zio-test-sbt" % zioVersion % "test"
+    stdSettings(
+      name = "zio-query",
+      packageName = Some("zio.query"),
+      enableSilencer = true,
+      enableCrossProject = true
     )
   )
-  .settings(testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework"))
+  .settings(enableZIO())
   .settings(
     scalacOptions ++= {
-      if (scalaVersion.value == ScalaDotty)
+      if (scalaBinaryVersion.value == "3")
         Seq.empty
       else
         Seq("-P:silencer:globalFilters=[zio.stacktracer.TracingImplicits.disableAutoTrace]")
@@ -60,11 +59,12 @@ lazy val zioQuery = crossProject(JSPlatform, JVMPlatform)
   )
 
 lazy val zioQueryJS = zioQuery.js
-  .settings(dottySettings)
-  .settings(scalaJSUseMainModuleInitializer := true)
   .settings(
+    scala3Settings,
+    scalaJSUseMainModuleInitializer := true,
+    crossScalaVersions -= scala211.value,
     scalacOptions ++= {
-      if (scalaVersion.value == ScalaDotty)
+      if (scalaBinaryVersion.value == "3")
         Seq("-scalajs")
       else
         Seq.empty
@@ -72,9 +72,8 @@ lazy val zioQueryJS = zioQuery.js
   )
 
 lazy val zioQueryJVM = zioQuery.jvm
-  .settings(dottySettings)
 
-lazy val benchmarks = project.module
+lazy val benchmarks = project
   .in(file("benchmarks"))
   .dependsOn(zioQueryJVM)
   .enablePlugins(JmhPlugin)
@@ -85,12 +84,12 @@ lazy val docs = project
     moduleName := "zio-query-docs",
     scalacOptions -= "-Yno-imports",
     scalacOptions -= "-Xfatal-warnings",
-    projectName                                := "ZIO Query",
+    projectName                                := (ThisBuild / name).value,
     mainModuleName                             := (zioQueryJVM / moduleName).value,
-    crossScalaVersions                         := Seq(Scala212, Scala213, ScalaDotty),
+    scalaVersion                               := scala213.value,
+    crossScalaVersions                         := Seq(scala213.value),
     projectStage                               := ProjectStage.Development,
-    ScalaUnidoc / unidoc / unidocProjectFilter := inProjects(zioQueryJVM),
-    docsPublishBranch                          := "series/2.x"
+    ScalaUnidoc / unidoc / unidocProjectFilter := inProjects(zioQueryJVM)
   )
   .dependsOn(zioQueryJVM)
   .enablePlugins(WebsitePlugin)

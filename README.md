@@ -135,7 +135,7 @@ object ZQueryExample extends ZIOAppDefault {
 
 ## Documentation
 
-Learn more on the [ZIO Query homepage](https://zio.dev/zio-query/)!
+Learn more on the [ZIO Query homepage](https://zio.dev/zio-query)!
 
 ## Contributing
 
