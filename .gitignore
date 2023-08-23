@@ -406,7 +406,7 @@ project/plugins/project/
 *.log
 
 .metals/
-project/metals.sbt
+project/**/metals.sbt
 .bloop/
 project/secret
 
@@ -416,3 +416,6 @@ website/build
 website/i18n/en.json
 website/static/api
 .bsp
+
+# vscode
+.vscode

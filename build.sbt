@@ -17,12 +17,7 @@ inThisBuild(
         url("https://github.com/adamgfraser")
       )
     ),
-    ciEnabledBranches := Seq("series/2.x"),
-    supportedScalaVersions :=
-      Map(
-        (zioQueryJVM / thisProject).value.id -> (zioQueryJVM / crossScalaVersions).value,
-        (zioQueryJS / thisProject).value.id  -> (zioQueryJS / crossScalaVersions).value
-      )
+    ciEnabledBranches := Seq("series/2.x")
   )
 )
 
@@ -42,7 +37,7 @@ lazy val zioQuery = crossProject(JSPlatform, JVMPlatform)
   .in(file("zio-query"))
   .settings(
     stdSettings(
-      name = "zio-query",
+      name = Some("zio-query"),
       packageName = Some("zio.query"),
       enableSilencer = true,
       enableCrossProject = true
