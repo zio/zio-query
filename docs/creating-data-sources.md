@@ -47,13 +47,13 @@ def run(requests: Chunk[GetUserName]): ZIO[Any, Nothing, CompletedRequestMap] = 
     case request :: Nil =>
       // get user by ID e.g. SELECT name FROM users WHERE id = $id
       val result: Task[String] = ???
-      result.either.map(resultMap.insert(request))
+      result.exit.map(resultMap.insert(request))
     case batch =>
       // get multiple users at once e.g. SELECT id, name FROM users WHERE id IN ($ids)
       val result: Task[List[(Int, String)]] = ???
       result.fold(
-        err => requests.foldLeft(resultMap) { case (map, req) => map.insert(req)(Left(err)) },
-        _.foldLeft(resultMap) { case (map, (id, name)) => map.insert(GetUserName(id))(Right(name)) }
+        err => requests.foldLeft(resultMap) { case (map, req) => map.insert(req)(Exit.fail(err)) },
+        _.foldLeft(resultMap) { case (map, (id, name)) => map.insert(GetUserName(id))(Exit.succeed(name)) }
       )
   }
 }

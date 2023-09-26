@@ -163,14 +163,14 @@ private[query] object Continue {
    * Constructs a continuation from a request, a data source, and a `Ref` that
    * will contain the result of the request when it is executed.
    */
-  def apply[R, E, A, B](request: A, dataSource: DataSource[R, A], ref: Ref[Option[Either[E, B]]])(implicit
+  def apply[R, E, A, B](request: A, dataSource: DataSource[R, A], ref: Ref[Option[Exit[E, B]]])(implicit
     ev: A <:< Request[E, B],
     trace: Trace
   ): Continue[R, E, B] =
     Continue.get {
       ref.get.flatMap {
         case None    => ZIO.die(QueryFailure(dataSource, request))
-        case Some(b) => ZIO.fromEither(b)
+        case Some(b) => ZIO.done(b)
       }
     }
 

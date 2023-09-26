@@ -294,7 +294,13 @@ object ZQuerySpec extends ZIOBaseSpec {
           _     <- fiber.interrupt
           value <- ref.get
         } yield assertTrue(value == 0)
-      }.provideLayer(Cache.live) @@ nonFlaky
+      }.provideLayer(Cache.live) @@ nonFlaky,
+      test("defect in data source is translated to defect in request") {
+        val query = dieQuery.foldCauseQuery(_ => ZQuery.unit, _ => ZQuery.unit)
+        for {
+          _ <- query.run
+        } yield assertCompletes
+      }
     ) @@ silent
 
   val userIds: List[Int]          = (1 to 26).toList
@@ -311,9 +317,11 @@ object ZQuerySpec extends ZIOBaseSpec {
         Console.printLine(requests.toString).orDie *>
         ZIO.succeed {
           requests.foldLeft(CompletedRequestMap.empty) {
-            case (completedRequests, GetAllIds) => completedRequests.insert(GetAllIds)(Right(userIds))
+            case (completedRequests, GetAllIds) => completedRequests.insert(GetAllIds)(Exit.succeed(userIds))
             case (completedRequests, GetNameById(id)) =>
-              userNames.get(id).fold(completedRequests)(name => completedRequests.insert(GetNameById(id))(Right(name)))
+              userNames
+                .get(id)
+                .fold(completedRequests)(name => completedRequests.insert(GetNameById(id))(Exit.succeed(name)))
           }
         }
     }
@@ -361,6 +369,21 @@ object ZQuerySpec extends ZIOBaseSpec {
   def raceQuery(promise: Promise[Nothing, Unit]): ZQuery[Any, Nothing, Unit] =
     ZQuery.fromRequest(SucceedRequest(promise))(raceDataSource)
 
+  case object DieRequest extends Request[Nothing, Nothing]
+
+  val dieDataSource: DataSource[Any, DieRequest.type] =
+    new DataSource[Any, DieRequest.type] {
+      val identifier: String = "die"
+
+      def runAll(requests: Chunk[Chunk[DieRequest.type]])(implicit
+        trace: Trace
+      ): ZIO[Any, Nothing, CompletedRequestMap] =
+        ZIO.dieMessage("die")
+    }
+
+  val dieQuery: ZQuery[Any, Nothing, Nothing] =
+    ZQuery.fromRequest(DieRequest)(dieDataSource)
+
   sealed trait CacheRequest[+A] extends Request[Nothing, A]
 
   final case class Get(key: Int)             extends CacheRequest[Option[Int]]
@@ -401,7 +424,7 @@ object ZQuerySpec extends ZIOBaseSpec {
                       case Put(key, value) => cache.update(_ + (key -> value))
                     }
                     .map(requests.zip(_).foldLeft(CompletedRequestMap.empty) { case (map, (k, v)) =>
-                      map.insert(k)(Right(v))
+                      map.insert(k)(Exit.succeed(v))
                     })
                 }
                 .map(_.foldLeft(CompletedRequestMap.empty)(_ ++ _))
@@ -505,9 +528,9 @@ object ZQuerySpec extends ZIOBaseSpec {
         backendGetAll.map { allItems =>
           allItems
             .foldLeft(CompletedRequestMap.empty) { case (result, (id, value)) =>
-              result.insert(Req.Get(id))(Right(value))
+              result.insert(Req.Get(id))(Exit.succeed(value))
             }
-            .insert(Req.GetAll)(Right(allItems))
+            .insert(Req.GetAll)(Exit.succeed(allItems))
         }
       } else {
         for {
@@ -519,8 +542,8 @@ object ZQuerySpec extends ZIOBaseSpec {
           case (result, Req.GetAll) => result
           case (result, req @ Req.Get(id)) =>
             items.get(id) match {
-              case Some(value) => result.insert(req)(Right(value))
-              case None        => result.insert(req)(Left(NotFound(id)))
+              case Some(value) => result.insert(req)(Exit.succeed(value))
+              case None        => result.insert(req)(Exit.fail(NotFound(id)))
             }
         }
       }
