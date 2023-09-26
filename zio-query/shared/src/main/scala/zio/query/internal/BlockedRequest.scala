@@ -16,9 +16,9 @@
 
 package zio.query.internal
 
-import zio.{Exit, Ref}
 import zio.query.Request
 import zio.stacktracer.TracingImplicits.disableAutoTrace
+import zio.{Exit, Ref}
 
 /**
  * A `BlockedRequest[A]` keeps track of a request of type `A` along with a `Ref`
