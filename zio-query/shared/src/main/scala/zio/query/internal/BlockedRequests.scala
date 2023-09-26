@@ -17,9 +17,9 @@
 package zio.query.internal
 
 import zio.query.internal.BlockedRequests._
-import zio.query.{Cache, DataSource, DataSourceAspect, Described, ZQuery}
+import zio.query.{Cache, CompletedRequestMap, DataSource, DataSourceAspect, Described, ZQuery}
 import zio.stacktracer.TracingImplicits.disableAutoTrace
-import zio.{Ref, Trace, ZEnvironment, ZIO}
+import zio.{Exit, Ref, Trace, ZEnvironment, ZIO}
 
 import scala.annotation.tailrec
 
@@ -105,9 +105,15 @@ private[query] sealed trait BlockedRequests[-R] { self =>
       ZIO.foreachDiscard(BlockedRequests.flatten(self)) { requestsByDataSource =>
         ZIO.foreachParDiscard(requestsByDataSource.toIterable) { case (dataSource, sequential) =>
           for {
-            completedRequests <- dataSource.runAll(sequential.map(_.map(_.request)))
-            blockedRequests    = sequential.flatten
-            leftovers          = completedRequests.requests -- blockedRequests.map(_.request)
+            completedRequests <- dataSource.runAll(sequential.map(_.map(_.request))).catchAllCause { cause =>
+                                   ZIO.succeed {
+                                     sequential.map(_.map(_.request)).flatten.foldLeft(CompletedRequestMap.empty) {
+                                       case (map, request) => map.insert(request)(Exit.failCause(cause))
+                                     }
+                                   }
+                                 }
+            blockedRequests = sequential.flatten
+            leftovers       = completedRequests.requests -- blockedRequests.map(_.request)
             _ <- ZIO.foreachDiscard(blockedRequests) { blockedRequest =>
                    blockedRequest.result.set(completedRequests.lookup(blockedRequest.request))
                  }

@@ -161,12 +161,6 @@ private[query] object Result {
     Fail(cause)
 
   /**
-   * Lifts an `Either` into a result.
-   */
-  def fromEither[E, A](either: Either[E, A]): Result[Any, E, A] =
-    either.fold(e => Result.fail(Cause.fail(e)), a => Result.done(a))
-
-  /**
    * Lifts an `Exit` into a result.
    */
   def fromExit[E, A](exit: Exit[E, A]): Result[Any, E, A] =

@@ -16,7 +16,7 @@
 
 package zio.query.internal
 
-import zio.Ref
+import zio.{Exit, Ref}
 import zio.query.Request
 import zio.stacktracer.TracingImplicits.disableAutoTrace
 
@@ -33,7 +33,7 @@ private[query] sealed trait BlockedRequest[+A] {
 
   def request: Request[Failure, Success]
 
-  def result: Ref[Option[Either[Failure, Success]]]
+  def result: Ref[Option[Exit[Failure, Success]]]
 
   override final def toString: String =
     s"BlockedRequest($request, $result)"
@@ -41,7 +41,7 @@ private[query] sealed trait BlockedRequest[+A] {
 
 private[query] object BlockedRequest {
 
-  def apply[E, A, B](request0: A, result0: Ref[Option[Either[E, B]]])(implicit
+  def apply[E, A, B](request0: A, result0: Ref[Option[Exit[E, B]]])(implicit
     ev: A <:< Request[E, B]
   ): BlockedRequest[A] =
     new BlockedRequest[A] {

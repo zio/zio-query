@@ -1252,12 +1252,12 @@ object ZQuery {
                 case Right(ref) =>
                   ref.get.map {
                     case None    => Result.blocked(BlockedRequests.empty, Continue(request, dataSource, ref))
-                    case Some(b) => Result.fromEither(b)
+                    case Some(b) => Result.fromExit(b)
                   }
               }
             }
           } else {
-            Ref.make(Option.empty[Either[E, B]]).map { ref =>
+            Ref.make(Option.empty[Exit[E, B]]).map { ref =>
               Result.blocked(
                 BlockedRequests.single(dataSource, BlockedRequest(request, ref)),
                 Continue(request, dataSource, ref)
