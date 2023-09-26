@@ -98,7 +98,7 @@ object ZQueryExample extends ZIOAppDefault {
               ZIO.succeed(???)
             }
 
-            result.either.map(resultMap.insert(request))
+            result.exit.map(resultMap.insert(request))
 
           case batch: Seq[GetUserName] =>
             val result: Task[List[(Int, String)]] = {
@@ -109,10 +109,10 @@ object ZQueryExample extends ZIOAppDefault {
             result.fold(
               err =>
                 requests.foldLeft(resultMap) { case (map, req) =>
-                  map.insert(req)(Left(err))
+                  map.insert(req)(Exit.fail(err))
                 },
               _.foldLeft(resultMap) { case (map, (id, name)) =>
-                map.insert(GetUserName(id))(Right(name))
+                map.insert(GetUserName(id))(Exit.succeed(name))
               }
             )
         }
