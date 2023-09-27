@@ -38,7 +38,7 @@ We will use "UserDataSource" as our identifier. This name should not be reused f
 val identifier: String = "UserDataSource"
 ```
 
-We will define two different behaviors depending on whether we receive a single request or multiple requests at once. For each request, we need to insert into the result map a value of type `Either` (`Left` for an error and `Right` for a success).
+We will define two different behaviors depending on whether we receive a single request or multiple requests at once. For each request, we need to insert into the result map a value of type `Exit` (`fail` for an error and `succeed` for a success).
 
 ```scala mdoc:silent
 def run(requests: Chunk[GetUserName]): ZIO[Any, Nothing, CompletedRequestMap] = {
