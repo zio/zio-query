@@ -8,7 +8,7 @@ crossScalaVersions := Seq.empty
 inThisBuild(
   List(
     name       := "ZIO Query",
-    zioVersion := "2.0.10",
+    zioVersion := "2.0.18",
     developers := List(
       Developer(
         "adamgfraser",
@@ -18,7 +18,7 @@ inThisBuild(
       )
     ),
     ciEnabledBranches := Seq("series/2.x"),
-    supportedScalaVersions :=
+    ciTargetScalaVersions :=
       Map(
         (zioQueryJVM / thisProject).value.id -> (zioQueryJVM / crossScalaVersions).value,
         (zioQueryJS / thisProject).value.id  -> (zioQueryJS / crossScalaVersions).value
@@ -42,27 +42,18 @@ lazy val zioQuery = crossProject(JSPlatform, JVMPlatform)
   .in(file("zio-query"))
   .settings(
     stdSettings(
-      name = "zio-query",
+      name = Some("zio-query"),
       packageName = Some("zio.query"),
-      enableSilencer = true,
       enableCrossProject = true
     )
   )
   .settings(enableZIO())
-  .settings(
-    scalacOptions ++= {
-      if (scalaBinaryVersion.value == "3")
-        Seq.empty
-      else
-        Seq("-P:silencer:globalFilters=[zio.stacktracer.TracingImplicits.disableAutoTrace]")
-    }
-  )
+  .settings(scalacOptions += "-Wconf:msg=[zio.stacktracer.TracingImplicits.disableAutoTrace]:silent")
 
 lazy val zioQueryJS = zioQuery.js
   .settings(
     scala3Settings,
     scalaJSUseMainModuleInitializer := true,
-    crossScalaVersions -= scala211.value,
     scalacOptions ++= {
       if (scalaBinaryVersion.value == "3")
         Seq("-scalajs")
