@@ -79,7 +79,7 @@ lazy val docs = project
     mainModuleName                             := (zioQueryJVM / moduleName).value,
     scalaVersion                               := scala213.value,
     crossScalaVersions                         := Seq(scala213.value),
-    projectStage                               := ProjectStage.Development,
+    projectStage                               := ProjectStage.ProductionReady,
     ScalaUnidoc / unidoc / unidocProjectFilter := inProjects(zioQueryJVM)
   )
   .dependsOn(zioQueryJVM)
