@@ -1488,13 +1488,13 @@ object ZQuery {
     (bs.result(), cs.result())
   }
 
-  private[query] val cachingEnabled: FiberRef[Boolean] =
+  val cachingEnabled: FiberRef[Boolean] =
     FiberRef.unsafe.make(true)(Unsafe.unsafe)
 
-  private[query] val currentCache: FiberRef[Cache] =
+  val currentCache: FiberRef[Cache] =
     FiberRef.unsafe.make(Cache.unsafeMake())(Unsafe.unsafe)
 
-  private[query] val currentScope: FiberRef[Scope] =
+  val currentScope: FiberRef[Scope] =
     FiberRef.unsafe.make[Scope](Scope.global)(Unsafe.unsafe)
 
   final class Acquire[-R, +E, +A](private val acquire: () => ZIO[R, E, A]) extends AnyVal {
