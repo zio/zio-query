@@ -1242,25 +1242,27 @@ object ZQuery {
           if (cachingEnabled) {
             ZQuery.currentCache.get.flatMap { cache =>
               cache.lookup(request).flatMap {
-                case Left(ref) =>
+                case Left(promise) =>
                   ZIO.succeed(
                     Result.blocked(
-                      BlockedRequests.single(dataSource, BlockedRequest(request, ref)),
-                      Continue(request, dataSource, ref)
+                      BlockedRequests.single(dataSource, BlockedRequest(request, promise)),
+                      Continue(request, dataSource, promise)
                     )
                   )
-                case Right(ref) =>
-                  ref.get.map {
-                    case None    => Result.blocked(BlockedRequests.empty, Continue(request, dataSource, ref))
-                    case Some(b) => Result.fromExit(b)
+                case Right(promise) =>
+                  promise.poll.flatMap {
+                    case None =>
+                      ZIO.succeed(Result.blocked(BlockedRequests.empty, Continue(request, dataSource, promise)))
+                    case Some(io) =>
+                      io.exit.map(Result.fromExit)
                   }
               }
             }
           } else {
-            Ref.make(Option.empty[Exit[E, B]]).map { ref =>
+            Promise.make[E, B].map { promise =>
               Result.blocked(
-                BlockedRequests.single(dataSource, BlockedRequest(request, ref)),
-                Continue(request, dataSource, ref)
+                BlockedRequests.single(dataSource, BlockedRequest(request, promise)),
+                Continue(request, dataSource, promise)
               )
             }
           }

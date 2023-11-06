@@ -18,14 +18,14 @@ package zio.query.internal
 
 import zio.query.Request
 import zio.stacktracer.TracingImplicits.disableAutoTrace
-import zio.{Exit, Ref}
+import zio.{Exit, Promise}
 
 /**
- * A `BlockedRequest[A]` keeps track of a request of type `A` along with a `Ref`
- * containing the result of the request, existentially hiding the result type.
- * This is used internally by the library to support data sources that return
- * different result types for different requests while guaranteeing that results
- * will be of the type requested.
+ * A `BlockedRequest[A]` keeps track of a request of type `A` along with a
+ * `Promise` containing the result of the request, existentially hiding the
+ * result type. This is used internally by the library to support data sources
+ * that return different result types for different requests while guaranteeing
+ * that results will be of the type requested.
  */
 private[query] sealed trait BlockedRequest[+A] {
   type Failure
@@ -33,7 +33,7 @@ private[query] sealed trait BlockedRequest[+A] {
 
   def request: Request[Failure, Success]
 
-  def result: Ref[Option[Exit[Failure, Success]]]
+  def result: Promise[Failure, Success]
 
   override final def toString: String =
     s"BlockedRequest($request, $result)"
@@ -41,7 +41,7 @@ private[query] sealed trait BlockedRequest[+A] {
 
 private[query] object BlockedRequest {
 
-  def apply[E, A, B](request0: A, result0: Ref[Option[Exit[E, B]]])(implicit
+  def apply[E, A, B](request0: A, result0: Promise[E, B])(implicit
     ev: A <:< Request[E, B]
   ): BlockedRequest[A] =
     new BlockedRequest[A] {

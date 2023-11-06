@@ -160,19 +160,14 @@ private[query] sealed trait Continue[-R, +E, +A] { self =>
 private[query] object Continue {
 
   /**
-   * Constructs a continuation from a request, a data source, and a `Ref` that
-   * will contain the result of the request when it is executed.
+   * Constructs a continuation from a request, a data source, and a `Promise`
+   * that will contain the result of the request when it is executed.
    */
-  def apply[R, E, A, B](request: A, dataSource: DataSource[R, A], ref: Ref[Option[Exit[E, B]]])(implicit
+  def apply[R, E, A, B](request: A, dataSource: DataSource[R, A], promise: Promise[E, B])(implicit
     ev: A <:< Request[E, B],
     trace: Trace
   ): Continue[R, E, B] =
-    Continue.get {
-      ref.get.flatMap {
-        case None    => ZIO.die(QueryFailure(dataSource, request))
-        case Some(b) => ZIO.done(b)
-      }
-    }
+    Continue.get(promise.await)
 
   /**
    * Collects a collection of continuation into a continuation returning a
