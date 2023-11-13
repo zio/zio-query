@@ -306,22 +306,22 @@ object ZQuerySpec extends ZIOBaseSpec {
   val userIds: List[Int]          = (1 to 26).toList
   val userNames: Map[Int, String] = userIds.zip(('a' to 'z').map(_.toString)).toMap
 
-  sealed trait UserRequest[+A] extends Request[Nothing, A]
+  sealed trait UserRequest[A] extends Request[Nothing, A]
 
   case object GetAllIds                 extends UserRequest[List[Int]]
   final case class GetNameById(id: Int) extends UserRequest[String]
 
-  val UserRequestDataSource: DataSource[Any, UserRequest[Any]] =
-    DataSource.Batched.make[Any, UserRequest[Any]]("UserRequestDataSource") { requests =>
+  val UserRequestDataSource: DataSource[Any, UserRequest[_]] =
+    DataSource.Batched.make[Any, UserRequest[_]]("UserRequestDataSource") { requests =>
       ZIO.when(requests.toSet.size != requests.size)(ZIO.dieMessage("Duplicate requests)")) *>
         Console.printLine(requests.toString).orDie *>
         ZIO.succeed {
           requests.foldLeft(CompletedRequestMap.empty) {
-            case (completedRequests, GetAllIds) => completedRequests.insert(GetAllIds)(Exit.succeed(userIds))
+            case (completedRequests, GetAllIds) => completedRequests.insert(GetAllIds, Exit.succeed(userIds))
             case (completedRequests, GetNameById(id)) =>
               userNames
                 .get(id)
-                .fold(completedRequests)(name => completedRequests.insert(GetNameById(id))(Exit.succeed(name)))
+                .fold(completedRequests)(name => completedRequests.insert(GetNameById(id), Exit.succeed(name)))
           }
         }
     }
@@ -340,12 +340,12 @@ object ZQuerySpec extends ZIOBaseSpec {
 
   case object GetFoo extends Request[Nothing, String]
   val getFoo: ZQuery[Any, Nothing, String] = ZQuery.fromRequest(GetFoo)(
-    DataSource.fromFunctionZIO("foo")(_ => Console.printLine("Running foo query") *> ZIO.succeed("foo"))
+    DataSource.fromFunctionZIO("foo")(_ => Console.printLine("Running foo query").orDie *> ZIO.succeed("foo"))
   )
 
   case object GetBar extends Request[Nothing, String]
   val getBar: ZQuery[Any, Nothing, String] = ZQuery.fromRequest(GetBar)(
-    DataSource.fromFunctionZIO("bar")(_ => Console.printLine("Running bar query") *> ZIO.succeed("bar"))
+    DataSource.fromFunctionZIO("bar")(_ => Console.printLine("Running bar query").orDie *> ZIO.succeed("bar"))
   )
 
   case object NeverRequest extends Request[Nothing, Nothing]
@@ -384,7 +384,7 @@ object ZQuerySpec extends ZIOBaseSpec {
   val dieQuery: ZQuery[Any, Nothing, Nothing] =
     ZQuery.fromRequest(DieRequest)(dieDataSource)
 
-  sealed trait CacheRequest[+A] extends Request[Nothing, A]
+  sealed trait CacheRequest[A] extends Request[Nothing, A]
 
   final case class Get(key: Int)             extends CacheRequest[Option[Int]]
   case object GetAll                         extends CacheRequest[Map[Int, Int]]
@@ -394,24 +394,24 @@ object ZQuerySpec extends ZIOBaseSpec {
 
   object Cache {
 
-    trait Service extends DataSource[Any, CacheRequest[Any]] {
+    trait Service extends DataSource[Any, CacheRequest[_]] {
       val clear: ZIO[Any, Nothing, Unit]
-      val log: ZIO[Any, Nothing, List[List[Set[CacheRequest[Any]]]]]
+      val log: ZIO[Any, Nothing, List[List[Set[CacheRequest[_]]]]]
     }
 
     val live: ZLayer[Any, Nothing, Cache] =
       ZLayer.fromZIO {
         for {
           cache <- Ref.make(Map.empty[Int, Int])
-          ref   <- Ref.make[List[List[Set[CacheRequest[Any]]]]](Nil)
+          ref   <- Ref.make[List[List[Set[CacheRequest[_]]]]](Nil)
         } yield new Service {
           val clear: ZIO[Any, Nothing, Unit] =
             cache.set(Map.empty) *> ref.set(List.empty)
-          val log: ZIO[Any, Nothing, List[List[Set[CacheRequest[Any]]]]] =
+          val log: ZIO[Any, Nothing, List[List[Set[CacheRequest[_]]]]] =
             ref.get
           val identifier: String =
             "CacheDataSource"
-          def runAll(requests: Chunk[Chunk[CacheRequest[Any]]])(implicit
+          def runAll(requests: Chunk[Chunk[CacheRequest[_]]])(implicit
             trace: Trace
           ): ZIO[Any, Nothing, CompletedRequestMap] =
             ref.update(requests.map(_.toSet).toList :: _) *>
@@ -419,13 +419,14 @@ object ZQuerySpec extends ZIOBaseSpec {
                 .foreach(requests) { requests =>
                   ZIO
                     .foreachPar(requests) {
-                      case Get(key)        => cache.get.map(_.get(key))
-                      case GetAll          => cache.get
-                      case Put(key, value) => cache.update(_ + (key -> value))
+                      case Get(key) =>
+                        cache.get.map(_.get(key)).exit.map(CompletedRequestMap.empty.insert(Get(key), _))
+                      case GetAll =>
+                        cache.get.exit.map(CompletedRequestMap.empty.insert(GetAll, _))
+                      case Put(key, value) =>
+                        cache.update(_ + (key -> value)).exit.map(CompletedRequestMap.empty.insert(Put(key, value), _))
                     }
-                    .map(requests.zip(_).foldLeft(CompletedRequestMap.empty) { case (map, (k, v)) =>
-                      map.insert(k)(Exit.succeed(v))
-                    })
+                    .map(_.foldLeft(CompletedRequestMap.empty)(_ ++ _))
                 }
                 .map(_.foldLeft(CompletedRequestMap.empty)(_ ++ _))
         }
@@ -452,7 +453,7 @@ object ZQuerySpec extends ZIOBaseSpec {
     val clear: ZIO[Cache, Nothing, Unit] =
       ZIO.serviceWithZIO(_.clear)
 
-    val log: ZIO[Cache, Nothing, List[List[Set[CacheRequest[Any]]]]] =
+    val log: ZIO[Cache, Nothing, List[List[Set[CacheRequest[_]]]]] =
       ZIO.serviceWithZIO(_.log)
   }
 
@@ -509,7 +510,7 @@ object ZQuerySpec extends ZIOBaseSpec {
   sealed trait DataSourceErrors
   case class NotFound(id: Int) extends DataSourceErrors
 
-  sealed trait Req[+A] extends Request[DataSourceErrors, A]
+  sealed trait Req[A] extends Request[DataSourceErrors, A]
   object Req {
     case object GetAll            extends Req[Map[Int, String]]
     final case class Get(id: Int) extends Req[String]
@@ -528,9 +529,9 @@ object ZQuerySpec extends ZIOBaseSpec {
         backendGetAll.map { allItems =>
           allItems
             .foldLeft(CompletedRequestMap.empty) { case (result, (id, value)) =>
-              result.insert(Req.Get(id))(Exit.succeed(value))
+              result.insert(Req.Get(id), Exit.succeed(value))
             }
-            .insert(Req.GetAll)(Exit.succeed(allItems))
+            .insert(Req.GetAll, Exit.succeed(allItems))
         }
       } else {
         for {
@@ -542,8 +543,8 @@ object ZQuerySpec extends ZIOBaseSpec {
           case (result, Req.GetAll) => result
           case (result, req @ Req.Get(id)) =>
             items.get(id) match {
-              case Some(value) => result.insert(req)(Exit.succeed(value))
-              case None        => result.insert(req)(Exit.fail(NotFound(id)))
+              case Some(value) => result.insert(req, Exit.succeed(value))
+              case None        => result.insert(req, Exit.fail(NotFound(id)))
             }
         }
       }

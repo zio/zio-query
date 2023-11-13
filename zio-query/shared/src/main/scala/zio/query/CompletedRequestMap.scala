@@ -42,16 +42,16 @@ final class CompletedRequestMap private (private val map: Map[Any, Exit[Any, Any
   /**
    * Appends the specified result to the completed requests map.
    */
-  def insert[E, A](request: Request[E, A])(result: Exit[E, A]): CompletedRequestMap =
+  def insert[E, A](request: Request[E, A], result: Exit[E, A]): CompletedRequestMap =
     new CompletedRequestMap(self.map + (request -> result))
 
   /**
    * Appends the specified optional result to the completed request map.
    */
-  def insertOption[E, A](request: Request[E, A])(result: Exit[E, Option[A]]): CompletedRequestMap =
+  def insertOption[E, A](request: Request[E, A], result: Exit[E, Option[A]]): CompletedRequestMap =
     result match {
-      case Exit.Failure(e)       => insert(request)(Exit.failCause(e))
-      case Exit.Success(Some(a)) => insert(request)(Exit.succeed(a))
+      case Exit.Failure(e)       => insert(request, Exit.failCause(e))
+      case Exit.Success(Some(a)) => insert(request, Exit.succeed(a))
       case Exit.Success(None)    => self
     }
 
@@ -64,8 +64,8 @@ final class CompletedRequestMap private (private val map: Map[Any, Exit[Any, Any
   /**
    * Collects all requests in a set.
    */
-  def requests: Set[Request[Any, Any]] =
-    map.keySet.asInstanceOf[Set[Request[Any, Any]]]
+  def requests: Set[Request[_, _]] =
+    map.keySet.asInstanceOf[Set[Request[_, _]]]
 
   override def toString: String =
     s"CompletedRequestMap(${map.mkString(", ")})"
