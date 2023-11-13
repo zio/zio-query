@@ -17,7 +17,7 @@
 package zio.query.internal
 
 import zio.query.internal.BlockedRequests._
-import zio.query.{Cache, CompletedRequestMap, DataSource, DataSourceAspect, Described, QueryFailure, ZQuery}
+import zio.query.{Cache, CompletedRequestMap, DataSource, DataSourceAspect, Described, QueryFailure, Request, ZQuery}
 import zio.stacktracer.TracingImplicits.disableAutoTrace
 import zio.{Exit, Promise, Trace, ZEnvironment, ZIO}
 
@@ -108,7 +108,7 @@ private[query] sealed trait BlockedRequests[-R] { self =>
             completedRequests <- dataSource.runAll(sequential.map(_.map(_.request))).catchAllCause { cause =>
                                    ZIO.succeed {
                                      sequential.map(_.map(_.request)).flatten.foldLeft(CompletedRequestMap.empty) {
-                                       case (map, request) => map.insert(request)(Exit.failCause(cause))
+                                       case (map, request) => map.insert(request, Exit.failCause(cause))
                                      }
                                    }
                                  }
@@ -123,7 +123,10 @@ private[query] sealed trait BlockedRequests[-R] { self =>
                  }
             _ <- ZIO.foreachDiscard(leftovers) { request =>
                    ZIO.foreach(completedRequests.lookup(request)) { response =>
-                     Promise.make[Any, Any].tap(_.done(response)).flatMap(cache.put(request, _))
+                     Promise
+                       .make[Any, Any]
+                       .tap(_.done(response))
+                       .flatMap(cache.put(request.asInstanceOf[Request[Any, Any]], _))
                    }
                  }
           } yield ()

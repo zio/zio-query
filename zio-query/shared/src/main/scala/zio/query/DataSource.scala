@@ -200,7 +200,7 @@ object DataSource {
     new DataSource.Batched[Any, A] {
       val identifier: String = name
       def run(requests: Chunk[A])(implicit trace: Trace): ZIO[Any, Nothing, CompletedRequestMap] =
-        ZIO.succeed(requests.foldLeft(CompletedRequestMap.empty)((map, k) => map.insert(k)(Exit.succeed(f(k)))))
+        ZIO.succeed(requests.foldLeft(CompletedRequestMap.empty)((map, k) => map.insert(k, Exit.succeed(f(k)))))
     }
 
   /**
@@ -242,7 +242,7 @@ object DataSource {
             bs => requests.zip(bs.map(Exit.succeed(_)))
           )
           .map(_.foldLeft(CompletedRequestMap.empty) { case (map, (k, v)) =>
-            map.insertOption(k)(v)
+            map.insertOption(k, v)
           })
     }
 
@@ -258,7 +258,7 @@ object DataSource {
   )(f: Chunk[A] => Chunk[B], g: B => Request[Nothing, B])(implicit
     ev: A <:< Request[Nothing, B]
   ): DataSource[Any, A] =
-    fromFunctionBatchedWithZIO(name)(as => Exit.succeed(f(as)), g)
+    fromFunctionBatchedWithZIO[Any, Nothing, A, B](name)(as => Exit.succeed(f(as)), g)
 
   /**
    * Constructs a data source from an effectual function that takes a list of
@@ -281,7 +281,7 @@ object DataSource {
             bs => bs.map(b => (g(b), Exit.succeed(b)))
           )
           .map(_.foldLeft(CompletedRequestMap.empty) { case (map, (k, v)) =>
-            map.insert(k)(v)
+            map.insert(k, v)
           })
     }
 
@@ -303,7 +303,7 @@ object DataSource {
             bs => requests.zip(bs.map(Exit.succeed(_)))
           )
           .map(_.foldLeft(CompletedRequestMap.empty) { case (map, (k, v)) =>
-            map.insert(k)(v)
+            map.insert(k, v)
           })
     }
 
@@ -318,7 +318,7 @@ object DataSource {
       def run(requests: Chunk[A])(implicit trace: Trace): ZIO[R, Nothing, CompletedRequestMap] =
         ZIO
           .foreachPar(requests)(a => f(a).exit.map((a, _)))
-          .map(_.foldLeft(CompletedRequestMap.empty) { case (map, (k, v)) => map.insert(k)(v) })
+          .map(_.foldLeft(CompletedRequestMap.empty) { case (map, (k, v)) => map.insert(k, v) })
     }
 
   /**
@@ -343,7 +343,7 @@ object DataSource {
         ZIO
           .foreachPar(requests)(a => f(a).exit.map((a, _)))
           .map(_.foldLeft(CompletedRequestMap.empty) { case (map, (k, v)) =>
-            map.insertOption(k)(v)
+            map.insertOption(k, v)
           })
     }
 
