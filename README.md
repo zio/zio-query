@@ -79,7 +79,7 @@ import zio._
 import zio.query._
 
 object ZQueryExample extends ZIOAppDefault {
-  case class GetUserName(id: Int) extends Request[Nothing, String]
+  case class GetUserName(id: Int) extends Request[Throwable, String]
 
   lazy val UserDataSource: DataSource.Batched[Any, GetUserName] =
     new DataSource.Batched[Any, GetUserName] {
@@ -94,7 +94,7 @@ object ZQueryExample extends ZIOAppDefault {
               ZIO.succeed(???)
             }
 
-            result.exit.map(resultMap.insert(request))
+            result.exit.map(resultMap.insert(request, _))
 
           case batch: Seq[GetUserName] =>
             val result: Task[List[(Int, String)]] = {
@@ -105,10 +105,10 @@ object ZQueryExample extends ZIOAppDefault {
             result.fold(
               err =>
                 requests.foldLeft(resultMap) { case (map, req) =>
-                  map.insert(req)(Exit.fail(err))
+                  map.insert(req, Exit.fail(err))
                 },
               _.foldLeft(resultMap) { case (map, (id, name)) =>
-                map.insert(GetUserName(id))(Exit.succeed(name))
+                map.insert(GetUserName(id), Exit.succeed(name))
               }
             )
         }
@@ -116,10 +116,10 @@ object ZQueryExample extends ZIOAppDefault {
 
     }
 
-  def getUserNameById(id: Int): ZQuery[Any, Nothing, String] =
+  def getUserNameById(id: Int): ZQuery[Any, Throwable, String] =
     ZQuery.fromRequest(GetUserName(id))(UserDataSource)
 
-  val query: ZQuery[Any, Nothing, List[String]] =
+  val query: ZQuery[Any, Throwable, List[String]] =
     for {
       ids <- ZQuery.succeed(1 to 10)
       names <- ZQuery.foreachPar(ids)(id => getUserNameById(id)).map(_.toList)
