@@ -1091,16 +1091,12 @@ object ZQuery {
     f: A => ZQuery[R, E, B]
   )(implicit bf: BuildFrom[Collection[A], B, Collection[B]], trace: Trace): ZQuery[R, E, Collection[B]] =
     if (as.isEmpty) ZQuery.succeed(bf.newBuilder(as).result())
-    else {
-      val iterator                                         = as.iterator
-      var builder: ZQuery[R, E, Builder[B, Collection[B]]] = null
-      while (iterator.hasNext) {
-        val a = iterator.next()
-        if (builder eq null) builder = f(a).map(bf.newBuilder(as) += _)
-        else builder = builder.zipWithBatched(f(a))(_ += _)
-      }
-      builder.map(_.result())
-    }
+    else
+      ZQuery(
+        ZIO
+          .foreach[R, Nothing, A, Result[R, E, B], Iterable](as)(f(_).step)
+          .map(Result.collectAllBatched(_).map(bf.fromSpecific(as)))
+      )
 
   final def foreachBatched[R, E, A, B](as: Set[A])(fn: A => ZQuery[R, E, B])(implicit
     trace: Trace

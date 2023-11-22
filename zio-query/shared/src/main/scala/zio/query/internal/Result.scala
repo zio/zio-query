@@ -112,6 +112,44 @@ private[query] object Result {
     Blocked(blockedRequests, continue)
 
   /**
+   * Collects a collection of results into a single result. Blocked requests
+   * will be batched.
+   */
+  def collectAllBatched[R, E, A, Collection[+Element] <: Iterable[Element]](results: Collection[Result[R, E, A]])(
+    implicit
+    bf: BuildFrom[Collection[Result[R, E, A]], A, Collection[A]],
+    trace: Trace
+  ): Result[R, E, Collection[A]] =
+    results.zipWithIndex
+      .foldLeft[(Chunk[((BlockedRequests[R], Continue[R, E, A]), Int)], Chunk[(A, Int)], Chunk[(Cause[E], Int)])](
+        (Chunk.empty, Chunk.empty, Chunk.empty)
+      ) { case ((blocked, done, fails), (result, index)) =>
+        result match {
+          case Blocked(br, c) => (blocked :+ (((br, c), index)), done, fails)
+          case Done(a)        => (blocked, done :+ ((a, index)), fails)
+          case Fail(e)        => (blocked, done, fails :+ ((e, index)))
+        }
+      } match {
+      case (Chunk(), done, Chunk()) =>
+        Result.done(bf.fromSpecific(results)(done.map(_._1)))
+      case (blocked, done, Chunk()) =>
+        val blockedRequests = blocked.map(_._1._1).foldLeft[BlockedRequests[R]](BlockedRequests.empty)(_ && _)
+        val continue = Continue.collectAllBatched(blocked.map(_._1._2)).map { as =>
+          val array = Array.ofDim[AnyRef](results.size)
+          as.zip(blocked.map(_._2)).foreach { case (a, i) =>
+            array(i) = a.asInstanceOf[AnyRef]
+          }
+          done.foreach { case (a, i) =>
+            array(i) = a.asInstanceOf[AnyRef]
+          }
+          bf.fromSpecific(results)(array.asInstanceOf[Array[A]])
+        }
+        Result.blocked(blockedRequests, continue)
+      case (_, _, fail) =>
+        Result.fail(fail.map(_._1).foldLeft[Cause[E]](Cause.empty)(_ && _))
+    }
+
+  /**
    * Collects a collection of results into a single result. Blocked requests and
    * their continuations will be executed in parallel.
    */
