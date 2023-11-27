@@ -161,7 +161,7 @@ private[query] object Result {
       case res: PartitionedResults.Mix[R, E, A] =>
         val blockedRequests = collectBlocked(res.blocked.requests)
         val continue = collectContinue(res.blocked.continue).map { as =>
-          val array     = Array.ofDim[AnyRef](results.size)
+          val array     = Array.ofDim[AnyRef](res.size)
           val addValues = populateArr(array) _
           addValues(as, res.blocked.idx)
           addValues(res.done.results, res.done.idx)
@@ -237,7 +237,9 @@ private[query] object Result {
     case class AllBlocked[R, E, A](blocked: Chunk[BlockedRequests[R]], continue: Chunk[Continue[R, E, A]])
         extends PartitionedResults
     case class Failed[E](causes: Chunk[Cause[E]])                             extends PartitionedResults
-    case class Mix[R, E, A](blocked: Mix.Blocked[R, E, A], done: Mix.Done[A]) extends PartitionedResults
+    case class Mix[R, E, A](blocked: Mix.Blocked[R, E, A], done: Mix.Done[A]) extends PartitionedResults {
+      def size: Int = blocked.requests.size + done.results.size
+    }
 
     object Mix {
       case class Blocked[R, E, A](

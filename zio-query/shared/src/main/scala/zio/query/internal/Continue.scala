@@ -216,7 +216,7 @@ private[query] object Continue {
         effect(collectQueries(res.queries).map(bf.fromSpecific(continues)))
       case res: PartitionResults.Mix[R, E, A] =>
         val query = collectQueries(res.queries.queries).flatMap { as =>
-          val array     = Array.ofDim[AnyRef](continues.size)
+          val array     = Array.ofDim[AnyRef](res.size)
           val addValues = populateArr(array) _
           addValues(as, res.queries.idx)
           ZQuery.fromZIO(ZIO.collectAll(res.ios.results)).map { as =>
@@ -275,7 +275,9 @@ private[query] object Continue {
     case class AllIos[E, A](ios: Chunk[IO[E, A]])                   extends PartitionedResults
     case class AllQueries[R, E, A](queries: Chunk[ZQuery[R, E, A]]) extends PartitionedResults
 
-    case class Mix[R, E, A](ios: Mix.Ios[E, A], queries: Mix.Queries[R, E, A]) extends PartitionedResults
+    case class Mix[R, E, A](ios: Mix.Ios[E, A], queries: Mix.Queries[R, E, A]) extends PartitionedResults {
+      def size: Int = ios.results.size + queries.queries.size
+    }
     object Mix {
       case class Ios[E, A](results: Chunk[IO[E, A]], idx: Chunk[Int])
       case class Queries[R, E, A](queries: Chunk[ZQuery[R, E, A]], idx: Chunk[Int])
