@@ -120,34 +120,7 @@ private[query] object Result {
     bf: BuildFrom[Collection[Result[R, E, A]], A, Collection[A]],
     trace: Trace
   ): Result[R, E, Collection[A]] =
-    results.zipWithIndex
-      .foldLeft[(Chunk[((BlockedRequests[R], Continue[R, E, A]), Int)], Chunk[(A, Int)], Chunk[(Cause[E], Int)])](
-        (Chunk.empty, Chunk.empty, Chunk.empty)
-      ) { case ((blocked, done, fails), (result, index)) =>
-        result match {
-          case Blocked(br, c) => (blocked :+ (((br, c), index)), done, fails)
-          case Done(a)        => (blocked, done :+ ((a, index)), fails)
-          case Fail(e)        => (blocked, done, fails :+ ((e, index)))
-        }
-      } match {
-      case (Chunk(), done, Chunk()) =>
-        Result.done(bf.fromSpecific(results)(done.map(_._1)))
-      case (blocked, done, Chunk()) =>
-        val blockedRequests = blocked.map(_._1._1).foldLeft[BlockedRequests[R]](BlockedRequests.empty)(_ && _)
-        val continue = Continue.collectAllBatched(blocked.map(_._1._2)).map { as =>
-          val array = Array.ofDim[AnyRef](results.size)
-          as.zip(blocked.map(_._2)).foreach { case (a, i) =>
-            array(i) = a.asInstanceOf[AnyRef]
-          }
-          done.foreach { case (a, i) =>
-            array(i) = a.asInstanceOf[AnyRef]
-          }
-          bf.fromSpecific(results)(array.asInstanceOf[Array[A]])
-        }
-        Result.blocked(blockedRequests, continue)
-      case (_, _, fail) =>
-        Result.fail(fail.map(_._1).foldLeft[Cause[E]](Cause.empty)(_ && _))
-    }
+    collectAllImpl(results, Continue.collectAllBatched(_: Chunk[Continue[R, E, A]])(implicitly, trace))
 
   /**
    * Collects a collection of results into a single result. Blocked requests and
@@ -157,34 +130,81 @@ private[query] object Result {
     bf: BuildFrom[Collection[Result[R, E, A]], A, Collection[A]],
     trace: Trace
   ): Result[R, E, Collection[A]] =
-    results.zipWithIndex
-      .foldLeft[(Chunk[((BlockedRequests[R], Continue[R, E, A]), Int)], Chunk[(A, Int)], Chunk[(Cause[E], Int)])](
-        (Chunk.empty, Chunk.empty, Chunk.empty)
-      ) { case ((blocked, done, fails), (result, index)) =>
-        result match {
-          case Blocked(br, c) => (blocked :+ (((br, c), index)), done, fails)
-          case Done(a)        => (blocked, done :+ ((a, index)), fails)
-          case Fail(e)        => (blocked, done, fails :+ ((e, index)))
-        }
-      } match {
-      case (Chunk(), done, Chunk()) =>
-        Result.done(bf.fromSpecific(results)(done.map(_._1)))
-      case (blocked, done, Chunk()) =>
-        val blockedRequests = blocked.map(_._1._1).foldLeft[BlockedRequests[R]](BlockedRequests.empty)(_ && _)
-        val continue = Continue.collectAllPar(blocked.map(_._1._2)).map { as =>
-          val array = Array.ofDim[AnyRef](results.size)
-          as.zip(blocked.map(_._2)).foreach { case (a, i) =>
-            array(i) = a.asInstanceOf[AnyRef]
-          }
-          done.foreach { case (a, i) =>
-            array(i) = a.asInstanceOf[AnyRef]
-          }
+    collectAllImpl(results, Continue.collectAllPar(_: Chunk[Continue[R, E, A]])(implicitly, trace))
+
+  private def collectAllImpl[R, E, A, Collection[+Element] <: Iterable[Element]](
+    results: Collection[Result[R, E, A]],
+    collectContinue: Chunk[Continue[R, E, A]] => Continue[R, E, Chunk[A]]
+  )(implicit
+    bf: BuildFrom[Collection[Result[R, E, A]], A, Collection[A]],
+    trace: Trace
+  ): Result[R, E, Collection[A]] = {
+    def populateArr(arr: Array[AnyRef])(values: Chunk[A], idxs: Chunk[Int]): Unit = {
+      var i    = 0
+      val size = idxs.size
+      while (i < size) {
+        arr(idxs(i)) = values(i).asInstanceOf[AnyRef]
+        i += 1
+      }
+    }
+
+    def collectBlocked(blocked: Chunk[BlockedRequests[R]]): BlockedRequests[R] =
+      blocked.foldLeft[BlockedRequests[R]](BlockedRequests.empty)(_ && _)
+
+    partitionResults(results) match {
+      case done: PartitionedResults.AllDone[A] =>
+        Result.done(bf.fromSpecific(results)(done.results))
+      case res: PartitionedResults.AllBlocked[R, E, A] =>
+        val blockedRequests = collectBlocked(res.blocked)
+        val continue        = collectContinue(res.continue).map(bf.fromSpecific(results))
+        Result.blocked(blockedRequests, continue)
+      case res: PartitionedResults.Mix[R, E, A] =>
+        val blockedRequests = collectBlocked(res.blocked.requests)
+        val continue = collectContinue(res.blocked.continue).map { as =>
+          val array     = Array.ofDim[AnyRef](results.size)
+          val addValues = populateArr(array) _
+          addValues(as, res.blocked.idx)
+          addValues(res.done.results, res.done.idx)
           bf.fromSpecific(results)(array.asInstanceOf[Array[A]])
         }
         Result.blocked(blockedRequests, continue)
-      case (_, _, fail) =>
-        Result.fail(fail.map(_._1).foldLeft[Cause[E]](Cause.empty)(_ && _))
+      case failed: PartitionedResults.Failed[E] =>
+        Result.fail(failed.causes.foldLeft[Cause[E]](Cause.empty)(_ && _))
     }
+  }
+
+  private def partitionResults[R, E, A](results: Iterable[Result[R, E, A]]): PartitionedResults = {
+    val blockedReq          = Chunk.newBuilder[BlockedRequests[R]]
+    val continues           = Chunk.newBuilder[Continue[R, E, A]]
+    val done                = Chunk.newBuilder[A]
+    val failed              = Chunk.newBuilder[Cause[E]]
+    val blockedIdx, doneIdx = new ChunkBuilder.Int
+
+    val iterator = results.iterator
+    var i        = 0
+    while (iterator.hasNext) {
+      iterator.next() match {
+        case Blocked(br, c) => blockedReq.addOne(br); continues.addOne(c); blockedIdx.addOne(i)
+        case Done(a)        => done.addOne(a); doneIdx.addOne(i)
+        case Fail(e)        => failed.addOne(e)
+      }
+      i += 1
+    }
+
+    val fs = failed.result()
+    if (fs.nonEmpty) PartitionedResults.Failed(fs)
+    else {
+      val bs = blockedReq.result()
+      val ds = done.result()
+      if (bs.isEmpty) PartitionedResults.AllDone(ds)
+      else if (ds.isEmpty) PartitionedResults.AllBlocked(bs, continues.result())
+      else
+        PartitionedResults.Mix(
+          PartitionedResults.Mix.Blocked(bs, continues.result(), blockedIdx.result()),
+          PartitionedResults.Mix.Done(ds, doneIdx.result())
+        )
+    }
+  }
 
   /**
    * Constructs a result that is done with the specified value.
@@ -210,4 +230,23 @@ private[query] object Result {
   final case class Done[+A](value: A) extends Result[Any, Nothing, A]
 
   final case class Fail[+E](cause: Cause[E]) extends Result[Any, E, Nothing]
+
+  private sealed trait PartitionedResults
+  private object PartitionedResults {
+    case class AllDone[A](results: Chunk[A]) extends PartitionedResults
+    case class AllBlocked[R, E, A](blocked: Chunk[BlockedRequests[R]], continue: Chunk[Continue[R, E, A]])
+        extends PartitionedResults
+    case class Failed[E](causes: Chunk[Cause[E]])                             extends PartitionedResults
+    case class Mix[R, E, A](blocked: Mix.Blocked[R, E, A], done: Mix.Done[A]) extends PartitionedResults
+
+    object Mix {
+      case class Blocked[R, E, A](
+        requests: Chunk[BlockedRequests[R]],
+        continue: Chunk[Continue[R, E, A]],
+        idx: Chunk[Int]
+      )
+      case class Done[A](results: Chunk[A], idx: Chunk[Int])
+    }
+
+  }
 }

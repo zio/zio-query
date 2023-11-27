@@ -179,31 +179,7 @@ private[query] object Continue {
     bf: BuildFrom[Collection[Continue[R, E, A]], A, Collection[A]],
     trace: Trace
   ): Continue[R, E, Collection[A]] =
-    continues.zipWithIndex
-      .foldLeft[(Chunk[(ZQuery[R, E, A], Int)], Chunk[(IO[E, A], Int)])]((Chunk.empty, Chunk.empty)) {
-        case ((queries, ios), (continue, index)) =>
-          continue match {
-            case Effect(query) => (queries :+ ((query, index)), ios)
-            case Get(io)       => (queries, ios :+ ((io, index)))
-          }
-      } match {
-      case (Chunk(), ios) =>
-        get(ZIO.collectAll(ios.map(_._1)).map(bf.fromSpecific(continues)))
-      case (queries, ios) =>
-        val query = ZQuery.collectAllBatched(queries.map(_._1)).flatMap { as =>
-          val array = Array.ofDim[AnyRef](continues.size)
-          as.zip(queries.map(_._2)).foreach { case (a, i) =>
-            array(i) = a.asInstanceOf[AnyRef]
-          }
-          ZQuery.fromZIO(ZIO.collectAll(ios.map(_._1))).map { as =>
-            as.zip(ios.map(_._2)).foreach { case (a, i) =>
-              array(i) = a.asInstanceOf[AnyRef]
-            }
-            bf.fromSpecific(continues)(array.asInstanceOf[Array[A]])
-          }
-        }
-        effect(query)
-    }
+    collectAllImpl(continues, ZQuery.collectAllBatched(_: Chunk[ZQuery[R, E, A]]))(implicitly, trace)
 
   /**
    * Collects a collection of continuation into a continuation returning a
@@ -215,31 +191,68 @@ private[query] object Continue {
     bf: BuildFrom[Collection[Continue[R, E, A]], A, Collection[A]],
     trace: Trace
   ): Continue[R, E, Collection[A]] =
-    continues.zipWithIndex
-      .foldLeft[(Chunk[(ZQuery[R, E, A], Int)], Chunk[(IO[E, A], Int)])]((Chunk.empty, Chunk.empty)) {
-        case ((queries, ios), (continue, index)) =>
-          continue match {
-            case Effect(query) => (queries :+ ((query, index)), ios)
-            case Get(io)       => (queries, ios :+ ((io, index)))
-          }
-      } match {
-      case (Chunk(), ios) =>
-        get(ZIO.collectAll(ios.map(_._1)).map(bf.fromSpecific(continues)))
-      case (queries, ios) =>
-        val query = ZQuery.collectAllPar(queries.map(_._1)).flatMap { as =>
-          val array = Array.ofDim[AnyRef](continues.size)
-          as.zip(queries.map(_._2)).foreach { case (a, i) =>
-            array(i) = a.asInstanceOf[AnyRef]
-          }
-          ZQuery.fromZIO(ZIO.collectAll(ios.map(_._1))).map { as =>
-            as.zip(ios.map(_._2)).foreach { case (a, i) =>
-              array(i) = a.asInstanceOf[AnyRef]
-            }
+    collectAllImpl(continues, ZQuery.collectAllPar(_: Chunk[ZQuery[R, E, A]]))(implicitly, trace)
+
+  private def collectAllImpl[R, E, A, Collection[+Element] <: Iterable[Element]](
+    continues: Collection[Continue[R, E, A]],
+    collectQueries: Chunk[ZQuery[R, E, A]] => ZQuery[R, E, Chunk[A]]
+  )(implicit
+    bf: BuildFrom[Collection[Continue[R, E, A]], A, Collection[A]],
+    trace: Trace
+  ): Continue[R, E, Collection[A]] = {
+    def populateArr(arr: Array[AnyRef])(values: Chunk[A], idxs: Chunk[Int]): Unit = {
+      var i    = 0
+      val size = idxs.size
+      while (i < size) {
+        arr(idxs(i)) = values(i).asInstanceOf[AnyRef]
+        i += 1
+      }
+    }
+
+    partitionResults(continues) match {
+      case res: PartitionResults.AllIos[E, A] =>
+        get(ZIO.collectAll(res.ios).map(bf.fromSpecific(continues)))
+      case res: PartitionResults.AllQueries[R, E, A] =>
+        effect(collectQueries(res.queries).map(bf.fromSpecific(continues)))
+      case res: PartitionResults.Mix[R, E, A] =>
+        val query = collectQueries(res.queries.queries).flatMap { as =>
+          val array     = Array.ofDim[AnyRef](continues.size)
+          val addValues = populateArr(array) _
+          addValues(as, res.queries.idx)
+          ZQuery.fromZIO(ZIO.collectAll(res.ios.results)).map { as =>
+            addValues(as, res.ios.idx)
             bf.fromSpecific(continues)(array.asInstanceOf[Array[A]])
           }
         }
         effect(query)
     }
+  }
+
+  private def partitionResults[R, E, A](results: Iterable[Continue[R, E, A]]): PartitionedResults = {
+    val effects                = Chunk.newBuilder[IO[E, A]]
+    val queries                = Chunk.newBuilder[ZQuery[R, E, A]]
+    val effectsIdx, queriesIdx = new ChunkBuilder.Int
+
+    val iterator = results.iterator
+    var i        = 0
+    while (iterator.hasNext) {
+      iterator.next() match {
+        case Effect(query) => queries.addOne(query); queriesIdx.addOne(i)
+        case Get(io)       => effects.addOne(io); effectsIdx.addOne(i)
+      }
+      i += 1
+    }
+
+    val qs  = queries.result()
+    val ios = effects.result()
+    if (qs.isEmpty) PartitionResults.AllIos(ios)
+    else if (ios.isEmpty) PartitionResults.AllQueries(qs)
+    else
+      PartitionResults.Mix(
+        PartitionResults.Mix.Ios(ios, effectsIdx.result()),
+        PartitionResults.Mix.Queries(qs, queriesIdx.result())
+      )
+  }
 
   /**
    * Constructs a continuation that may perform arbitrary effects.
@@ -256,4 +269,16 @@ private[query] object Continue {
 
   final case class Effect[R, E, A](query: ZQuery[R, E, A]) extends Continue[R, E, A]
   final case class Get[E, A](io: IO[E, A])                 extends Continue[Any, E, A]
+
+  private sealed trait PartitionedResults
+  private object PartitionResults {
+    case class AllIos[E, A](ios: Chunk[IO[E, A]])                   extends PartitionedResults
+    case class AllQueries[R, E, A](queries: Chunk[ZQuery[R, E, A]]) extends PartitionedResults
+
+    case class Mix[R, E, A](ios: Mix.Ios[E, A], queries: Mix.Queries[R, E, A]) extends PartitionedResults
+    object Mix {
+      case class Ios[E, A](results: Chunk[IO[E, A]], idx: Chunk[Int])
+      case class Queries[R, E, A](queries: Chunk[ZQuery[R, E, A]], idx: Chunk[Int])
+    }
+  }
 }
