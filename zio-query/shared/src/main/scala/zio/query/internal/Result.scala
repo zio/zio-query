@@ -236,7 +236,7 @@ private[query] object Result {
     case class AllDone[A](results: Chunk[A]) extends PartitionedResults
     case class AllBlocked[R, E, A](blocked: Chunk[BlockedRequests[R]], continue: Chunk[Continue[R, E, A]])
         extends PartitionedResults
-    case class Failed[E](causes: Chunk[Cause[E]])                             extends PartitionedResults
+    case class Failed[E](causes: Chunk[Cause[E]]) extends PartitionedResults
     case class Mix[R, E, A](blocked: Mix.Blocked[R, E, A], done: Mix.Done[A]) extends PartitionedResults {
       def size: Int = blocked.requests.size + done.results.size
     }
