@@ -200,28 +200,28 @@ private[query] object Continue {
     bf: BuildFrom[Collection[Continue[R, E, A]], A, Collection[A]],
     trace: Trace
   ): Continue[R, E, Collection[A]] = {
-    def populateArr(arr: Array[AnyRef])(values: Chunk[A], idxs: Chunk[Int]): Unit = {
+    def populateArr(arr: Array[A])(values: Chunk[A], idxs: Chunk[Int]): Unit = {
       var i    = 0
       val size = idxs.size
       while (i < size) {
-        arr(idxs(i)) = values(i).asInstanceOf[AnyRef]
+        arr(idxs(i)) = values(i)
         i += 1
       }
     }
 
     partitionResults(continues) match {
-      case res: PartitionResults.AllIos[E, A] =>
+      case res: PartitionedResults.AllIos[E, A] =>
         get(ZIO.collectAll(res.ios).map(bf.fromSpecific(continues)))
-      case res: PartitionResults.AllQueries[R, E, A] =>
+      case res: PartitionedResults.AllQueries[R, E, A] =>
         effect(collectQueries(res.queries).map(bf.fromSpecific(continues)))
-      case res: PartitionResults.Mix[R, E, A] =>
+      case res: PartitionedResults.Mix[R, E, A] =>
         val query = collectQueries(res.queries.queries).flatMap { as =>
-          val array     = Array.ofDim[AnyRef](res.size)
+          val array     = Array.ofDim[AnyRef](res.size).asInstanceOf[Array[A]]
           val addValues = populateArr(array) _
           addValues(as, res.queries.idx)
           ZQuery.fromZIO(ZIO.collectAll(res.ios.results)).map { as =>
             addValues(as, res.ios.idx)
-            bf.fromSpecific(continues)(array.asInstanceOf[Array[A]])
+            bf.fromSpecific(continues)(array)
           }
         }
         effect(query)
@@ -245,12 +245,12 @@ private[query] object Continue {
 
     val qs  = queries.result()
     val ios = effects.result()
-    if (qs.isEmpty) PartitionResults.AllIos(ios)
-    else if (ios.isEmpty) PartitionResults.AllQueries(qs)
+    if (qs.isEmpty) PartitionedResults.AllIos(ios)
+    else if (ios.isEmpty) PartitionedResults.AllQueries(qs)
     else
-      PartitionResults.Mix(
-        PartitionResults.Mix.Ios(ios, effectsIdx.result()),
-        PartitionResults.Mix.Queries(qs, queriesIdx.result())
+      PartitionedResults.Mix(
+        PartitionedResults.Mix.Ios(ios, effectsIdx.result()),
+        PartitionedResults.Mix.Queries(qs, queriesIdx.result())
       )
   }
 
@@ -271,7 +271,7 @@ private[query] object Continue {
   final case class Get[E, A](io: IO[E, A])                 extends Continue[Any, E, A]
 
   private sealed trait PartitionedResults
-  private object PartitionResults {
+  private object PartitionedResults {
     case class AllIos[E, A](ios: Chunk[IO[E, A]])                   extends PartitionedResults
     case class AllQueries[R, E, A](queries: Chunk[ZQuery[R, E, A]]) extends PartitionedResults
 

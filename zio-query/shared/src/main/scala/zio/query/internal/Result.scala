@@ -139,11 +139,11 @@ private[query] object Result {
     bf: BuildFrom[Collection[Result[R, E, A]], A, Collection[A]],
     trace: Trace
   ): Result[R, E, Collection[A]] = {
-    def populateArr(arr: Array[AnyRef])(values: Chunk[A], idxs: Chunk[Int]): Unit = {
+    def populateArr(arr: Array[A])(values: Chunk[A], idxs: Chunk[Int]): Unit = {
       var i    = 0
       val size = idxs.size
       while (i < size) {
-        arr(idxs(i)) = values(i).asInstanceOf[AnyRef]
+        arr(idxs(i)) = values(i)
         i += 1
       }
     }
@@ -161,11 +161,11 @@ private[query] object Result {
       case res: PartitionedResults.Mix[R, E, A] =>
         val blockedRequests = collectBlocked(res.blocked.requests)
         val continue = collectContinue(res.blocked.continue).map { as =>
-          val array     = Array.ofDim[AnyRef](res.size)
+          val array     = Array.ofDim[AnyRef](res.size).asInstanceOf[Array[A]]
           val addValues = populateArr(array) _
           addValues(as, res.blocked.idx)
           addValues(res.done.results, res.done.idx)
-          bf.fromSpecific(results)(array.asInstanceOf[Array[A]])
+          bf.fromSpecific(results)(array)
         }
         Result.blocked(blockedRequests, continue)
       case failed: PartitionedResults.Failed[E] =>
