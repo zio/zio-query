@@ -1097,10 +1097,10 @@ object ZQuery {
           var blockedRequests: BlockedRequests[R]          = BlockedRequests.empty
           val doneBuilder: Builder[B, Collection[B]]       = bf.newBuilder(as)
           val doneIndicesBuilder: ChunkBuilder[Int]        = new ChunkBuilder.Int
-          val effectBuilder: ChunkBuilder[ZQuery[R, E, B]] = ChunkBuilder.make
+          val effectBuilder: ChunkBuilder[ZQuery[R, E, B]] = ChunkBuilder.make[ZQuery[R, E, B]]()
           val effectIndicesBuilder: ChunkBuilder[Int]      = new ChunkBuilder.Int
-          val failBuilder: ChunkBuilder[Cause[E]]          = ChunkBuilder.make
-          val getBuilder: ChunkBuilder[IO[E, B]]           = ChunkBuilder.make
+          val failBuilder: ChunkBuilder[Cause[E]]          = ChunkBuilder.make[Cause[E]]()
+          val getBuilder: ChunkBuilder[IO[E, B]]           = ChunkBuilder.make[IO[E, B]]()
           val getIndicesBuilder: ChunkBuilder[Int]         = new ChunkBuilder.Int
           var index: Int                                   = 0
           val iterator: Iterator[A]                        = as.iterator
