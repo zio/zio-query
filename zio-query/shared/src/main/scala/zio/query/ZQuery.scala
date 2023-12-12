@@ -1093,9 +1093,106 @@ object ZQuery {
     if (as.isEmpty) ZQuery.succeed(bf.newBuilder(as).result())
     else
       ZQuery(
-        ZIO
-          .foreach[R, Nothing, A, Result[R, E, B], Iterable](as)(f(_).step)
-          .map(Result.collectAllBatched(_).map(bf.fromSpecific(as)))
+        ZIO.suspendSucceed {
+          var blockedRequests: BlockedRequests[R]          = BlockedRequests.empty
+          val doneBuilder: Builder[B, Collection[B]]       = bf.newBuilder(as)
+          val doneIndicesBuilder: ChunkBuilder[Int]        = new ChunkBuilder.Int
+          val effectBuilder: ChunkBuilder[ZQuery[R, E, B]] = ChunkBuilder.make
+          val effectIndicesBuilder: ChunkBuilder[Int]      = new ChunkBuilder.Int
+          val failBuilder: ChunkBuilder[Cause[E]]          = ChunkBuilder.make
+          val getBuilder: ChunkBuilder[IO[E, B]]           = ChunkBuilder.make
+          val getIndicesBuilder: ChunkBuilder[Int]         = new ChunkBuilder.Int
+          var index: Int                                   = 0
+          val iterator: Iterator[A]                        = as.iterator
+
+          ZIO.whileLoop {
+            iterator.hasNext
+          } {
+            f(iterator.next()).step
+          } {
+            case Result.Blocked(blockedRequest, Continue.Effect(query)) =>
+              blockedRequests = blockedRequests && blockedRequest
+              effectBuilder += query
+              effectIndicesBuilder += index
+              index += 1
+            case Result.Blocked(blockedRequest, Continue.Get(io)) =>
+              blockedRequests = blockedRequests && blockedRequest
+              getBuilder += io
+              getIndicesBuilder += index
+              index += 1
+            case Result.Done(b) =>
+              doneBuilder += b
+              doneIndicesBuilder += index
+              index += 1
+            case Result.Fail(e) =>
+              failBuilder += e
+              index += 1
+          }.as {
+            val dones         = doneBuilder.result()
+            val doneIndices   = doneIndicesBuilder.result()
+            val effects       = effectBuilder.result()
+            val effectIndices = effectIndicesBuilder.result()
+            val fails         = failBuilder.result()
+            val gets          = getBuilder.result()
+            val getIndices    = getIndicesBuilder.result()
+            if (gets.isEmpty && effects.isEmpty && fails.isEmpty)
+              Result.done(bf.fromSpecific(as)(dones))
+            else if (fails.isEmpty) {
+              val continue = if (effects.isEmpty) {
+                val io = ZIO.collectAll(gets).map { gets =>
+                  val array              = Array.ofDim[AnyRef](index)
+                  val getsIterator       = gets.iterator
+                  val getIndicesIterator = getIndices.iterator
+                  while (getsIterator.hasNext) {
+                    val get   = getsIterator.next()
+                    val index = getIndicesIterator.next()
+                    array(index) = get.asInstanceOf[AnyRef]
+                  }
+                  val donesIterator       = dones.iterator
+                  val doneIndicesIterator = doneIndices.iterator
+                  while (donesIterator.hasNext) {
+                    val done  = donesIterator.next()
+                    val index = doneIndicesIterator.next()
+                    array(index) = done.asInstanceOf[AnyRef]
+                  }
+                  bf.fromSpecific(as)(array.asInstanceOf[Array[B]])
+                }
+                Continue.get(io)
+              } else {
+                val query = ZQuery.collectAllBatched(effects).flatMap { effects =>
+                  ZQuery.fromZIO(ZIO.collectAll(gets).map { gets =>
+                    val array                 = Array.ofDim[AnyRef](index)
+                    val effectsIterator       = effects.iterator
+                    val effectIndicesIterator = effectIndices.iterator
+                    while (effectsIterator.hasNext) {
+                      val effect = effectsIterator.next()
+                      val index  = effectIndicesIterator.next()
+                      array(index) = effect.asInstanceOf[AnyRef]
+                    }
+                    val getsIterator       = gets.iterator
+                    val getIndicesIterator = getIndices.iterator
+                    while (getsIterator.hasNext) {
+                      val get   = getsIterator.next()
+                      val index = getIndicesIterator.next()
+                      array(index) = get.asInstanceOf[AnyRef]
+                    }
+                    val donesIterator       = dones.iterator
+                    val doneIndicesIterator = doneIndices.iterator
+                    while (donesIterator.hasNext) {
+                      val done  = donesIterator.next()
+                      val index = doneIndicesIterator.next()
+                      array(index) = done.asInstanceOf[AnyRef]
+                    }
+                    bf.fromSpecific(as)(array.asInstanceOf[Array[B]])
+                  })
+                }
+                Continue.effect(query)
+              }
+              Result.blocked(blockedRequests, continue)
+            } else
+              Result.fail(fails.foldLeft[Cause[E]](Cause.empty)(_ && _))
+          }
+        }
       )
 
   final def foreachBatched[R, E, A, B](as: Set[A])(fn: A => ZQuery[R, E, B])(implicit
