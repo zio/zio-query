@@ -115,6 +115,18 @@ private[query] sealed trait Continue[-R, +E, +A] { self =>
     }
 
   /**
+   * Combines this continuation with that continuation returning the result of
+   * that continuation, in sequence.
+   */
+  final def zipRight[R1 <: R, E1 >: E, B](that: Continue[R1, E1, B])(implicit trace: Trace): Continue[R1, E1, B] =
+    (self, that) match {
+      case (Effect(l), Effect(r)) => effect(l.zipRight(r))
+      case (Effect(l), Get(r))    => effect(l.zipRight(ZQuery.fromZIO(r)))
+      case (Get(_), Effect(r))    => effect(r)
+      case (Get(_), Get(r))       => get(r)
+    }
+
+  /**
    * Combines this continuation with that continuation using the specified
    * function, in sequence.
    */
