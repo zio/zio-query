@@ -79,10 +79,13 @@ object CompletedRequestMap {
   val empty: CompletedRequestMap =
     new CompletedRequestMap(Map.empty)
 
+  /**
+   * Constructs a completed requests map from an existing Iterable of tuples
+   */
   def from[E, A, B](it: Iterable[(A, Exit[E, B])])(implicit ev: A <:< Request[E, B]): CompletedRequestMap =
     new CompletedRequestMap(Map.from(it))
 
-  def fromOptional[E, A, B](
+  private[query] def fromOptional[E, A, B](
     it: Iterable[(A, Exit[E, Option[B]])]
   )(implicit ev: A <:< Request[E, B]): CompletedRequestMap = {
     val builder = Map.newBuilder[A, Exit[E, B]]
@@ -96,6 +99,12 @@ object CompletedRequestMap {
       }
     }
     from(builder.result())
+  }
+
+  // Only used by Scala 2.12 where the `Map.from` method doesn't exist
+  private implicit class EnrichedMapOps[E, A, B](val map: Map.type) extends AnyVal {
+    def from[K, V](it: Iterable[(K, V)]): Map[K, V] =
+      (Map.newBuilder[K, V] ++= it).result
   }
 
 }
