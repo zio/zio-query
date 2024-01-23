@@ -102,7 +102,7 @@ object CompletedRequestMap {
   }
 
   // Only used by Scala 2.12 where the `Map.from` method doesn't exist
-  private implicit class EnrichedMapOps[E, A, B](val map: Map.type) extends AnyVal {
+  private implicit class EnrichedMapOps[E, A, B](private val map: Map.type) extends AnyVal {
     def from[K, V](it: Iterable[(K, V)]): Map[K, V] =
       (Map.newBuilder[K, V] ++= it).result
   }
