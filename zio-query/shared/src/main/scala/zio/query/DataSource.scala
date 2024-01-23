@@ -170,10 +170,14 @@ object DataSource {
   trait Batched[-R, -A] extends DataSource[R, A] {
     def run(requests: Chunk[A])(implicit trace: Trace): ZIO[R, Nothing, CompletedRequestMap]
     final def runAll(requests: Chunk[Chunk[A]])(implicit trace: Trace): ZIO[R, Nothing, CompletedRequestMap] =
-      ZIO.foldLeft(requests)(CompletedRequestMap.empty) { case (completedRequestMap, requests) =>
-        val newRequests = requests.filterNot(completedRequestMap.contains)
-        if (newRequests.isEmpty) ZIO.succeed(completedRequestMap)
-        else run(newRequests).map(completedRequestMap ++ _)
+      requests match {
+        case Chunk(single) => run(single)
+        case _ =>
+          ZIO.foldLeft(requests)(CompletedRequestMap.empty) { case (completedRequestMap, requests) =>
+            val newRequests = requests.filterNot(completedRequestMap.contains)
+            if (newRequests.isEmpty) ZIO.succeed(completedRequestMap)
+            else run(newRequests).map(completedRequestMap ++ _)
+          }
       }
   }
 
@@ -200,7 +204,7 @@ object DataSource {
     new DataSource.Batched[Any, A] {
       val identifier: String = name
       def run(requests: Chunk[A])(implicit trace: Trace): ZIO[Any, Nothing, CompletedRequestMap] =
-        ZIO.succeed(requests.foldLeft(CompletedRequestMap.empty)((map, k) => map.insert(k, Exit.succeed(f(k)))))
+        ZIO.succeed(CompletedRequestMap.from(requests.map(k => (k, Exit.succeed(f(k))))))
     }
 
   /**
@@ -241,9 +245,7 @@ object DataSource {
             e => requests.map((_, Exit.failCause(e))),
             bs => requests.zip(bs.map(Exit.succeed(_)))
           )
-          .map(_.foldLeft(CompletedRequestMap.empty) { case (map, (k, v)) =>
-            map.insertOption(k, v)
-          })
+          .map(CompletedRequestMap.fromOptional(_))
     }
 
   /**
@@ -280,9 +282,7 @@ object DataSource {
             e => requests.map(a => (ev(a), Exit.failCause(e))),
             bs => bs.map(b => (g(b), Exit.succeed(b)))
           )
-          .map(_.foldLeft(CompletedRequestMap.empty) { case (map, (k, v)) =>
-            map.insert(k, v)
-          })
+          .map(CompletedRequestMap.from(_))
     }
 
   /**
@@ -302,9 +302,7 @@ object DataSource {
             e => requests.map((_, Exit.failCause(e))),
             bs => requests.zip(bs.map(Exit.succeed(_)))
           )
-          .map(_.foldLeft(CompletedRequestMap.empty) { case (map, (k, v)) =>
-            map.insert(k, v)
-          })
+          .map(CompletedRequestMap.from(_))
     }
 
   /**
@@ -318,7 +316,7 @@ object DataSource {
       def run(requests: Chunk[A])(implicit trace: Trace): ZIO[R, Nothing, CompletedRequestMap] =
         ZIO
           .foreachPar(requests)(a => f(a).exit.map((a, _)))
-          .map(_.foldLeft(CompletedRequestMap.empty) { case (map, (k, v)) => map.insert(k, v) })
+          .map(CompletedRequestMap.from(_))
     }
 
   /**
@@ -342,9 +340,7 @@ object DataSource {
       def run(requests: Chunk[A])(implicit trace: Trace): ZIO[R, Nothing, CompletedRequestMap] =
         ZIO
           .foreachPar(requests)(a => f(a).exit.map((a, _)))
-          .map(_.foldLeft(CompletedRequestMap.empty) { case (map, (k, v)) =>
-            map.insertOption(k, v)
-          })
+          .map(CompletedRequestMap.fromOptional(_))
     }
 
   /**

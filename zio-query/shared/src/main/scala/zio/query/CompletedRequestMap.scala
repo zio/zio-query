@@ -78,4 +78,24 @@ object CompletedRequestMap {
    */
   val empty: CompletedRequestMap =
     new CompletedRequestMap(Map.empty)
+
+  def from[E, A, B](it: Iterable[(A, Exit[E, B])])(implicit ev: A <:< Request[E, B]): CompletedRequestMap =
+    new CompletedRequestMap(Map.from(it))
+
+  def fromOptional[E, A, B](
+    it: Iterable[(A, Exit[E, Option[B]])]
+  )(implicit ev: A <:< Request[E, B]): CompletedRequestMap = {
+    val builder = Map.newBuilder[A, Exit[E, B]]
+    val iter    = it.iterator
+    while (iter.hasNext) {
+      val (key, exit) = iter.next()
+      exit match {
+        case Exit.Failure(e)       => builder += ((key, Exit.failCause(e)))
+        case Exit.Success(Some(a)) => builder += ((key, Exit.succeed(a)))
+        case Exit.Success(None)    => ()
+      }
+    }
+    from(builder.result())
+  }
+
 }
