@@ -200,7 +200,7 @@ object DataSource {
     new DataSource.Batched[Any, A] {
       val identifier: String = name
       def run(requests: Chunk[A])(implicit trace: Trace): ZIO[Any, Nothing, CompletedRequestMap] =
-        ZIO.succeed(requests.foldLeft(CompletedRequestMap.empty)((map, k) => map.insert(k, Exit.succeed(f(k)))))
+        ZIO.succeed(CompletedRequestMap.fromIterable(requests.map(a => (ev(a), Exit.succeed(f(a))))))
     }
 
   /**
@@ -238,12 +238,10 @@ object DataSource {
       def run(requests: Chunk[A])(implicit trace: Trace): ZIO[R, Nothing, CompletedRequestMap] =
         f(requests)
           .foldCause(
-            e => requests.map((_, Exit.failCause(e))),
-            bs => requests.zip(bs.map(Exit.succeed(_)))
+            e => requests.map(a => (ev(a), Exit.failCause(e))),
+            bs => requests.zipWith(bs)((a, b) => (ev(a), Exit.succeed(b)))
           )
-          .map(_.foldLeft(CompletedRequestMap.empty) { case (map, (k, v)) =>
-            map.insertOption(k, v)
-          })
+          .map(CompletedRequestMap.fromIterableOption)
     }
 
   /**
@@ -280,9 +278,7 @@ object DataSource {
             e => requests.map(a => (ev(a), Exit.failCause(e))),
             bs => bs.map(b => (g(b), Exit.succeed(b)))
           )
-          .map(_.foldLeft(CompletedRequestMap.empty) { case (map, (k, v)) =>
-            map.insert(k, v)
-          })
+          .map(CompletedRequestMap.fromIterable)
     }
 
   /**
@@ -299,12 +295,10 @@ object DataSource {
       def run(requests: Chunk[A])(implicit trace: Trace): ZIO[R, Nothing, CompletedRequestMap] =
         f(requests)
           .foldCause(
-            e => requests.map((_, Exit.failCause(e))),
-            bs => requests.zip(bs.map(Exit.succeed(_)))
+            e => requests.map(a => (ev(a), Exit.failCause(e))),
+            bs => requests.zipWith(bs)((a, b) => (ev(a), Exit.succeed(b)))
           )
-          .map(_.foldLeft(CompletedRequestMap.empty) { case (map, (k, v)) =>
-            map.insert(k, v)
-          })
+          .map(CompletedRequestMap.fromIterable)
     }
 
   /**
@@ -317,8 +311,8 @@ object DataSource {
       val identifier: String = name
       def run(requests: Chunk[A])(implicit trace: Trace): ZIO[R, Nothing, CompletedRequestMap] =
         ZIO
-          .foreachPar(requests)(a => f(a).exit.map((a, _)))
-          .map(_.foldLeft(CompletedRequestMap.empty) { case (map, (k, v)) => map.insert(k, v) })
+          .foreachPar(requests)(a => f(a).exit.map((ev(a), _)))
+          .map(CompletedRequestMap.fromIterable)
     }
 
   /**
@@ -341,10 +335,8 @@ object DataSource {
       val identifier: String = name
       def run(requests: Chunk[A])(implicit trace: Trace): ZIO[R, Nothing, CompletedRequestMap] =
         ZIO
-          .foreachPar(requests)(a => f(a).exit.map((a, _)))
-          .map(_.foldLeft(CompletedRequestMap.empty) { case (map, (k, v)) =>
-            map.insertOption(k, v)
-          })
+          .foreachPar(requests)(a => f(a).exit.map((ev(a), _)))
+          .map(CompletedRequestMap.fromIterableOption)
     }
 
   /**
