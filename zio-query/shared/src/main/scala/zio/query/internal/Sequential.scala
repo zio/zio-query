@@ -47,12 +47,11 @@ private[query] final class Sequential[-R](
   def isEmpty: Boolean =
     map.isEmpty
 
-  /**
-   * Returns a collection of the data sources that the batches of requests in
-   * this collection are from.
-   */
-  def keys: Iterable[DataSource[R, Any]] =
-    map.keys
+  def head: DataSource[R, Any] =
+    map.head._1
+
+  def size: Int =
+    map.size
 
   /**
    * Converts this collection of batches requests that must be executed

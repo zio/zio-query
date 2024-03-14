@@ -19,6 +19,8 @@ package zio.query
 import zio._
 import zio.stacktracer.TracingImplicits.disableAutoTrace
 
+import java.util.concurrent.ConcurrentHashMap
+
 /**
  * A `Cache` maintains an internal state with a mapping from requests to
  * `Promise`s that will contain the result of those requests when they are
@@ -65,31 +67,36 @@ object Cache {
   def empty(implicit trace: Trace): UIO[Cache] =
     ZIO.succeed(Cache.unsafeMake())
 
-  private final class Default(private val state: Ref[Map[Request[_, _], Promise[_, _]]]) extends Cache {
+  private final class Default(private val map: ConcurrentHashMap[Request[_, _], Promise[_, _]]) extends Cache {
 
     def get[E, A](request: Request[E, A])(implicit trace: Trace): IO[Unit, Promise[E, A]] =
-      state.get.map(_.get(request).asInstanceOf[Option[Promise[E, A]]]).some.orElseFail(())
+      ZIO.suspendSucceed {
+        val out = map.get(request)
+        if (out eq null) ZIO.fail(())
+        else ZIO.succeed(out.asInstanceOf[Promise[E, A]])
+      }
 
     def lookup[R, E, A, B](request: A)(implicit
       ev: A <:< Request[E, B],
       trace: Trace
     ): UIO[Either[Promise[E, B], Promise[E, B]]] =
-      Promise.make[E, B].flatMap { promise =>
-        state.modify { map =>
-          map.get(request) match {
-            case Some(promise) => (Right(promise.asInstanceOf[Promise[E, B]]), map)
-            case None          => (Left(promise), map + (ev(request) -> promise))
-          }
-        }
+      Promise.make[E, B].map { newPromise =>
+        val existing = map.putIfAbsent(request, newPromise).asInstanceOf[Promise[E, B]]
+        if (existing eq null) Left(newPromise) else Right(existing)
       }
 
     def put[E, A](request: Request[E, A], result: Promise[E, A])(implicit trace: Trace): UIO[Unit] =
-      state.update(_ + (request -> result))
+      ZIO.succeed {
+        map.put(request, result)
+        ()
+      }
 
     def remove[E, A](request: Request[E, A])(implicit trace: Trace): UIO[Unit] =
-      state.update(_ - request)
+      ZIO.succeed {
+        map.remove(request)
+        ()
+      }
   }
 
-  private[query] def unsafeMake(): Cache =
-    new Default(Ref.unsafe.make(Map.empty[Request[_, _], Promise[_, _]])(Unsafe.unsafe))
+  private[query] def unsafeMake(): Cache = new Default(new ConcurrentHashMap(512))
 }

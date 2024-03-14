@@ -171,9 +171,12 @@ object DataSource {
     def run(requests: Chunk[A])(implicit trace: Trace): ZIO[R, Nothing, CompletedRequestMap]
     final def runAll(requests: Chunk[Chunk[A]])(implicit trace: Trace): ZIO[R, Nothing, CompletedRequestMap] =
       ZIO.foldLeft(requests)(CompletedRequestMap.empty) { case (completedRequestMap, requests) =>
-        val newRequests = requests.filterNot(completedRequestMap.contains)
-        if (newRequests.isEmpty) ZIO.succeed(completedRequestMap)
-        else run(newRequests).map(completedRequestMap ++ _)
+        if (completedRequestMap.isEmpty) run(requests)
+        else {
+          val newRequests = requests.filterNot(completedRequestMap.contains)
+          if (newRequests.isEmpty) ZIO.succeed(completedRequestMap)
+          else run(newRequests).map(completedRequestMap ++ _)
+        }
       }
   }
 
