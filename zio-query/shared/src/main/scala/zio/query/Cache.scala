@@ -67,13 +67,19 @@ object Cache {
   def empty(implicit trace: Trace): UIO[Cache] =
     ZIO.succeed(Cache.unsafeMake())
 
+  /**
+   * Constructs an empty cache, sized to accommodate the specified number of
+   * elements without the need for the internal data structures to be resized.
+   */
+  def empty(expectedNumOfElements: Int)(implicit trace: Trace): UIO[Cache] =
+    ZIO.succeed(Cache.unsafeMake(expectedNumOfElements))
+
   private final class Default(private val map: ConcurrentHashMap[Request[_, _], Promise[_, _]]) extends Cache {
 
     def get[E, A](request: Request[E, A])(implicit trace: Trace): IO[Unit, Promise[E, A]] =
       ZIO.suspendSucceed {
-        val out = map.get(request)
-        if (out eq null) ZIO.fail(())
-        else ZIO.succeed(out.asInstanceOf[Promise[E, A]])
+        val out = map.get(request).asInstanceOf[Promise[E, A]]
+        if (out eq null) ZIO.fail(()) else ZIO.succeed(out)
       }
 
     def lookup[R, E, A, B](request: A)(implicit
@@ -98,5 +104,11 @@ object Cache {
       }
   }
 
-  private[query] def unsafeMake(): Cache = new Default(new ConcurrentHashMap(512))
+  // TODO: Maybe use a more sensible default value. Currently, it's 16 * 0.75d = 12 which seems way to small for a cache
+  private[query] def unsafeMake(): Cache = new Default(new ConcurrentHashMap())
+
+  private[query] def unsafeMake(expectedNumOfElements: Int): Cache = {
+    val initialSize = Math.ceil(expectedNumOfElements / 0.75d).toInt
+    new Default(new ConcurrentHashMap(initialSize))
+  }
 }

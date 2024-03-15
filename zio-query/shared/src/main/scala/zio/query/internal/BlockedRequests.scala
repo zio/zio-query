@@ -22,6 +22,7 @@ import zio.stacktracer.TracingImplicits.disableAutoTrace
 import zio.{Chunk, Exit, Promise, Trace, Unsafe, ZEnvironment, ZIO}
 
 import scala.annotation.tailrec
+import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 
 /**
@@ -107,14 +108,18 @@ private[query] sealed trait BlockedRequests[-R] { self =>
         ZIO.foreachParDiscard(requestsByDataSource.toIterable) { case (dataSource, sequential) =>
           val requests = sequential.map(_.map(_.request))
           for {
-            completedRequests <- dataSource.runAll(requests).catchAllCause { cause =>
-                                   ZIO.succeed {
-                                     val failure = Exit.failCause(cause).asInstanceOf[Exit[Any, Any]]
-                                     CompletedRequestMap.fromIterable {
-                                       requests.view.flatten.map(r => r.asInstanceOf[Request[Any, Any]] -> failure)
+            completedRequests <- dataSource
+                                   .runAll(requests)
+                                   .map(_.toMutableMap)
+                                   .catchAllCause { cause =>
+                                     ZIO.succeed {
+                                       val failure = Exit.failCause(cause).asInstanceOf[Exit[Any, Any]]
+                                       val map     = new mutable.HashMap[Request[_, _], Exit[Any, Any]]()
+                                       map.addAll(
+                                         requests.view.flatten.map(r => r.asInstanceOf[Request[Any, Any]] -> failure)
+                                       )
                                      }
                                    }
-                                 }
             isCachingEnabled <- ZQuery.cachingEnabled.get
             _ <-
               ZIO.succeed {
@@ -122,30 +127,33 @@ private[query] sealed trait BlockedRequests[-R] { self =>
                   if (isCachingEnabled)
                     (br: BlockedRequest[Any]) => completedRequests.remove(br.request)
                   else
-                    (br: BlockedRequest[Any]) => completedRequests.lookup(br.request)
+                    (br: BlockedRequest[Any]) => completedRequests.get(br.request)
 
-                val iter0 = sequential.iterator
-                while (iter0.hasNext) {
-                  val iter1 = iter0.next().iterator
-                  while (iter1.hasNext) {
-                    val br = iter1.next()
+                val iter0 = sequential.chunkIterator
+                var i0    = 0
+                while (iter0.hasNextAt(i0)) {
+                  val iter1 = iter0.nextAt(i0).chunkIterator
+                  var i1    = 0
+                  while (iter1.hasNextAt(i1)) {
+                    val br = iter1.nextAt(i1)
                     br.result.unsafe.done(
                       getRequest(br) match {
                         case Some(exit) => exit.asInstanceOf[Exit[br.Failure, br.Success]]
                         case None       => Exit.die(QueryFailure(dataSource, br.request))
                       }
                     )(Unsafe.unsafe)
+                    i1 += 1
                   }
+                  i0 += 1
                 }
               }
-            _ <- ZIO.when(!completedRequests.isEmpty && isCachingEnabled) {
+            _ <- ZIO.when(completedRequests.nonEmpty && isCachingEnabled) {
                    ZIO.fiberId.map { fiberId =>
                      val iter = completedRequests.iterator
                      ZIO.whileLoop(iter.hasNext) {
                        Promise.makeAs[Any, Any](fiberId).flatMap { promise =>
                          val (request, response) = iter.next()
-                         promise.unsafe.done(response)(Unsafe.unsafe)
-                         cache.put(request, promise)
+                         promise.done(response) *> cache.put(request.asInstanceOf[Request[Any, Any]], promise)
                        }
                      }(_ => ())
                    }
@@ -253,7 +261,7 @@ private[query] object BlockedRequests {
     val parallel = Parallel.empty[R]
 
     @tailrec
-    def loop[R](
+    def loop(
       blockedRequests: BlockedRequests[R],
       stack: List[BlockedRequests[R]],
       sequential: List[BlockedRequests[R]]
