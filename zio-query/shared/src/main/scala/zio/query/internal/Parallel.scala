@@ -27,23 +27,11 @@ import scala.collection.mutable
  * data sources that can be executed in parallel.
  */
 private[query] final class Parallel[-R](
-  private val map: mutable.HashMap[DataSource[?, Any], ChunkBuilder[BlockedRequest[Any]]]
+  private val map: mutable.HashMap[DataSource[?, ?], ChunkBuilder[BlockedRequest[Any]]]
 ) { self =>
 
-  /**
-   * Combines this collection of requests that can be executed in parallel with
-   * that collection of requests that can be executed in parallel to return a
-   * new collection of requests that can be executed in parallel.
-   */
-  def ++=[R1 <: R](that: Parallel[R1]): Parallel[R1] = {
-    that.map.foreach { case (dataSource, builder) =>
-      self.map.getOrElseUpdate(dataSource, Chunk.newBuilder) ++= builder.result()
-    }
-    self
-  }
-
-  def addOne[R1 <: R](dataSource: DataSource[R1, Any], blockedRequest: BlockedRequest[Any]): Parallel[R1] = {
-    self.map.getOrElseUpdate(dataSource, Chunk.newBuilder) += blockedRequest
+  def addOne[R1 <: R](dataSource: DataSource[R1, ?], blockedRequest: BlockedRequest[Any]): Parallel[R1] = {
+    self.map.getOrElseUpdate(dataSource, Chunk.newBuilder) addOne blockedRequest
     self
   }
 
@@ -64,23 +52,16 @@ private[query] final class Parallel[-R](
    * batch of requests in a collection of requests that must be executed
    * sequentially.
    */
-  def sequential: Sequential[R] =
-    new Sequential(
-      map.view
-        .mapValues(v => Chunk.single(v.result()))
-        .toMap
-        .asInstanceOf[Map[DataSource[Any, Any], Chunk[Chunk[BlockedRequest[Any]]]]]
-    )
+  def sequential: Sequential[R] = {
+    val builder = Map.newBuilder[DataSource[Any, Any], Chunk[Chunk[BlockedRequest[Any]]]]
+    map.foreach { case (dataSource, chunkBuilder) =>
+      builder += ((dataSource.asInstanceOf[DataSource[Any, Any]], Chunk.single(chunkBuilder.result())))
+    }
+    new Sequential(builder.result())
+  }
 }
 
 private[query] object Parallel {
-
-  /**
-   * Constructs a new collection of requests containing a mapping from the
-   * specified data source to the specified request.
-   */
-  def apply[R, A](dataSource: DataSource[R, Any], blockedRequest: BlockedRequest[A]): Parallel[R] =
-    empty[R].addOne(dataSource, blockedRequest)
 
   /**
    * The empty collection of requests.

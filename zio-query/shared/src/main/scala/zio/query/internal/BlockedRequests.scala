@@ -17,9 +17,9 @@
 package zio.query.internal
 
 import zio.query.internal.BlockedRequests._
-import zio.query.{Cache, CompletedRequestMap, DataSource, DataSourceAspect, Described, QueryFailure, Request, ZQuery}
+import zio.query._
 import zio.stacktracer.TracingImplicits.disableAutoTrace
-import zio.{Chunk, Exit, Promise, Trace, Unsafe, ZEnvironment, ZIO}
+import zio.{Exit, Promise, Trace, Unsafe, ZEnvironment, ZIO}
 
 import scala.annotation.tailrec
 import scala.collection.mutable
@@ -113,11 +113,9 @@ private[query] sealed trait BlockedRequests[-R] { self =>
                                    .map(_.toMutableMap)
                                    .catchAllCause { cause =>
                                      ZIO.succeed {
-                                       val failure = Exit.failCause(cause).asInstanceOf[Exit[Any, Any]]
-                                       val map     = new mutable.HashMap[Request[_, _], Exit[Any, Any]]()
-                                       map.addAll(
-                                         requests.view.flatten.map(r => r.asInstanceOf[Request[Any, Any]] -> failure)
-                                       )
+                                       val exit = Exit.failCause(cause).asInstanceOf[Exit[Any, Any]]
+                                       val map  = new mutable.HashMap[Request[_, _], Exit[Any, Any]]()
+                                       map ++= requests.view.flatten.map(r => r.asInstanceOf[Request[Any, Any]] -> exit)
                                      }
                                    }
             isCachingEnabled <- ZQuery.cachingEnabled.get
@@ -230,17 +228,13 @@ private[query] object BlockedRequests {
   ): List[Sequential[R]] = {
 
     @tailrec
-    def loop[R](
+    def loop(
       blockedRequests: List[BlockedRequests[R]],
       flattened: List[Sequential[R]]
     ): List[Sequential[R]] = {
       val parallel   = Parallel.empty
       val sequential = ListBuffer.empty[BlockedRequests[R]]
-      blockedRequests.foreach { blockedRequest =>
-        val (par, seq) = step(blockedRequest)
-        parallel ++= par
-        sequential ++= seq
-      }
+      blockedRequests.foreach(step(parallel, sequential))
       val updated = merge(flattened, parallel)
       if (sequential.isEmpty) updated.reverse
       else loop(sequential.result(), updated)
@@ -256,36 +250,35 @@ private[query] object BlockedRequests {
    * requests.
    */
   private def step[R](
-    c: BlockedRequests[R]
-  ): (Parallel[R], List[BlockedRequests[R]]) = {
-    val parallel = Parallel.empty[R]
+    parallel: Parallel[R],
+    sequential: ListBuffer[BlockedRequests[R]]
+  )(c: BlockedRequests[R]): Unit = {
 
     @tailrec
     def loop(
       blockedRequests: BlockedRequests[R],
-      stack: List[BlockedRequests[R]],
-      sequential: List[BlockedRequests[R]]
-    ): List[BlockedRequests[R]] =
+      stack: List[BlockedRequests[R]]
+    ): Unit =
       blockedRequests match {
         case Single(dataSource, request) =>
           parallel.addOne(dataSource, request)
-          if (stack.isEmpty) sequential
-          else loop(stack.head, stack.tail, sequential)
+          if (stack.nonEmpty) loop(stack.head, stack.tail)
         case Empty =>
-          if (stack.isEmpty) sequential
-          else loop(stack.head, stack.tail, sequential)
+          if (stack.nonEmpty) loop(stack.head, stack.tail)
         case Then(left, right) =>
           left match {
-            case Empty      => loop(right, stack, sequential)
-            case Then(l, r) => loop(Then(l, Then(r, right)), stack, sequential)
-            case Both(l, r) => loop(Both(Then(l, right), Then(r, right)), stack, sequential)
-            case o          => loop(o, stack, right :: sequential)
+            case Empty      => loop(right, stack)
+            case Then(l, r) => loop(Then(l, Then(r, right)), stack)
+            case Both(l, r) => loop(Both(Then(l, right), Then(r, right)), stack)
+            case o =>
+              sequential.prepend(right)
+              loop(o, stack)
           }
-        case Both(left, right) => loop(left, right :: stack, sequential)
+        case Both(left, right) => loop(left, right :: stack)
 
       }
 
-    (parallel, loop(c, List.empty, List.empty))
+    loop(c, List.empty)
   }
 
   /**

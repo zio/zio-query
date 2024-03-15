@@ -31,7 +31,7 @@ import scala.collection.mutable
  * types for different requests while guaranteeing that results will be of the
  * type requested.
  */
-final class CompletedRequestMap private (private[query] val map: HashMap[Any, Exit[Any, Any]]) { self =>
+final class CompletedRequestMap private (private val map: HashMap[Any, Exit[Any, Any]]) { self =>
 
   def ++(that: CompletedRequestMap): CompletedRequestMap =
     new CompletedRequestMap(self.map ++ that.map)
@@ -76,9 +76,10 @@ final class CompletedRequestMap private (private[query] val map: HashMap[Any, Ex
   def isEmpty: Boolean =
     map.isEmpty
 
-  private[query] def toMutableMap: mutable.HashMap[Request[?, ?], Exit[Any, Any]] =
-    new mutable.HashMap[Request[?, ?], Exit[Any, Any]]()
-      .addAll(map.asInstanceOf[Map[Request[?, ?], Exit[Any, Any]]])
+  private[query] def toMutableMap: mutable.HashMap[Request[?, ?], Exit[Any, Any]] = {
+    val map0 = new mutable.HashMap[Request[?, ?], Exit[Any, Any]]()
+    map0 ++= map.asInstanceOf[HashMap[Request[?, ?], Exit[Any, Any]]]
+  }
 
   override def toString: String =
     s"CompletedRequestMap(${map.mkString(", ")})"
@@ -95,8 +96,12 @@ object CompletedRequestMap {
   /**
    * Constructs a completed requests map from the specified results.
    */
-  def fromIterable[E, A](iterable: Iterable[(Request[E, A], Exit[E, A])]): CompletedRequestMap =
-    new CompletedRequestMap(HashMap.from(iterable))
+  def fromIterable[E, A](iterable: Iterable[(Request[E, A], Exit[E, A])]): CompletedRequestMap = {
+    val builder = HashMap.newBuilder[Any, Exit[Any, Any]]
+    builder.sizeHint(iterable.size)
+    builder ++= iterable
+    new CompletedRequestMap(builder.result())
+  }
 
   /**
    * Constructs a completed requests map from the specified optional results.
