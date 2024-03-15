@@ -104,7 +104,7 @@ object Cache {
       }
   }
 
-  // TODO: Maybe use a more sensible default value. Currently, it's 16 * 0.75d = 12 which seems way to small for a cache
+  // TODO: Initialize the map with a sensible default value. Default is 16, which seems way too small for a cache
   private[query] def unsafeMake(): Cache = new Default(new ConcurrentHashMap())
 
   private[query] def unsafeMake(expectedNumOfElements: Int): Cache = {
