@@ -11,4 +11,7 @@ object BenchmarkUtil extends Runtime[Any] { self =>
 
   def unsafeRun[E, A](query: ZQuery[Any, E, A]): A =
     Unsafe.unsafe(implicit unsafe => self.unsafe.run(query.run).getOrThrowFiberFailure())
+
+  def unsafeRunCache[E, A](query: ZQuery[Any, E, A], cache: Cache): A =
+    Unsafe.unsafe(implicit unsafe => self.unsafe.run(query.runCache(cache)).getOrThrowFiberFailure())
 }

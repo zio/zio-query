@@ -19,17 +19,17 @@ class FromRequestBenchmark {
   var count: Int = 100
 
   @Benchmark
-  def fromRequestUnique(): Long = {
+  def fromRequest(): Long = {
     val reqs  = Chunk.fromIterable((0 until count).map(i => ZQuery.fromRequest(Req(i))(ds)))
     val query = ZQuery.collectAllBatched(reqs).map(_.sum.toLong)
     unsafeRun(query)
   }
 
   @Benchmark
-  def fromRequestDuplicated(): Long = {
-    val reqs  = Chunk.fromIterable((0 until count).map(_ => ZQuery.fromRequest(Req(1))(ds)))
+  def fromRequestSized(): Long = {
+    val reqs  = Chunk.fromIterable((0 until count).map(i => ZQuery.fromRequest(Req(i))(ds)))
     val query = ZQuery.collectAllBatched(reqs).map(_.sum.toLong)
-    unsafeRun(query)
+    unsafeRunCache(query, Cache.unsafeMake(count))
   }
 
   private case class Req(i: Int) extends Request[Nothing, Int]
