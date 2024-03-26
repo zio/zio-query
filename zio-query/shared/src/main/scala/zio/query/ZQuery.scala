@@ -742,7 +742,20 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
   final def zipRight[R1 <: R, E1 >: E, B](that: => ZQuery[R1, E1, B])(implicit
     trace: Trace
   ): ZQuery[R1, E1, B] =
-    zipWith(that)((_, b) => b)
+    ZQuery {
+      self.step.flatMap {
+        case Result.Blocked(br, Continue.Effect(c)) =>
+          ZIO.succeed(Result.blocked(br, Continue.effect(c.zipRight(that))))
+        case Result.Blocked(br1, c1) =>
+          that.step.map {
+            case Result.Blocked(br2, c2) => Result.blocked(br1 ++ br2, c1.zipRight(c2))
+            case Result.Done(b)          => Result.blocked(br1, c1.map(_ => b))
+            case Result.Fail(e)          => Result.fail(e)
+          }
+        case Result.Done(_) => that.step
+        case Result.Fail(e) => ZIO.succeed(Result.fail(e))
+      }
+    }
 
   /**
    * Returns a query that models the execution of this query and the specified
