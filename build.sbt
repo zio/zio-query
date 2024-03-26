@@ -68,6 +68,7 @@ lazy val benchmarks = project
   .in(file("benchmarks"))
   .dependsOn(zioQueryJVM)
   .enablePlugins(JmhPlugin)
+  .settings(libraryDependencies += "com.47deg" %% "fetch" % "3.1.2")
 
 lazy val docs = project
   .in(file("zio-query-docs"))
