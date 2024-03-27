@@ -13,10 +13,10 @@ inThisBuild(
     zioVersion := "2.0.21",
     developers := List(
       Developer(
-        "adamgfraser",
-        "Adam Fraser",
-        "adam.fraser@gmail.com",
-        url("https://github.com/adamgfraser")
+        "kyri-petrou",
+        "Kyri Petrou",
+        "kyri.petrou@outlook.com",
+        url("https://github.com/kyri-petrou")
       )
     ),
     ciEnabledBranches := Seq("series/2.x"),
