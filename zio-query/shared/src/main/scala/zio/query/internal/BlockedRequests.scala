@@ -244,7 +244,6 @@ private[query] object BlockedRequests {
           left match {
             case Empty      => loop(right, stack, parallel, sequential)
             case Then(l, r) => loop(Then(l, Then(r, right)), stack, parallel, sequential)
-            case Both(l, r) => loop(Both(Then(l, right), Then(r, right)), stack, parallel, sequential)
             case o          => loop(o, stack, parallel, right :: sequential)
           }
         case Both(left, right) => loop(left, right :: stack, parallel, sequential)

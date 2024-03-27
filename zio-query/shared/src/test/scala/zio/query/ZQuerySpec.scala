@@ -63,6 +63,13 @@ object ZQuerySpec extends ZIOBaseSpec {
           val query = Cache.put(0, 1) *> Cache.getAll <* Cache.put(1, -1)
           assertZIO(query.run)(equalTo(Map(0 -> 1)))
         } @@ after(Cache.clear) @@ nonFlaky,
+        test("requests are executed in order after parallel execution") {
+          val query =
+            (Cache.putIfAbsent(0, 0) &> Cache.putIfAbsent(1, 1)) *>
+              Cache.getAll <*
+              (Cache.putIfAbsent(2, -1) &> Cache.putIfAbsent(3, -1))
+          assertZIO(query.run)(equalTo(Map(0 -> 0, 1 -> 1)))
+        } @@ after(Cache.clear) @@ nonFlaky,
         test("requests are pipelined") {
           val query = Cache.put(0, 1) *> Cache.getAll <* Cache.put(1, -1)
           assertZIO(query.run *> Cache.log)(hasSize(equalTo(1)))
@@ -386,9 +393,10 @@ object ZQuerySpec extends ZIOBaseSpec {
 
   sealed trait CacheRequest[A] extends Request[Nothing, A]
 
-  final case class Get(key: Int)             extends CacheRequest[Option[Int]]
-  case object GetAll                         extends CacheRequest[Map[Int, Int]]
-  final case class Put(key: Int, value: Int) extends CacheRequest[Unit]
+  final case class Get(key: Int)                     extends CacheRequest[Option[Int]]
+  case object GetAll                                 extends CacheRequest[Map[Int, Int]]
+  final case class Put(key: Int, value: Int)         extends CacheRequest[Unit]
+  final case class PutIfAbsent(key: Int, value: Int) extends CacheRequest[Unit]
 
   type Cache = Cache.Service
 
@@ -399,7 +407,7 @@ object ZQuerySpec extends ZIOBaseSpec {
       val log: ZIO[Any, Nothing, List[List[Set[CacheRequest[_]]]]]
     }
 
-    val live: ZLayer[Any, Nothing, Cache] =
+    val live: ZLayer[Any, Throwable, Cache] =
       ZLayer.fromZIO {
         for {
           cache <- Ref.make(Map.empty[Int, Int])
@@ -425,6 +433,15 @@ object ZQuerySpec extends ZIOBaseSpec {
                         cache.get.exit.map(CompletedRequestMap.empty.insert(GetAll, _))
                       case Put(key, value) =>
                         cache.update(_ + (key -> value)).exit.map(CompletedRequestMap.empty.insert(Put(key, value), _))
+                      case PutIfAbsent(key, value) =>
+                        cache.get.flatMap { map =>
+                          if (map.contains(key)) ZIO.die(new Exception(s"Expected key $key to be absent from cache"))
+                          else
+                            cache
+                              .update(_ + (key -> value))
+                              .exit
+                              .map(CompletedRequestMap.empty.insert(PutIfAbsent(key, value), _))
+                        }
                     }
                     .map(_.foldLeft(CompletedRequestMap.empty)(_ ++ _))
                 }
@@ -448,6 +465,12 @@ object ZQuerySpec extends ZIOBaseSpec {
       for {
         cache <- ZQuery.environment[Cache].map(_.get)
         value <- ZQuery.fromRequest(Put(key, value))(cache)
+      } yield value
+
+    def putIfAbsent(key: Int, value: Int): ZQuery[Cache, Nothing, Unit] =
+      for {
+        cache <- ZQuery.environment[Cache].map(_.get)
+        value <- ZQuery.fromRequest(PutIfAbsent(key, value))(cache)
       } yield value
 
     val clear: ZIO[Cache, Nothing, Unit] =
