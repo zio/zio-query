@@ -163,7 +163,7 @@ private[query] object Continue {
    * Constructs a continuation from a request, a data source, and a `Promise`
    * that will contain the result of the request when it is executed.
    */
-  def apply[R, E, A, B](request: A, dataSource: DataSource[R, A], promise: Promise[E, B])(implicit
+  def apply[R, E, A, B](promise: Promise[E, B])(implicit
     ev: A <:< Request[E, B],
     trace: Trace
   ): Continue[R, E, B] =

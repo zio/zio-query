@@ -74,7 +74,7 @@ object Cache {
   def empty(expectedNumOfElements: Int)(implicit trace: Trace): UIO[Cache] =
     ZIO.succeed(Cache.unsafeMake(expectedNumOfElements))
 
-  private final class Default(private val map: ConcurrentHashMap[Request[_, _], Promise[_, _]]) extends Cache {
+  private[query] final class Default(private val map: ConcurrentHashMap[Request[_, _], Promise[_, _]]) extends Cache {
 
     def get[E, A](request: Request[E, A])(implicit trace: Trace): IO[Unit, Promise[E, A]] =
       ZIO.suspendSucceed {
@@ -86,10 +86,19 @@ object Cache {
       ev: A <:< Request[E, B],
       trace: Trace
     ): UIO[Either[Promise[E, B], Promise[E, B]]] =
-      Promise.make[E, B].map { newPromise =>
-        val existing = map.putIfAbsent(request, newPromise).asInstanceOf[Promise[E, B]]
-        if (existing eq null) Left(newPromise) else Right(existing)
-      }
+      ZIO.fiberId.map(lookupUnsafe(request, _)(Unsafe.unsafe, implicitly))
+
+    def lookupUnsafe[E, A, B](
+      request: A,
+      fiberId: FiberId
+    )(implicit
+      unsafe: Unsafe,
+      ev: A <:< Request[E, B]
+    ): Either[Promise[E, B], Promise[E, B]] = {
+      val newPromise = Promise.unsafe.make[E, B](fiberId)
+      val existing   = map.putIfAbsent(request, newPromise).asInstanceOf[Promise[E, B]]
+      if (existing eq null) Left(newPromise) else Right(existing)
+    }
 
     def put[E, A](request: Request[E, A], result: Promise[E, A])(implicit trace: Trace): UIO[Unit] =
       ZIO.succeed {

@@ -1328,37 +1328,36 @@ object ZQuery {
     request0: => A
   )(dataSource0: => DataSource[R, A])(implicit ev: A <:< Request[E, B], trace: Trace): ZQuery[R, E, B] =
     ZQuery {
-      ZIO.suspendSucceed {
+      ZIO.fiberIdWith { fiberId =>
         val request    = request0
         val dataSource = dataSource0
-        ZQuery.cachingEnabled.get.flatMap { cachingEnabled =>
-          if (cachingEnabled) {
-            ZQuery.currentCache.get.flatMap { cache =>
-              cache.lookup(request).flatMap {
-                case Left(promise) =>
-                  ZIO.succeed(
-                    Result.blocked(
-                      BlockedRequests.single(dataSource, BlockedRequest(request, promise)),
-                      Continue(request, dataSource, promise)
-                    )
+        ZQuery.cachingEnabled.getWith {
+          if (_) {
+            val foldPromise: Either[Promise[E, B], Promise[E, B]] => UIO[Result[R, E, B]] = {
+              case Left(promise) =>
+                ZIO.succeed(
+                  Result.blocked(
+                    BlockedRequests.single(dataSource, BlockedRequest(request, promise)),
+                    Continue(promise)
                   )
-                case Right(promise) =>
-                  promise.poll.flatMap {
-                    case None =>
-                      ZIO.succeed(Result.blocked(BlockedRequests.empty, Continue(request, dataSource, promise)))
-                    case Some(io) =>
-                      io.exit.map(Result.fromExit)
-                  }
-              }
+                )
+              case Right(promise) =>
+                promise.poll.flatMap {
+                  case None     => ZIO.succeed(Result.blocked(BlockedRequests.empty, Continue(promise)))
+                  case Some(io) => io.exit.map(Result.fromExit)
+                }
             }
-          } else {
-            Promise.make[E, B].map { promise =>
+            ZQuery.currentCache.getWith {
+              case cache: Cache.Default => foldPromise(cache.lookupUnsafe(request, fiberId)(Unsafe.unsafe, implicitly))
+              case cache                => cache.lookup(request).flatMap(foldPromise)
+            }
+          } else
+            Promise.makeAs[E, B](fiberId).map { promise =>
               Result.blocked(
                 BlockedRequests.single(dataSource, BlockedRequest(request, promise)),
-                Continue(request, dataSource, promise)
+                Continue(promise)
               )
             }
-          }
         }
       }
     }
