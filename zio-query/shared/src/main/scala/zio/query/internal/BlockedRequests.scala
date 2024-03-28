@@ -146,7 +146,7 @@ private[query] sealed trait BlockedRequests[-R] { self =>
                 }
               }
             _ <- ZIO.when(completedRequests.nonEmpty && isCachingEnabled) {
-                   ZIO.fiberId.map { fiberId =>
+                   ZIO.fiberId.flatMap { fiberId =>
                      val iter = completedRequests.iterator
                      ZIO.whileLoop(iter.hasNext) {
                        Promise.makeAs[Any, Any](fiberId).flatMap { promise =>
@@ -260,22 +260,21 @@ private[query] object BlockedRequests {
       stack: List[BlockedRequests[R]]
     ): Unit =
       blockedRequests match {
+        case Empty =>
+          if (stack ne Nil) loop(stack.head, stack.tail)
         case Single(dataSource, request) =>
           parallel.addOne(dataSource, request)
-          if (stack.nonEmpty) loop(stack.head, stack.tail)
-        case Empty =>
-          if (stack.nonEmpty) loop(stack.head, stack.tail)
+          if (stack ne Nil) loop(stack.head, stack.tail)
         case Then(left, right) =>
           left match {
             case Empty      => loop(right, stack)
             case Then(l, r) => loop(Then(l, Then(r, right)), stack)
-            case Both(l, r) => loop(Both(Then(l, right), Then(r, right)), stack)
             case o =>
-              sequential.prepend(right)
+              if (right ne Empty) sequential.prepend(right)
               loop(o, stack)
           }
-        case Both(left, right) => loop(left, right :: stack)
-
+        case Both(left, right) =>
+          loop(left, right :: stack)
       }
 
     loop(c, List.empty)

@@ -6,8 +6,8 @@ import zio.{Chunk, ZIO}
 
 import java.util.concurrent.TimeUnit
 
-@Measurement(iterations = 5, time = 1, timeUnit = TimeUnit.SECONDS)
-@Warmup(iterations = 5, time = 1, timeUnit = TimeUnit.SECONDS)
+@Measurement(iterations = 3, time = 1, timeUnit = TimeUnit.SECONDS)
+@Warmup(iterations = 3, time = 1, timeUnit = TimeUnit.SECONDS)
 @Fork(2)
 @Threads(1)
 @State(JScope.Thread)
@@ -19,7 +19,7 @@ class FromRequestBenchmark {
   var count: Int = 100
 
   @Benchmark
-  def fromRequest(): Long = {
+  def fromRequestDefault(): Long = {
     val reqs  = Chunk.fromIterable((0 until count).map(i => ZQuery.fromRequest(Req(i))(ds)))
     val query = ZQuery.collectAllBatched(reqs).map(_.sum.toLong)
     unsafeRun(query)
@@ -30,6 +30,13 @@ class FromRequestBenchmark {
     val reqs  = Chunk.fromIterable((0 until count).map(i => ZQuery.fromRequest(Req(i))(ds)))
     val query = ZQuery.collectAllBatched(reqs).map(_.sum.toLong)
     unsafeRunCache(query, Cache.unsafeMake(count))
+  }
+
+  @Benchmark
+  def fromRequestZipRight(): Long = {
+    val reqs  = Chunk.fromIterable((0 until count).map(i => ZQuery.fromRequest(Req(i))(ds)))
+    val query = ZQuery.collectAllBatched(reqs).map(_.sum.toLong)
+    unsafeRun(query *> query *> query)
   }
 
   private case class Req(i: Int) extends Request[Nothing, Int]
