@@ -1335,17 +1335,17 @@ object ZQuery {
         val dataSource = dataSource0
         ZQuery.cachingEnabled.getWith {
           if (_) {
-            val foldPromise: Either[Promise[E, B], Promise[E, B]] => UIO[Result[R, E, B]] = {
+            def foldPromise(either: Either[Promise[E, B], Promise[E, B]]): UIO[Result[R, E, B]] = either match {
               case Left(promise) =>
                 ZIO.succeed(
                   Result.blocked(
                     BlockedRequests.single(dataSource, BlockedRequest(request, promise)),
-                    Continue(promise)
+                    Continue[R, E, A, B](promise)
                   )
                 )
               case Right(promise) =>
                 promise.poll.flatMap {
-                  case None     => ZIO.succeed(Result.blocked(BlockedRequests.empty, Continue(promise)))
+                  case None     => ZIO.succeed(Result.blocked(BlockedRequests.empty, Continue[R, E, A, B](promise)))
                   case Some(io) => io.exit.map(Result.fromExit)
                 }
             }
@@ -1357,7 +1357,7 @@ object ZQuery {
             Promise.makeAs[E, B](fiberId).map { promise =>
               Result.blocked(
                 BlockedRequests.single(dataSource, BlockedRequest(request, promise)),
-                Continue(promise)
+                Continue[R, E, A, B](promise)
               )
             }
         }
