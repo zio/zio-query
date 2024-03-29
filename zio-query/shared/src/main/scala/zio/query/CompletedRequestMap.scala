@@ -67,6 +67,12 @@ final class CompletedRequestMap private (private val map: Map[Any, Exit[Any, Any
   def requests: Set[Request[_, _]] =
     map.keySet.asInstanceOf[Set[Request[_, _]]]
 
+  /**
+   * Whether the completed requests map is empty.
+   */
+  def isEmpty: Boolean =
+    map.isEmpty
+
   override def toString: String =
     s"CompletedRequestMap(${map.mkString(", ")})"
 }
