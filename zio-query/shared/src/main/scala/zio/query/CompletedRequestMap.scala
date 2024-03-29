@@ -71,7 +71,7 @@ final class CompletedRequestMap private (private val map: HashMap[Any, Exit[Any,
     map.keySet.asInstanceOf[Set[Request[_, _]]]
 
   /**
-   * Returns true if the map contains no results.
+   * Whether the completed requests map is empty.
    */
   def isEmpty: Boolean =
     map.isEmpty
