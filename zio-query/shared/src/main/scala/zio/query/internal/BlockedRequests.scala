@@ -146,7 +146,7 @@ private[query] sealed trait BlockedRequests[-R] { self =>
                 }
               }
             _ <- ZIO.when(completedRequests.nonEmpty && isCachingEnabled) {
-                   ZIO.fiberId.flatMap { fiberId =>
+                   ZIO.fiberIdWith { fiberId =>
                      val iter = completedRequests.iterator
                      ZIO.whileLoop(iter.hasNext) {
                        Promise.makeAs[Any, Any](fiberId).flatMap { promise =>

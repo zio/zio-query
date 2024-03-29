@@ -1128,17 +1128,16 @@ object ZQuery {
               failBuilder += e
               index += 1
           }.as {
-            val dones         = doneBuilder.result()
-            val doneIndices   = doneIndicesBuilder.result()
-            val effects       = effectBuilder.result()
-            val effectIndices = effectIndicesBuilder.result()
-            val fails         = failBuilder.result()
-            val gets          = getBuilder.result()
-            val getIndices    = getIndicesBuilder.result()
-            if (gets.isEmpty && effects.isEmpty && fails.isEmpty)
+            val dones   = doneBuilder.result()
+            val effects = effectBuilder.result()
+            val fails   = failBuilder.result()
+            val gets    = getBuilder.result()
+            if (gets.isEmpty && effects.isEmpty && fails.isEmpty) {
               Result.done(bf.fromSpecific(as)(dones))
-            else if (fails.isEmpty) {
+            } else if (fails.isEmpty) {
               val continue = if (effects.isEmpty) {
+                val getIndices  = getIndicesBuilder.result()
+                val doneIndices = doneIndicesBuilder.result()
                 val io = ZIO.collectAll(gets).map { gets =>
                   val array              = Array.ofDim[AnyRef](index)
                   val getsIterator       = gets.iterator
@@ -1159,6 +1158,9 @@ object ZQuery {
                 }
                 Continue.get(io)
               } else {
+                val effectIndices = effectIndicesBuilder.result()
+                val getIndices    = getIndicesBuilder.result()
+                val doneIndices   = doneIndicesBuilder.result()
                 val query = ZQuery.collectAllBatched(effects).flatMap { effects =>
                   ZQuery.fromZIO(ZIO.collectAll(gets).map { gets =>
                     val array                 = Array.ofDim[AnyRef](index)
