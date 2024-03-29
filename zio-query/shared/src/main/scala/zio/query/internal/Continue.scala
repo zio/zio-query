@@ -53,7 +53,7 @@ private[query] sealed trait Continue[-R, +E, +A] { self =>
   )(implicit trace: Trace): Continue[R1, E1, B] =
     self match {
       case Effect(query) => effect(query.foldCauseQuery(failure, success))
-      case Get(io)       => effect(ZQuery.fromZIO(io).foldCauseQuery(failure, success))
+      case Get(io)       => effect(ZQuery.fromZIONow(io).foldCauseQuery(failure, success))
     }
 
   /**
@@ -100,7 +100,7 @@ private[query] sealed trait Continue[-R, +E, +A] { self =>
   )(implicit trace: Trace): Continue[R1, E1, B] =
     self match {
       case Effect(query) => effect(query.flatMap(f))
-      case Get(io)       => effect(ZQuery.fromZIO(io).flatMap(f))
+      case Get(io)       => effect(ZQuery.fromZIONow(io).flatMap(f))
     }
 
   /**
@@ -123,8 +123,8 @@ private[query] sealed trait Continue[-R, +E, +A] { self =>
   )(f: (A, B) => C)(implicit trace: Trace): Continue[R1, E1, C] =
     (self, that) match {
       case (Effect(l), Effect(r)) => effect(l.zipWith(r)(f))
-      case (Effect(l), Get(r))    => effect(l.zipWith(ZQuery.fromZIO(r))(f))
-      case (Get(l), Effect(r))    => effect(ZQuery.fromZIO(l).zipWith(r)(f))
+      case (Effect(l), Get(r))    => effect(l.zipWith(ZQuery.fromZIONow(r))(f))
+      case (Get(l), Effect(r))    => effect(ZQuery.fromZIONow(l).zipWith(r)(f))
       case (Get(l), Get(r))       => get(l.zipWith(r)(f))
     }
 
@@ -137,8 +137,8 @@ private[query] sealed trait Continue[-R, +E, +A] { self =>
   )(f: (A, B) => C)(implicit trace: Trace): Continue[R1, E1, C] =
     (self, that) match {
       case (Effect(l), Effect(r)) => effect(l.zipWithPar(r)(f))
-      case (Effect(l), Get(r))    => effect(l.zipWith(ZQuery.fromZIO(r))(f))
-      case (Get(l), Effect(r))    => effect(ZQuery.fromZIO(l).zipWith(r)(f))
+      case (Effect(l), Get(r))    => effect(l.zipWith(ZQuery.fromZIONow(r))(f))
+      case (Get(l), Effect(r))    => effect(ZQuery.fromZIONow(l).zipWith(r)(f))
       case (Get(l), Get(r))       => get(l.zipWith(r)(f))
     }
 
@@ -151,8 +151,8 @@ private[query] sealed trait Continue[-R, +E, +A] { self =>
   )(f: (A, B) => C)(implicit trace: Trace): Continue[R1, E1, C] =
     (self, that) match {
       case (Effect(l), Effect(r)) => effect(l.zipWithBatched(r)(f))
-      case (Effect(l), Get(r))    => effect(l.zipWith(ZQuery.fromZIO(r))(f))
-      case (Get(l), Effect(r))    => effect(ZQuery.fromZIO(l).zipWith(r)(f))
+      case (Effect(l), Get(r))    => effect(l.zipWith(ZQuery.fromZIONow(r))(f))
+      case (Get(l), Effect(r))    => effect(ZQuery.fromZIONow(l).zipWith(r)(f))
       case (Get(l), Get(r))       => get(l.zipWith(r)(f))
     }
 }
@@ -195,7 +195,7 @@ private[query] object Continue {
           as.zip(queries.map(_._2)).foreach { case (a, i) =>
             array(i) = a.asInstanceOf[AnyRef]
           }
-          ZQuery.fromZIO(ZIO.collectAll(ios.map(_._1))).map { as =>
+          ZQuery.fromZIONow(ZIO.collectAll(ios.map(_._1))).map { as =>
             as.zip(ios.map(_._2)).foreach { case (a, i) =>
               array(i) = a.asInstanceOf[AnyRef]
             }

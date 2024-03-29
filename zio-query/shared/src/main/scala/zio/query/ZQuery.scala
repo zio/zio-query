@@ -291,7 +291,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * Maps the specified effectual function over the result of this query.
    */
   final def mapZIO[R1 <: R, E1 >: E, B](f: A => ZIO[R1, E1, B])(implicit trace: Trace): ZQuery[R1, E1, B] =
-    flatMap(a => ZQuery.fromZIO(f(a)))
+    flatMap(a => ZQuery.fromZIONow(f(a)))
 
   /**
    * Converts this query to one that returns `Some` if data sources return
@@ -378,7 +378,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
               case Continue.Effect(query) =>
                 ZIO.succeed(Result.blocked(blockedRequests, Continue.effect(race(query, fiber))))
               case Continue.Get(io) =>
-                ZIO.succeed(Result.blocked(blockedRequests, Continue.effect(race(ZQuery.fromZIO(io), fiber))))
+                ZIO.succeed(Result.blocked(blockedRequests, Continue.effect(race(ZQuery.fromZIONow(io), fiber))))
             }
           case Result.Done(value) => fiber.interrupt *> ZIO.succeed(Result.done(value))
           case Result.Fail(cause) => fiber.join.map(_.mapErrorCause(_ && cause))
@@ -534,9 +534,9 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     ZQuery.suspend {
       val summary = summary0
       for {
-        start <- ZQuery.fromZIO(summary)
+        start <- ZQuery.fromZIONow(summary)
         value <- self
-        end   <- ZQuery.fromZIO(summary)
+        end   <- ZQuery.fromZIONow(summary)
       } yield (f(start, end), value)
     }
 
@@ -966,7 +966,7 @@ object ZQuery {
    * Accesses the whole environment of the query.
    */
   def environment[R](implicit trace: Trace): ZQuery[R, Nothing, ZEnvironment[R]] =
-    ZQuery.fromZIO(ZIO.environment)
+    ZQuery(ZIO.environmentWith[R](Result.done))
 
   /**
    * Accesses the environment of the effect.
@@ -1160,7 +1160,7 @@ object ZQuery {
                 Continue.get(io)
               } else {
                 val query = ZQuery.collectAllBatched(effects).flatMap { effects =>
-                  ZQuery.fromZIO(ZIO.collectAll(gets).map { gets =>
+                  ZQuery.fromZIONow(ZIO.collectAll(gets).map { gets =>
                     val array                 = Array.ofDim[AnyRef](index)
                     val effectsIterator       = effects.iterator
                     val effectIndicesIterator = effectIndices.iterator
@@ -1379,10 +1379,23 @@ object ZQuery {
     ZQuery(ZIO.suspendSucceed(effect).foldCause(Result.fail, Result.done))
 
   /**
+   * Constructs a query from an effect. Unlike [[fromZIO]], this method does not
+   * suspend the creation of the effect which can lead to improved performance
+   * in some cases, but it should only be used when the creation of the effect
+   * is side effect-free.
+   *
+   * Note that this is method is meant mostly for internal use, but it's made
+   * public so that library authors can make use of this optimization. Most
+   * users should use [[fromZIO]] instead.
+   */
+  def fromZIONow[R, E, A](effect: ZIO[R, E, A])(implicit trace: Trace): ZQuery[R, E, A] =
+    ZQuery(effect.foldCause(Result.fail, Result.done))
+
+  /**
    * Constructs a query that never completes.
    */
   def never(implicit trace: Trace): ZQuery[Any, Nothing, Nothing] =
-    ZQuery.fromZIO(ZIO.never)
+    ZQuery.fromZIONow(ZIO.never)
 
   /**
    * Constructs a query that succeds with the empty value.
@@ -1418,7 +1431,7 @@ object ZQuery {
    * Accesses the whole environment of the query.
    */
   def service[R: Tag](implicit trace: Trace): ZQuery[R, Nothing, R] =
-    ZQuery.fromZIO(ZIO.service)
+    ZQuery(ZIO.serviceWith[R](Result.done))
 
   /**
    * Accesses the environment of the effect.
@@ -1526,7 +1539,7 @@ object ZQuery {
                           ZIO.succeed(Result.blocked(blockedRequests, Continue.effect(race(query, fiber))))
                         case Continue.Get(io) =>
                           ZIO.succeed(
-                            Result.blocked(blockedRequests, Continue.effect(race(ZQuery.fromZIO(io), fiber)))
+                            Result.blocked(blockedRequests, Continue.effect(race(ZQuery.fromZIONow(io), fiber)))
                           )
                       }
                     case Result.Done(value) => rightFiber.interrupt *> ZIO.succeed(Result.done(value))
@@ -1537,7 +1550,7 @@ object ZQuery {
           )
         }
 
-      ZQuery.fromZIO(ZIO.sleep(duration).interruptible.as(b()).fork).flatMap(fiber => race(self.map(f), fiber))
+      ZQuery.fromZIONow(ZIO.sleep(duration).interruptible.as(b()).fork).flatMap(fiber => race(self.map(f), fiber))
     }
   }
 
@@ -1634,7 +1647,7 @@ object ZQuery {
                   .suspend(use(a))
                   .foldCauseQuery(
                     cause =>
-                      ZQuery.fromZIO {
+                      ZQuery.fromZIONow {
                         ZIO
                           .suspendSucceed(release(a, Exit.failCause(cause)))
                           .whenZIO(ref.getAndSet(false))
@@ -1642,11 +1655,11 @@ object ZQuery {
                           ZIO.refailCause(cause)
                       },
                     b =>
-                      ZQuery.fromZIO {
+                      ZQuery.fromZIONow {
                         ZIO
                           .suspendSucceed(release(a, Exit.succeed(b)))
-                          .whenZIO(ref.getAndSet(false)) *>
-                          ZIO.succeed(b)
+                          .whenZIO(ref.getAndSet(false))
+                          .as(b)
                       }
                   )
               }
