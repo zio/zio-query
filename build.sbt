@@ -54,7 +54,7 @@ lazy val zioQuery = crossProject(JSPlatform, JVMPlatform)
   .settings(
     scalacOptions ++=
       (if (scalaBinaryVersion.value == "3")
-        Seq()
+         Seq()
        else
          Seq(
            "-opt:l:method",

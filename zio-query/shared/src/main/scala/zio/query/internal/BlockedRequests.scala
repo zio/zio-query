@@ -126,7 +126,7 @@ private[query] sealed trait BlockedRequests[-R] { self =>
                 if (_) {
                   val completed = mutable.HashSet.empty[Request[_, _]]
                   completed.sizeHint(nRequests)
-                  completePromisesWith(dataSource, completedRequests, sequential)(completed.addOne)
+                  completePromisesWith(dataSource, completedRequests, sequential)(completed.add)
                   val leftovers = completedRequests.keySet.diff(completed)
                   if (leftovers.nonEmpty) cacheLeftovers(cache, completedRequests, leftovers) else ZIO.unit
                 } else {

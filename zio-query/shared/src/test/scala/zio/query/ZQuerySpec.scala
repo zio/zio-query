@@ -205,10 +205,8 @@ object ZQuerySpec extends ZIOBaseSpec {
             requestResult <- query.runCache(cache)
             oneToTen       = (1 to 10).toList
             cachedResults <- ZIO.foreach(oneToTen)(i => cache.get(Req.Get(i)).flatMap(_.await))
-          } yield assertTrue(
-            requestResult == "1",
-            cachedResults == oneToTen.map(_.toString)
-          )
+            cacheCheck     = cachedResults == oneToTen.map(_.toString)
+          } yield assertTrue(requestResult == "1", cacheCheck)
         },
         test("caching disabled") {
           for {
@@ -219,10 +217,8 @@ object ZQuerySpec extends ZIOBaseSpec {
             requestResult <- query.runCache(cache)
             oneToTen       = (1 to 10).toList
             cachedResults <- ZIO.foreach(oneToTen)(i => cache.get(Req.Get(i)).isFailure)
-          } yield assertTrue(
-            requestResult == "1",
-            cachedResults.forall(identity)
-          )
+            cacheCheck     = cachedResults.forall(identity)
+          } yield assertTrue(requestResult == "1", cacheCheck)
         }
       ),
       test("requests can be removed from the cache") {
