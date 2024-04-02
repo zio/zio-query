@@ -195,6 +195,36 @@ object ZQuerySpec extends ZIOBaseSpec {
         } yield assert(result)(equalTo(Set("c", "d"))) &&
           assert(output)(equalTo(Vector("getAll called\n")))
       },
+      suite("caching results fulfilled by datasources")(
+        test("caching enabled") {
+          for {
+            cache <- zio.query.Cache.empty
+            query = for {
+                      res <- ZQuery.fromRequest(Req.Get(1))(dsCompletingMoreRequests)
+                    } yield res
+            requestResult <- query.runCache(cache)
+            oneToTen       = (1 to 10).toList
+            cachedResults <- ZIO.foreach(oneToTen)(i => cache.get(Req.Get(i)).flatMap(_.await))
+          } yield assertTrue(
+            requestResult == "1",
+            cachedResults == oneToTen.map(_.toString)
+          )
+        },
+        test("caching disabled") {
+          for {
+            cache <- zio.query.Cache.empty
+            query = for {
+                      res <- ZQuery.fromRequestUncached(Req.Get(1))(dsCompletingMoreRequests)
+                    } yield res
+            requestResult <- query.runCache(cache)
+            oneToTen       = (1 to 10).toList
+            cachedResults <- ZIO.foreach(oneToTen)(i => cache.get(Req.Get(i)).isFailure)
+          } yield assertTrue(
+            requestResult == "1",
+            cachedResults.forall(identity)
+          )
+        }
+      ),
       test("requests can be removed from the cache") {
         for {
           cache <- zio.query.Cache.empty
@@ -572,6 +602,19 @@ object ZQuerySpec extends ZIOBaseSpec {
         }
       }
     }
+
+    override val identifier: String = "test"
+  }
+
+  val dsCompletingMoreRequests: DataSource.Batched[Any, Req.Get] = new DataSource.Batched[Any, Req.Get] {
+    override def run(
+      requests: Chunk[Req.Get]
+    )(implicit trace: Trace): ZIO[Any, Nothing, CompletedRequestMap] =
+      ZIO.succeed(
+        CompletedRequestMap.fromIterable(
+          (1 to 10).map(id => Req.Get(id) -> Exit.succeed(id.toString))
+        )
+      )
 
     override val identifier: String = "test"
   }
