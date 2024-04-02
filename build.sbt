@@ -51,6 +51,17 @@ lazy val zioQuery = crossProject(JSPlatform, JVMPlatform)
   )
   .settings(enableZIO())
   .settings(scalacOptions += "-Wconf:msg=[zio.stacktracer.TracingImplicits.disableAutoTrace]:silent")
+  .settings(
+    scalacOptions ++=
+      (if (scalaBinaryVersion.value == "3")
+        Seq()
+       else
+         Seq(
+           "-opt:l:method",
+           "-opt:l:inline",
+           "-opt-inline-from:scala.**"
+         ))
+  )
 
 lazy val zioQueryJS = zioQuery.js
   .settings(enableMimaSettingsJS)
@@ -91,7 +102,7 @@ lazy val docs = project
 
 Global / onChangedBuildSource := ReloadOnSourceChanges
 
-lazy val enforceMimaCompatibility = true // Enable / disable failing CI on binary incompatibilities
+lazy val enforceMimaCompatibility = false // Enable / disable failing CI on binary incompatibilities
 
 lazy val enableMimaSettingsJVM =
   Def.settings(

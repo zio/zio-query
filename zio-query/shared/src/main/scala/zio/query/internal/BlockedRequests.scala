@@ -19,7 +19,7 @@ package zio.query.internal
 import zio.query.internal.BlockedRequests._
 import zio.query._
 import zio.stacktracer.TracingImplicits.disableAutoTrace
-import zio.{Exit, Promise, Trace, Unsafe, ZEnvironment, ZIO}
+import zio.{Chunk, Exit, FiberId, Promise, Trace, UIO, Unsafe, ZEnvironment, ZIO}
 
 import scala.annotation.tailrec
 import scala.collection.mutable
@@ -103,61 +103,91 @@ private[query] sealed trait BlockedRequests[-R] { self =>
    * Executes all requests, submitting requests to each data source in parallel.
    */
   def run(implicit trace: Trace): ZIO[R, Nothing, Unit] =
-    ZQuery.currentCache.get.flatMap { cache =>
+    ZQuery.currentCache.getWith { cache =>
       ZIO.foreachDiscard(BlockedRequests.flatten(self)) { requestsByDataSource =>
         ZIO.foreachParDiscard(requestsByDataSource.toIterable) { case (dataSource, sequential) =>
-          val requests = sequential.map(_.map(_.request))
-          for {
-            completedRequests <- dataSource
-                                   .runAll(requests)
-                                   .map(_.toMutableMap)
-                                   .catchAllCause { cause =>
-                                     ZIO.succeed {
-                                       val exit = Exit.failCause(cause).asInstanceOf[Exit[Any, Any]]
-                                       val map  = new mutable.HashMap[Request[_, _], Exit[Any, Any]]()
-                                       map ++= requests.view.flatten.map(r => r.asInstanceOf[Request[Any, Any]] -> exit)
-                                     }
-                                   }
-            isCachingEnabled <- ZQuery.cachingEnabled.get
-            _ <-
-              ZIO.succeed {
-                val getRequest =
-                  if (isCachingEnabled)
-                    (br: BlockedRequest[Any]) => completedRequests.remove(br.request)
-                  else
-                    (br: BlockedRequest[Any]) => completedRequests.get(br.request)
+          val requests  = sequential.map(_.map(_.request))
+          val nRequests = sequential.foldLeft(0)(_ + _.size)
 
-                val iter0 = sequential.chunkIterator
-                var i0    = 0
-                while (iter0.hasNextAt(i0)) {
-                  val iter1 = iter0.nextAt(i0).chunkIterator
-                  var i1    = 0
-                  while (iter1.hasNextAt(i1)) {
-                    val br = iter1.nextAt(i1)
-                    br.result.unsafe.done(
-                      getRequest(br) match {
-                        case Some(exit) => exit.asInstanceOf[Exit[br.Failure, br.Success]]
-                        case None       => Exit.die(QueryFailure(dataSource, br.request))
-                      }
-                    )(Unsafe.unsafe)
-                    i1 += 1
-                  }
-                  i0 += 1
-                }
-              }
-            _ <- ZIO.when(completedRequests.nonEmpty && isCachingEnabled) {
-                   ZIO.fiberIdWith { fiberId =>
-                     val iter = completedRequests.iterator
-                     ZIO.whileLoop(iter.hasNext) {
-                       Promise.makeAs[Any, Any](fiberId).flatMap { promise =>
-                         val (request, response) = iter.next()
-                         promise.done(response) *> cache.put(request.asInstanceOf[Request[Any, Any]], promise)
-                       }
-                     }(_ => ())
-                   }
-                 }
-          } yield ()
+          dataSource
+            .runAll(requests)
+            .foldCause(
+              cause => {
+                val exit = Exit.failCause(cause).asInstanceOf[Exit[Any, Any]]
+                val map  = new mutable.HashMap[Request[_, _], Exit[Any, Any]]()
+                map.sizeHint(nRequests)
+                map ++= requests.view.flatten.map(r => r.asInstanceOf[Request[Any, Any]] -> exit)
+              },
+              _.toMutableMap
+            )
+            .flatMap { completedRequests =>
+              implicit val unsafe: Unsafe = Unsafe.unsafe
+
+              val completed = completePromises(dataSource, completedRequests, sequential, nRequests)
+              val leftovers = completedRequests.keySet.diff(completed)
+              ZIO.when(leftovers.nonEmpty)(cacheLeftovers(cache, completedRequests, leftovers))
+            }
         }
+
+      }
+    }
+
+  private def completePromises(
+    dataSource: DataSource[_, Any],
+    completedRequests: mutable.HashMap[Request[_, _], Exit[Any, Any]],
+    sequential: Chunk[Chunk[BlockedRequest[Any]]],
+    nRequests: Int
+  )(implicit unsafe: Unsafe): mutable.HashSet[Request[_, _]] = {
+    val completed = mutable.HashSet.empty[Request[_, _]]
+    completed.sizeHint(nRequests)
+
+    sequential.foreach {
+      _.foreach { br =>
+        val req = br.request
+        val res = completedRequests.get(req) match {
+          case Some(exit) =>
+            completed.add(req)
+            exit.asInstanceOf[Exit[br.Failure, br.Success]]
+          case None =>
+            Exit.die(QueryFailure(dataSource, req))
+        }
+        br.result.unsafe.done(res)
+      }
+    }
+    completed
+  }
+
+  private def cacheLeftovers(
+    cache: Cache,
+    completedRequests: mutable.HashMap[Request[_, _], Exit[Any, Any]],
+    leftovers: Iterable[Request[_, _]]
+  )(implicit unsafe: Unsafe, trace: Trace): UIO[Unit] =
+    ZIO.fiberIdWith { fiberId =>
+      val iter = leftovers.iterator
+      cache match {
+        case cache: Cache.Default =>
+          ZIO.succeed {
+            while (iter.hasNext) {
+              val request = iter.next()
+              val exit    = completedRequests(request)
+              val promise = Promise.unsafe.make[Any, Any](fiberId)
+              promise.unsafe.done(exit)
+              cache.putUnsafe(request.asInstanceOf[Request[Any, Any]], promise)
+            }
+          }
+        case cache =>
+          ZIO.whileLoop(iter.hasNext) {
+            Promise.makeAs[Any, Any](fiberId).flatMap { promise =>
+              val request = iter.next()
+              val exit    = completedRequests(request)
+              cache
+                .get(request)
+                .orElse(
+                  promise.done(exit) *>
+                    cache.put(request.asInstanceOf[Request[Any, Any]], promise)
+                )
+            }
+          }(_ => ())
       }
     }
 }

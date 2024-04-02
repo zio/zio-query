@@ -78,6 +78,7 @@ final class CompletedRequestMap private (private val map: HashMap[Any, Exit[Any,
 
   private[query] def toMutableMap: mutable.HashMap[Request[?, ?], Exit[Any, Any]] = {
     val map0 = new mutable.HashMap[Request[?, ?], Exit[Any, Any]]()
+    map0.sizeHint(map.size)
     map0 ++= map.asInstanceOf[HashMap[Request[?, ?], Exit[Any, Any]]]
   }
 

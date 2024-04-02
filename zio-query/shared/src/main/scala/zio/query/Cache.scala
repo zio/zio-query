@@ -101,10 +101,12 @@ object Cache {
     }
 
     def put[E, A](request: Request[E, A], result: Promise[E, A])(implicit trace: Trace): UIO[Unit] =
-      ZIO.succeed {
-        map.put(request, result)
-        ()
-      }
+      ZIO.succeed(putUnsafe(request, result))
+
+    def putUnsafe[E, A](request: Request[E, A], result: Promise[E, A]): Unit = {
+      map.put(request, result)
+      ()
+    }
 
     def remove[E, A](request: Request[E, A])(implicit trace: Trace): UIO[Unit] =
       ZIO.succeed {

@@ -6,8 +6,8 @@ import zio.{Chunk, ZIO}
 
 import java.util.concurrent.TimeUnit
 
-@Measurement(iterations = 3, time = 1, timeUnit = TimeUnit.SECONDS)
-@Warmup(iterations = 3, time = 1, timeUnit = TimeUnit.SECONDS)
+@Measurement(iterations = 5, time = 1, timeUnit = TimeUnit.SECONDS)
+@Warmup(iterations = 5, time = 1, timeUnit = TimeUnit.SECONDS)
 @Fork(2)
 @Threads(1)
 @State(JScope.Thread)
