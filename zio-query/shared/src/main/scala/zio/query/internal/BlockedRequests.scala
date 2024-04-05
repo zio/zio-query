@@ -115,7 +115,7 @@ private[query] sealed trait BlockedRequests[-R] { self =>
               ZIO.succeed {
                 val exit = Exit.failCause(cause).asInstanceOf[Exit[Any, Any]]
                 CompletedRequestMap.fromIterable(
-                  requests.view.flatten.map(r => r.asInstanceOf[Request[Any, Any]] -> exit)
+                  requests.flatten.map(r => r.asInstanceOf[Request[Any, Any]] -> exit)
                 )
               }
             }
