@@ -99,7 +99,6 @@ object CompletedRequestMap {
    */
   def fromIterable[E, A](iterable: Iterable[(Request[E, A], Exit[E, A])]): CompletedRequestMap = {
     val builder = HashMap.newBuilder[Any, Exit[Any, Any]]
-    builder.sizeHint(iterable.size)
     builder ++= iterable
     new CompletedRequestMap(builder.result())
   }
@@ -109,13 +108,10 @@ object CompletedRequestMap {
    */
   def fromIterableOption[E, A](iterable: Iterable[(Request[E, A], Exit[E, Option[A]])]): CompletedRequestMap = {
     val builder = HashMap.newBuilder[Any, Exit[Any, Any]]
-    builder.sizeHint(iterable.size)
-    iterable.foreach { case (request, result) =>
-      result match {
-        case Exit.Failure(e)       => builder += (request -> Exit.failCause(e))
-        case Exit.Success(Some(a)) => builder += (request -> Exit.succeed(a))
-        case Exit.Success(None)    => ()
-      }
+    iterable.foreach {
+      case (request, Exit.Failure(e))       => builder += (request -> Exit.failCause(e))
+      case (request, Exit.Success(Some(a))) => builder += (request -> Exit.succeed(a))
+      case (_, Exit.Success(None))          => ()
     }
     new CompletedRequestMap(builder.result())
   }
