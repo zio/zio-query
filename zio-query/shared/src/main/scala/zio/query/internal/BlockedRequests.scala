@@ -300,7 +300,7 @@ private[query] object BlockedRequests {
       cache match {
         case cache: Cache.Default =>
           ZIO.succeedUnsafe { implicit unsafe =>
-            map.foreachEntry { case (request, exit) =>
+            map.foreach { case (request, exit) =>
               val promise = Promise.unsafe.make[Any, Any](fiberId)
               promise.unsafe.done(exit)
               cache.putUnsafe(request.asInstanceOf[Request[Any, Any]], promise)
