@@ -86,14 +86,10 @@ object Cache {
       ev: A <:< Request[E, B],
       trace: Trace
     ): UIO[Either[Promise[E, B], Promise[E, B]]] =
-      ZIO.fiberId.map(lookupUnsafe(request, _)(Unsafe.unsafe, implicitly))
+      ZIO.fiberId.map(lookupUnsafe(request, _)(Unsafe.unsafe))
 
-    def lookupUnsafe[E, A, B](
-      request: A,
-      fiberId: FiberId
-    )(implicit
-      unsafe: Unsafe,
-      ev: A <:< Request[E, B]
+    def lookupUnsafe[E, A, B](request: Request[_, _], fiberId: FiberId)(implicit
+      unsafe: Unsafe
     ): Either[Promise[E, B], Promise[E, B]] = {
       val newPromise = Promise.unsafe.make[E, B](fiberId)
       val existing   = map.putIfAbsent(request, newPromise).asInstanceOf[Promise[E, B]]
@@ -101,18 +97,10 @@ object Cache {
     }
 
     def put[E, A](request: Request[E, A], result: Promise[E, A])(implicit trace: Trace): UIO[Unit] =
-      ZIO.succeed(putUnsafe(request, result))
-
-    def putUnsafe[E, A](request: Request[E, A], result: Promise[E, A]): Unit = {
-      map.put(request, result)
-      ()
-    }
+      ZIO.succeed(map.put(request, result))
 
     def remove[E, A](request: Request[E, A])(implicit trace: Trace): UIO[Unit] =
-      ZIO.succeed {
-        map.remove(request)
-        ()
-      }
+      ZIO.succeed(map.remove(request))
   }
 
   // TODO: Initialize the map with a sensible default value. Default is 16, which seems way too small for a cache

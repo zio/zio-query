@@ -120,9 +120,9 @@ private[query] sealed trait BlockedRequests[-R] { self =>
               }
             }
             .flatMap { completedRequests =>
-              ZQuery.cachingEnabled.getWith { cachingEnabled =>
+              ZQuery.cachingEnabled.getWith {
                 val completedRequestsM = completedRequests.toMutableMap
-                if (cachingEnabled) {
+                if (_) {
                   completePromises(dataSource, sequential) { req =>
                     // Pop the entry, and fallback to the immutable one if we already removed it
                     completedRequestsM.remove(req) orElse completedRequests.lookup(req)
@@ -296,29 +296,22 @@ private[query] object BlockedRequests {
     cache: Cache,
     map: mutable.HashMap[Request[_, _], Exit[Any, Any]]
   )(implicit trace: Trace): UIO[Unit] =
-    ZIO.fiberIdWith { fiberId =>
-      cache match {
-        case cache: Cache.Default =>
+    cache match {
+      case cache: Cache.Default =>
+        ZIO.fiberIdWith { fiberId =>
           ZIO.succeedUnsafe { implicit unsafe =>
-            map.foreach { case (request, exit) =>
-              val promise = Promise.unsafe.make[Any, Any](fiberId)
-              promise.unsafe.done(exit)
-              cache.putUnsafe(request.asInstanceOf[Request[Any, Any]], promise)
+            map.foreach { case (request: Request[Any, Any], exit) =>
+              cache
+                .lookupUnsafe(request, fiberId)
+                .merge
+                .unsafe
+                .done(exit)
             }
           }
-        case cache =>
-          val iter = map.iterator
-          ZIO.whileLoop(iter.hasNext) {
-            Promise.makeAs[Any, Any](fiberId).flatMap { promise =>
-              val (request, exit) = iter.next()
-              cache
-                .get(request)
-                .orElse(
-                  promise.done(exit) *>
-                    cache.put(request.asInstanceOf[Request[Any, Any]], promise)
-                )
-            }
-          }(_ => ())
-      }
+        }
+      case cache =>
+        ZIO.foreachDiscard(map) { case (request: Request[Any, Any], exit) =>
+          cache.lookup(request).flatMap(_.merge.done(exit))
+        }
     }
 }

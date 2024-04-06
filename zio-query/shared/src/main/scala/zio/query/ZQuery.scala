@@ -20,10 +20,9 @@ import zio._
 import zio.query.internal._
 import zio.stacktracer.TracingImplicits.disableAutoTrace
 
-import scala.collection.mutable.Builder
-import scala.reflect.ClassTag
+import java.util.concurrent.atomic.AtomicBoolean
 import scala.collection.compat.{BuildFrom => _, _}
-import scala.collection.mutable
+import scala.reflect.ClassTag
 
 /**
  * A `ZQuery[R, E, A]` is a purely functional description of an effectual query
@@ -1169,14 +1168,14 @@ object ZQuery {
     mode: Int // 0 = sequential, 1 = parallel, 2 = batched
   )(implicit bf: BuildFrom[Collection[A], B, Collection[B]], trace: Trace): Result[R, E, Collection[B]] = {
 
-    def addToArray(array: Array[AnyRef])(idxs: Chunk[RuntimeFlags], values: Chunk[B]): Unit =
+    def addToArray(array: Array[B])(idxs: Chunk[RuntimeFlags], values: Chunk[B]): Unit =
       if (idxs.nonEmpty) {
         var i       = 0
         val iter    = values.chunkIterator
         val idxIter = idxs.chunkIterator
         while (idxIter.hasNextAt(i)) {
           val idx   = idxIter.nextAt(i)
-          val value = iter.nextAt(i).asInstanceOf[AnyRef]
+          val value = iter.nextAt(i)
           array(idx) = value
           i += 1
         }
@@ -1223,7 +1222,7 @@ object ZQuery {
     val gets          = getBuilder.result()
     val getIndices    = getIndicesBuilder.result()
     val fails         = failBuilder.result()
-    val size          = index // Store in a val to avoid boxing of var when used in the Functions below
+    val size          = index // Store in a val to avoid boxing of var when used in the functions below
 
     if (gets.isEmpty && effects.isEmpty && fails.isEmpty)
       Result.done(bf.fromSpecific(as)(dones))
@@ -1231,10 +1230,10 @@ object ZQuery {
       val continue =
         if (effects.isEmpty) {
           val io = ZIO.collectAll(gets).map { gets =>
-            val array = Array.ofDim[AnyRef](size)
+            val array = Array.ofDim[B](size)(ClassTag.AnyRef.asInstanceOf[ClassTag[B]])
             addToArray(array)(getIndices, gets)
             addToArray(array)(doneIndices, dones)
-            bf.fromSpecific(as)(array.asInstanceOf[Array[B]])
+            bf.fromSpecific(as)(array)
           }
           Continue.get(io)
         } else {
@@ -1245,11 +1244,11 @@ object ZQuery {
           }
           val query = collect.mapZIO { effects =>
             ZIO.collectAll(gets).map { gets =>
-              val array = Array.ofDim[AnyRef](size)
+              val array = Array.ofDim[B](size)(ClassTag.AnyRef.asInstanceOf[ClassTag[B]])
               addToArray(array)(effectIndices, effects)
               addToArray(array)(getIndices, gets)
               addToArray(array)(doneIndices, dones)
-              bf.fromSpecific(as)(array.asInstanceOf[Array[B]])
+              bf.fromSpecific(as)(array)
             }
           }
           Continue.effect(query)
@@ -1337,26 +1336,28 @@ object ZQuery {
                 ZIO.succeed(
                   Result.blocked(
                     BlockedRequests.single(dataSource, BlockedRequest(request, promise)),
-                    Continue[R, E, A, B](promise)
+                    Continue(promise)
                   )
                 )
               case Right(promise) =>
                 promise.poll.flatMap {
-                  case None     => ZIO.succeed(Result.blocked(BlockedRequests.empty, Continue[R, E, A, B](promise)))
+                  case None     => ZIO.succeed(Result.blocked(BlockedRequests.empty, Continue(promise)))
                   case Some(io) => io.exit.map(Result.fromExit)
                 }
             }
             ZQuery.currentCache.getWith {
-              case cache: Cache.Default => foldPromise(cache.lookupUnsafe(request, fiberId)(Unsafe.unsafe, implicitly))
+              case cache: Cache.Default => foldPromise(cache.lookupUnsafe(request, fiberId)(Unsafe.unsafe))
               case cache                => cache.lookup(request).flatMap(foldPromise)
             }
-          } else
-            Promise.makeAs[E, B](fiberId).map { promise =>
+          } else {
+            ZIO.succeed {
+              val promise = Promise.unsafe.make[E, B](fiberId)(Unsafe.unsafe)
               Result.blocked(
                 BlockedRequests.single(dataSource, BlockedRequest(request, promise)),
-                Continue[R, E, A, B](promise)
+                Continue(promise)
               )
             }
+          }
         }
       }
     }
@@ -1528,23 +1529,17 @@ object ZQuery {
           query.step.raceWith[R, Nothing, Nothing, B1, Result[R, E, B1]](fiber.join)(
             (leftExit, rightFiber) =>
               leftExit.foldExitZIO(
-                cause => rightFiber.interrupt *> ZIO.succeed(Result.fail(cause)),
-                result =>
-                  result match {
-                    case Result.Blocked(blockedRequests, continue) =>
-                      continue match {
-                        case Continue.Effect(query) =>
-                          ZIO.succeed(Result.blocked(blockedRequests, Continue.effect(race(query, fiber))))
-                        case Continue.Get(io) =>
-                          ZIO.succeed(
-                            Result.blocked(blockedRequests, Continue.effect(race(ZQuery.fromZIONow(io), fiber)))
-                          )
-                      }
-                    case Result.Done(value) => rightFiber.interrupt *> ZIO.succeed(Result.done(value))
-                    case Result.Fail(cause) => rightFiber.interrupt *> ZIO.succeed(Result.fail(cause))
-                  }
+                cause => rightFiber.interrupt.as(Result.fail(cause)),
+                {
+                  case Result.Blocked(blockedRequests, Continue.Effect(query)) =>
+                    ZIO.succeed(Result.blocked(blockedRequests, Continue.effect(race(query, fiber))))
+                  case Result.Blocked(blockedRequests, Continue.Get(io)) =>
+                    ZIO.succeed(Result.blocked(blockedRequests, Continue.effect(race(ZQuery.fromZIONow(io), fiber))))
+                  case Result.Done(value) => rightFiber.interrupt.as(Result.done(value))
+                  case Result.Fail(cause) => rightFiber.interrupt.as(Result.fail(cause))
+                }
               ),
-            (rightExit, leftFiber) => leftFiber.interrupt *> ZIO.succeed(Result.fromExit(rightExit))
+            (rightExit, leftFiber) => leftFiber.interrupt.as(Result.fromExit(rightExit))
           )
         }
 
@@ -1628,39 +1623,38 @@ object ZQuery {
       ZQuery.unwrap {
         ZQuery.currentScope.getWith { scope =>
           ZIO.environmentWithZIO[R] { environment =>
-            Ref.make(true).flatMap { ref =>
-              ZIO.uninterruptible {
-                ZIO.suspendSucceed(acquire()).tap { a =>
-                  scope.addFinalizerExit {
-                    case Exit.Failure(cause) =>
-                      release(a, Exit.failCause(cause.stripFailures))
-                        .provideEnvironment(environment)
-                        .whenZIO(ref.getAndSet(false))
-                    case Exit.Success(_) =>
-                      ZIO.unit
-                  }
+            val ref = new AtomicBoolean(true)
+            ZIO.uninterruptible {
+              ZIO.suspendSucceed(acquire()).tap { a =>
+                scope.addFinalizerExit {
+                  case Exit.Failure(cause) =>
+                    release(a, Exit.failCause(cause.stripFailures))
+                      .provideEnvironment(environment)
+                      .when(ref.getAndSet(false))
+                  case Exit.Success(_) =>
+                    ZIO.unit
                 }
-              }.map { a =>
-                ZQuery
-                  .suspend(use(a))
-                  .foldCauseQuery(
-                    cause =>
-                      ZQuery.fromZIONow {
-                        ZIO
-                          .suspendSucceed(release(a, Exit.failCause(cause)))
-                          .whenZIO(ref.getAndSet(false))
-                          .mapErrorCause(cause ++ _) *>
-                          ZIO.refailCause(cause)
-                      },
-                    b =>
-                      ZQuery.fromZIONow {
-                        ZIO
-                          .suspendSucceed(release(a, Exit.succeed(b)))
-                          .whenZIO(ref.getAndSet(false))
-                          .as(b)
-                      }
-                  )
               }
+            }.map { a =>
+              ZQuery
+                .suspend(use(a))
+                .foldCauseQuery(
+                  cause =>
+                    ZQuery.fromZIONow {
+                      ZIO
+                        .suspendSucceed(release(a, Exit.failCause(cause)))
+                        .when(ref.getAndSet(false))
+                        .mapErrorCause(cause ++ _) *>
+                        ZIO.refailCause(cause)
+                    },
+                  b =>
+                    ZQuery.fromZIONow {
+                      ZIO
+                        .suspendSucceed(release(a, Exit.succeed(b)))
+                        .when(ref.getAndSet(false))
+                        .as(b)
+                    }
+                )
             }
           }
         }

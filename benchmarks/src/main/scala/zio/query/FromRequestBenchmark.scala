@@ -33,6 +33,13 @@ class FromRequestBenchmark {
   }
 
   @Benchmark
+  def fromRequestUncached(): Long = {
+    val reqs  = Chunk.fromIterable((0 until count).map(i => ZQuery.fromRequest(Req(i))(ds)))
+    val query = ZQuery.collectAllBatched(reqs).map(_.sum.toLong)
+    unsafeRun(query.uncached)
+  }
+
+  @Benchmark
   def fromRequestZipRight(): Long = {
     val reqs  = Chunk.fromIterable((0 until count).map(i => ZQuery.fromRequest(Req(i))(ds)))
     val query = ZQuery.collectAllBatched(reqs).map(_.sum.toLong)
