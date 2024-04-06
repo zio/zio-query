@@ -22,6 +22,8 @@ import zio.stacktracer.TracingImplicits.disableAutoTrace
 
 import scala.collection.mutable.Builder
 import scala.reflect.ClassTag
+import scala.collection.compat.{BuildFrom => _, _}
+import scala.collection.mutable
 
 /**
  * A `ZQuery[R, E, A]` is a purely functional description of an effectual query
@@ -1010,16 +1012,15 @@ object ZQuery {
   )(
     f: A => ZQuery[R, E, B]
   )(implicit bf: BuildFrom[Collection[A], B, Collection[B]], trace: Trace): ZQuery[R, E, Collection[B]] =
-    if (as.isEmpty) ZQuery.succeed(bf.newBuilder(as).result())
-    else {
-      val iterator                                         = as.iterator
-      var builder: ZQuery[R, E, Builder[B, Collection[B]]] = null
-      while (iterator.hasNext) {
-        val a = iterator.next()
-        if (builder eq null) builder = f(a).map(bf.newBuilder(as) += _)
-        else builder = builder.zipWith(f(a))(_ += _)
-      }
-      builder.map(_.result())
+    as.sizeCompare(1) match {
+      case -1 => ZQuery.succeed(bf.newBuilder(as).result())
+      case 0  => f(as.head).map(bf.newBuilder(as) += _).map(_.result())
+      case _ =>
+        ZQuery {
+          ZIO
+            .foreach[R, Nothing, A, Result[R, E, B], Iterable](as)(f(_).step)
+            .map(collectResults(as, _, mode = 0))
+        }
     }
 
   /**
@@ -1089,112 +1090,16 @@ object ZQuery {
   )(
     f: A => ZQuery[R, E, B]
   )(implicit bf: BuildFrom[Collection[A], B, Collection[B]], trace: Trace): ZQuery[R, E, Collection[B]] =
-    if (as.isEmpty) ZQuery.succeed(bf.newBuilder(as).result())
-    else
-      ZQuery(
-        ZIO.suspendSucceed {
-          var blockedRequests: BlockedRequests[R]          = BlockedRequests.empty
-          val doneBuilder: Builder[B, Collection[B]]       = bf.newBuilder(as)
-          val doneIndicesBuilder: ChunkBuilder[Int]        = new ChunkBuilder.Int
-          val effectBuilder: ChunkBuilder[ZQuery[R, E, B]] = ChunkBuilder.make[ZQuery[R, E, B]]()
-          val effectIndicesBuilder: ChunkBuilder[Int]      = new ChunkBuilder.Int
-          val failBuilder: ChunkBuilder[Cause[E]]          = ChunkBuilder.make[Cause[E]]()
-          val getBuilder: ChunkBuilder[IO[E, B]]           = ChunkBuilder.make[IO[E, B]]()
-          val getIndicesBuilder: ChunkBuilder[Int]         = new ChunkBuilder.Int
-          var index: Int                                   = 0
-          val iterator: Iterator[A]                        = as.iterator
-
-          ZIO.whileLoop {
-            iterator.hasNext
-          } {
-            f(iterator.next()).step
-          } {
-            case Result.Blocked(blockedRequest, Continue.Effect(query)) =>
-              blockedRequests = blockedRequests && blockedRequest
-              effectBuilder += query
-              effectIndicesBuilder += index
-              index += 1
-            case Result.Blocked(blockedRequest, Continue.Get(io)) =>
-              blockedRequests = blockedRequests && blockedRequest
-              getBuilder += io
-              getIndicesBuilder += index
-              index += 1
-            case Result.Done(b) =>
-              doneBuilder += b
-              doneIndicesBuilder += index
-              index += 1
-            case Result.Fail(e) =>
-              failBuilder += e
-              index += 1
-          }.as {
-            val dones   = doneBuilder.result()
-            val effects = effectBuilder.result()
-            val fails   = failBuilder.result()
-            val gets    = getBuilder.result()
-            if (gets.isEmpty && effects.isEmpty && fails.isEmpty) {
-              Result.done(bf.fromSpecific(as)(dones))
-            } else if (fails.isEmpty) {
-              val continue = if (effects.isEmpty) {
-                val getIndices  = getIndicesBuilder.result()
-                val doneIndices = doneIndicesBuilder.result()
-                val io = ZIO.collectAll(gets).map { gets =>
-                  val array              = Array.ofDim[AnyRef](index)
-                  val getsIterator       = gets.iterator
-                  val getIndicesIterator = getIndices.iterator
-                  while (getsIterator.hasNext) {
-                    val get   = getsIterator.next()
-                    val index = getIndicesIterator.next()
-                    array(index) = get.asInstanceOf[AnyRef]
-                  }
-                  val donesIterator       = dones.iterator
-                  val doneIndicesIterator = doneIndices.iterator
-                  while (donesIterator.hasNext) {
-                    val done  = donesIterator.next()
-                    val index = doneIndicesIterator.next()
-                    array(index) = done.asInstanceOf[AnyRef]
-                  }
-                  bf.fromSpecific(as)(array.asInstanceOf[Array[B]])
-                }
-                Continue.get(io)
-              } else {
-                val effectIndices = effectIndicesBuilder.result()
-                val getIndices    = getIndicesBuilder.result()
-                val doneIndices   = doneIndicesBuilder.result()
-                val query = ZQuery.collectAllBatched(effects).flatMap { effects =>
-                  ZQuery.fromZIONow(ZIO.collectAll(gets).map { gets =>
-                    val array                 = Array.ofDim[AnyRef](index)
-                    val effectsIterator       = effects.iterator
-                    val effectIndicesIterator = effectIndices.iterator
-                    while (effectsIterator.hasNext) {
-                      val effect = effectsIterator.next()
-                      val index  = effectIndicesIterator.next()
-                      array(index) = effect.asInstanceOf[AnyRef]
-                    }
-                    val getsIterator       = gets.iterator
-                    val getIndicesIterator = getIndices.iterator
-                    while (getsIterator.hasNext) {
-                      val get   = getsIterator.next()
-                      val index = getIndicesIterator.next()
-                      array(index) = get.asInstanceOf[AnyRef]
-                    }
-                    val donesIterator       = dones.iterator
-                    val doneIndicesIterator = doneIndices.iterator
-                    while (donesIterator.hasNext) {
-                      val done  = donesIterator.next()
-                      val index = doneIndicesIterator.next()
-                      array(index) = done.asInstanceOf[AnyRef]
-                    }
-                    bf.fromSpecific(as)(array.asInstanceOf[Array[B]])
-                  })
-                }
-                Continue.effect(query)
-              }
-              Result.blocked(blockedRequests, continue)
-            } else
-              Result.fail(fails.foldLeft[Cause[E]](Cause.empty)(_ && _))
-          }
+    as.sizeCompare(1) match {
+      case -1 => ZQuery.succeed(bf.newBuilder(as).result())
+      case 0  => f(as.head).map(bf.newBuilder(as) += _).map(_.result())
+      case _ =>
+        ZQuery {
+          ZIO
+            .foreach[R, Nothing, A, Result[R, E, B], Iterable](as)(f(_).step)
+            .map(collectResults(as, _, mode = 2))
         }
-      )
+    }
 
   final def foreachBatched[R, E, A, B](as: Set[A])(fn: A => ZQuery[R, E, B])(implicit
     trace: Trace
@@ -1247,25 +1152,112 @@ object ZQuery {
   )(
     f: A => ZQuery[R, E, B]
   )(implicit bf: BuildFrom[Collection[A], B, Collection[B]], trace: Trace): ZQuery[R, E, Collection[B]] =
-    ZQuery.suspend {
-      if (as.isEmpty)
-        ZQuery.succeed(bf.newBuilder(as).result())
-      else if (isSingleElementIterable(as))
-        f(as.head).map(bf.newBuilder(as) += _).map(_.result())
-      else
-        ZQuery(
+    as.sizeCompare(1) match {
+      case -1 => ZQuery.succeed(bf.newBuilder(as).result())
+      case 0  => f(as.head).map(bf.newBuilder(as) += _).map(_.result())
+      case _ =>
+        ZQuery {
           ZIO
             .foreachPar[R, Nothing, A, Result[R, E, B], Iterable](as)(f(_).step)
-            .map(Result.collectAllPar(_).map(bf.fromSpecific(as)))
-        )
+            .map(collectResults(as, _, mode = 1))
+        }
     }
 
-  private def isSingleElementIterable(iterable: Iterable[?]): Boolean =
-    iterable match {
-      case _ :: Nil   => true
-      case _: List[?] => false
-      case _          => iterable.size == 1
+  private def collectResults[R, E, A, B, Collection[+Element] <: Iterable[Element]](
+    as: Collection[A],
+    results: Iterable[Result[R, E, B]],
+    mode: Int // 0 = sequential, 1 = parallel, 2 = batched
+  )(implicit bf: BuildFrom[Collection[A], B, Collection[B]], trace: Trace): Result[R, E, Collection[B]] = {
+
+    def addToArray(array: Array[AnyRef])(idxs: Chunk[RuntimeFlags], values: Chunk[B]): Unit =
+      if (idxs.nonEmpty) {
+        var i       = 0
+        val iter    = values.chunkIterator
+        val idxIter = idxs.chunkIterator
+        while (idxIter.hasNextAt(i)) {
+          val idx   = idxIter.nextAt(i)
+          val value = iter.nextAt(i).asInstanceOf[AnyRef]
+          array(idx) = value
+          i += 1
+        }
+      }
+
+    var blockedRequests: BlockedRequests[R]          = BlockedRequests.empty
+    val doneBuilder: ChunkBuilder[B]                 = ChunkBuilder.make[B]()
+    val doneIndicesBuilder: ChunkBuilder[Int]        = new ChunkBuilder.Int
+    val effectBuilder: ChunkBuilder[ZQuery[R, E, B]] = ChunkBuilder.make[ZQuery[R, E, B]]()
+    val effectIndicesBuilder: ChunkBuilder[Int]      = new ChunkBuilder.Int
+    val failBuilder: ChunkBuilder[Cause[E]]          = ChunkBuilder.make[Cause[E]]()
+    val getBuilder: ChunkBuilder[IO[E, B]]           = ChunkBuilder.make[IO[E, B]]()
+    val getIndicesBuilder: ChunkBuilder[Int]         = new ChunkBuilder.Int
+    var index: Int                                   = 0
+    val iter                                         = results.iterator
+
+    while (iter.hasNext) {
+      iter.next() match {
+        case Result.Blocked(blockedRequest, continue) =>
+          blockedRequests = if (mode == 0) blockedRequests ++ blockedRequest else blockedRequests && blockedRequest
+          continue match {
+            case Continue.Effect(query) =>
+              effectBuilder.addOne(query)
+              effectIndicesBuilder.addOne(index)
+            case Continue.Get(io) =>
+              getBuilder.addOne(io)
+              getIndicesBuilder.addOne(index)
+          }
+          index += 1
+        case Result.Done(b) =>
+          doneBuilder.addOne(b)
+          doneIndicesBuilder.addOne(index)
+          index += 1
+        case Result.Fail(e) =>
+          failBuilder.addOne(e)
+          index += 1
+      }
     }
+
+    val dones         = doneBuilder.result()
+    val doneIndices   = doneIndicesBuilder.result()
+    val effects       = effectBuilder.result()
+    val effectIndices = effectIndicesBuilder.result()
+    val gets          = getBuilder.result()
+    val getIndices    = getIndicesBuilder.result()
+    val fails         = failBuilder.result()
+    val size          = index // Store in a val to avoid boxing of var when used in the Functions below
+
+    if (gets.isEmpty && effects.isEmpty && fails.isEmpty)
+      Result.done(bf.fromSpecific(as)(dones))
+    else if (fails.isEmpty) {
+      val continue =
+        if (effects.isEmpty) {
+          val io = ZIO.collectAll(gets).map { gets =>
+            val array = Array.ofDim[AnyRef](size)
+            addToArray(array)(getIndices, gets)
+            addToArray(array)(doneIndices, dones)
+            bf.fromSpecific(as)(array.asInstanceOf[Array[B]])
+          }
+          Continue.get(io)
+        } else {
+          val collect = mode match {
+            case 0 => ZQuery.collectAll(effects)
+            case 1 => ZQuery.collectAllPar(effects)
+            case 2 => ZQuery.collectAllBatched(effects)
+          }
+          val query = collect.mapZIO { effects =>
+            ZIO.collectAll(gets).map { gets =>
+              val array = Array.ofDim[AnyRef](size)
+              addToArray(array)(effectIndices, effects)
+              addToArray(array)(getIndices, gets)
+              addToArray(array)(doneIndices, dones)
+              bf.fromSpecific(as)(array.asInstanceOf[Array[B]])
+            }
+          }
+          Continue.effect(query)
+        }
+      Result.blocked(blockedRequests, continue)
+    } else
+      Result.fail(fails.foldLeft[Cause[E]](Cause.empty)(_ && _))
+  }
 
   /**
    * Performs a query for each element in a Set, collecting the results into a
@@ -1595,8 +1587,8 @@ object ZQuery {
     val cs = ChunkBuilder.make[C]()
     as.foreach { a =>
       f(a) match {
-        case Left(b)  => bs += b
-        case Right(c) => cs += c
+        case Left(b)  => bs addOne b
+        case Right(c) => cs addOne c
       }
     }
     (bs.result(), cs.result())

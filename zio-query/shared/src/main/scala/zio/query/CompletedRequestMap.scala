@@ -21,6 +21,7 @@ import zio.stacktracer.TracingImplicits.disableAutoTrace
 
 import scala.collection.immutable.HashMap
 import scala.collection.mutable
+import scala.collection.compat._
 
 /**
  * A `CompletedRequestMap` is a universally quantified mapping from requests of
@@ -76,11 +77,8 @@ final class CompletedRequestMap private (private val map: HashMap[Any, Exit[Any,
   def isEmpty: Boolean =
     map.isEmpty
 
-  private[query] def toMutableMap: mutable.HashMap[Request[?, ?], Exit[Any, Any]] = {
-    val map0 = new mutable.HashMap[Request[?, ?], Exit[Any, Any]]()
-    map0.sizeHint(map.size)
-    map0 ++= map.asInstanceOf[HashMap[Request[?, ?], Exit[Any, Any]]]
-  }
+  private[query] def toMutableMap: mutable.HashMap[Request[?, ?], Exit[Any, Any]] =
+    mutable.HashMap.from(map.asInstanceOf[HashMap[Request[?, ?], Exit[Any, Any]]])
 
   override def toString: String =
     s"CompletedRequestMap(${map.mkString(", ")})"
@@ -97,11 +95,8 @@ object CompletedRequestMap {
   /**
    * Constructs a completed requests map from the specified results.
    */
-  def fromIterable[E, A](iterable: Iterable[(Request[E, A], Exit[E, A])]): CompletedRequestMap = {
-    val builder = HashMap.newBuilder[Any, Exit[Any, Any]]
-    builder ++= iterable
-    new CompletedRequestMap(builder.result())
-  }
+  def fromIterable[E, A](iterable: Iterable[(Request[E, A], Exit[E, A])]): CompletedRequestMap =
+    new CompletedRequestMap(HashMap.from(iterable))
 
   /**
    * Constructs a completed requests map from the specified optional results.

@@ -170,42 +170,6 @@ private[query] object Continue {
     Continue.get(promise.await)
 
   /**
-   * Collects a collection of continuation into a continuation returning a
-   * collection of their results, in parallel.
-   */
-  def collectAllPar[R, E, A, Collection[+Element] <: Iterable[Element]](
-    continues: Collection[Continue[R, E, A]]
-  )(implicit
-    bf: BuildFrom[Collection[Continue[R, E, A]], A, Collection[A]],
-    trace: Trace
-  ): Continue[R, E, Collection[A]] =
-    continues.zipWithIndex
-      .foldLeft[(Chunk[(ZQuery[R, E, A], Int)], Chunk[(IO[E, A], Int)])]((Chunk.empty, Chunk.empty)) {
-        case ((queries, ios), (continue, index)) =>
-          continue match {
-            case Effect(query) => (queries :+ ((query, index)), ios)
-            case Get(io)       => (queries, ios :+ ((io, index)))
-          }
-      } match {
-      case (Chunk(), ios) =>
-        get(ZIO.collectAll(ios.map(_._1)).map(bf.fromSpecific(continues)))
-      case (queries, ios) =>
-        val query = ZQuery.collectAllPar(queries.map(_._1)).flatMap { as =>
-          val array = Array.ofDim[AnyRef](continues.size)
-          as.zip(queries.map(_._2)).foreach { case (a, i) =>
-            array(i) = a.asInstanceOf[AnyRef]
-          }
-          ZQuery.fromZIONow(ZIO.collectAll(ios.map(_._1))).map { as =>
-            as.zip(ios.map(_._2)).foreach { case (a, i) =>
-              array(i) = a.asInstanceOf[AnyRef]
-            }
-            bf.fromSpecific(continues)(array.asInstanceOf[Array[A]])
-          }
-        }
-        effect(query)
-    }
-
-  /**
    * Constructs a continuation that may perform arbitrary effects.
    */
   def effect[R, E, A](query: ZQuery[R, E, A]): Continue[R, E, A] =
