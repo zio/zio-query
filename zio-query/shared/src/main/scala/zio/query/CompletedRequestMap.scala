@@ -16,7 +16,7 @@
 
 package zio.query
 
-import zio.Exit
+import zio.{Cause, Chunk, Exit}
 import zio.stacktracer.TracingImplicits.disableAutoTrace
 
 import scala.collection.compat._
@@ -32,10 +32,30 @@ import scala.collection.mutable
  * types for different requests while guaranteeing that results will be of the
  * type requested.
  */
-final class CompletedRequestMap private (private val map: HashMap[Any, Exit[Any, Any]]) { self =>
+final class CompletedRequestMap private (private val map: collection.Map[Any, Exit[Any, Any]]) { self =>
 
   def ++(that: CompletedRequestMap): CompletedRequestMap =
-    new CompletedRequestMap(self.map ++ that.map)
+    self.map match {
+      case _: mutable.HashMap[_, _] =>
+        val builder = HashMap.newBuilder[Any, Exit[Any, Any]]
+        builder ++= self.map
+        builder ++= that.map
+        new CompletedRequestMap(builder.result())
+      case _ =>
+        new CompletedRequestMap(self.map ++ that.map)
+    }
+
+  /**
+   * If the underlying map is a mutable map, this method will add all the
+   * elements to the existing map, otherwise it will concat them immutably
+   */
+  private[query] def addAllUnsafe(that: CompletedRequestMap): CompletedRequestMap =
+    self.map match {
+      case map: mutable.HashMap[Any, Exit[Any, Any]] =>
+        map.addAll(that.map)
+        self
+      case _ => self ++ that
+    }
 
   /**
    * Returns whether a result exists for the specified request.
@@ -47,7 +67,7 @@ final class CompletedRequestMap private (private val map: HashMap[Any, Exit[Any,
    * Appends the specified result to the completed requests map.
    */
   def insert[E, A](request: Request[E, A], result: Exit[E, A]): CompletedRequestMap =
-    new CompletedRequestMap(self.map + (request -> result))
+    new CompletedRequestMap(self.map.toMap + (request -> result))
 
   /**
    * Appends the specified optional result to the completed request map.
@@ -78,7 +98,7 @@ final class CompletedRequestMap private (private val map: HashMap[Any, Exit[Any,
     map.isEmpty
 
   private[query] def toMutableMap: mutable.HashMap[Request[?, ?], Exit[Any, Any]] =
-    mutable.HashMap.from(map.asInstanceOf[HashMap[Request[?, ?], Exit[Any, Any]]])
+    mutable.HashMap.from(map.asInstanceOf[collection.Map[Request[?, ?], Exit[Any, Any]]])
 
   override def toString: String =
     s"CompletedRequestMap(${map.mkString(", ")})"
@@ -86,28 +106,80 @@ final class CompletedRequestMap private (private val map: HashMap[Any, Exit[Any,
 
 object CompletedRequestMap {
 
-  /**
-   * An empty completed requests map.
-   */
   val empty: CompletedRequestMap =
-    new CompletedRequestMap(HashMap.empty)
+    CompletedRequestMap.fromMutableMap(mutable.HashMap.empty)
 
   /**
    * Constructs a completed requests map from the specified results.
    */
   def fromIterable[E, A](iterable: Iterable[(Request[E, A], Exit[E, A])]): CompletedRequestMap =
-    new CompletedRequestMap(HashMap.from(iterable))
+    CompletedRequestMap.fromMutableMap(mutable.HashMap.from(iterable))
+
+  /**
+   * Constructs a completed requests map an iterable of requests and a function
+   * that maps each request to a result
+   */
+  def fromIterableWith[E, A, B](
+    iterable: Iterable[A]
+  )(f: A => Exit[E, B])(implicit ev: A <:< Request[E, B]): CompletedRequestMap = {
+    val map = newMap(iterable.size)
+    iterable.foreach(request => map.update(request, f(request)))
+    CompletedRequestMap.fromMutableMap(map)
+  }
+
+  def failAll[E, A](requests: Chunk[Request[E, A]], cause: Cause[E]): CompletedRequestMap = {
+    val map  = newMap(requests.size)
+    val exit = Exit.failCause(cause)
+    requests.foreach(request => map.update(request, exit))
+    CompletedRequestMap.fromMutableMap(map)
+  }
 
   /**
    * Constructs a completed requests map from the specified optional results.
    */
   def fromIterableOption[E, A](iterable: Iterable[(Request[E, A], Exit[E, Option[A]])]): CompletedRequestMap = {
-    val builder = HashMap.newBuilder[Any, Exit[Any, Any]]
+    val map = newMap(iterable.size)
     iterable.foreach {
-      case (request, Exit.Failure(e))       => builder += (request -> Exit.failCause(e))
-      case (request, Exit.Success(Some(a))) => builder += (request -> Exit.succeed(a))
+      case (request, Exit.Failure(e))       => map.update(request, Exit.failCause(e))
+      case (request, Exit.Success(Some(a))) => map.update(request, Exit.succeed(a))
       case (_, Exit.Success(None))          => ()
     }
-    new CompletedRequestMap(builder.result())
+    CompletedRequestMap.fromMutableMap(map)
   }
+
+  private[query] object unsafe {
+
+    def fromSuccesses[E, A, B](requests: Chunk[Request[E, B]], responses: Chunk[B]): CompletedRequestMap =
+      fromWith(requests, responses)(identity, Exit.succeed)
+
+    def fromExits[E, A1, B](requests: Chunk[Request[E, B]], responses: Chunk[Exit[E, B]]): CompletedRequestMap =
+      fromWith(requests, responses)(identity, identity)
+
+    def fromWith[E, A1, A2, B](requests: Chunk[A1], responses: Chunk[A2])(
+      f1: A1 => Request[E, B],
+      f2: A2 => Exit[E, B]
+    ): CompletedRequestMap = {
+      val size  = requests.size min responses.size
+      val map   = newMap(size)
+      val reqs  = requests.chunkIterator
+      val resps = responses.chunkIterator
+      var i     = 0
+      while (i < size) {
+        map.update(f1(reqs.nextAt(i)), f2(resps.nextAt(i)))
+        i += 1
+      }
+      CompletedRequestMap.fromMutableMap(map)
+    }
+
+  }
+
+  private def fromMutableMap(map: mutable.HashMap[Request[?, ?], Exit[Any, Any]]): CompletedRequestMap =
+    new CompletedRequestMap(map.asInstanceOf[mutable.HashMap[Any, Exit[Any, Any]]])
+
+  private def newMap(size: Int) = {
+    val map = mutable.HashMap.empty[Request[?, ?], Exit[Any, Any]]
+    map.sizeHint(size)
+    map
+  }
+
 }

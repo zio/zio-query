@@ -70,7 +70,7 @@ trait DataSource[-R, -A] { self =>
         if (n < 1)
           ZIO.die(new IllegalArgumentException("batchN: n must be at least 1"))
         else
-          self.runAll(requests.foldLeft[Chunk[Chunk[A]]](Chunk.empty)(_ ++ _.grouped(n)))
+          self.runAll(requests.foldLeft(Chunk.newBuilder[Chunk[A]])(_ addAll _.grouped(n)).result())
     }
 
   /**
@@ -111,9 +111,9 @@ trait DataSource[-R, -A] { self =>
         ZIO
           .foreach(requests) { requests =>
             val (as, bs) = requests.partitionMap(f.value)
-            self.runAll(Chunk(as)).zipWithPar(that.runAll(Chunk(bs)))(_ ++ _)
+            self.runAll(Chunk(as)) <&> that.runAll(Chunk(bs))
           }
-          .map(_.foldLeft(CompletedRequestMap.empty)(_ ++ _))
+          .map(_.foldLeft(CompletedRequestMap.empty) { case (acc, (l, r)) => acc.addAllUnsafe(l).addAllUnsafe(r) })
 
     }
 
@@ -175,7 +175,7 @@ object DataSource {
         else {
           val newRequests = requests.filterNot(completedRequestMap.contains)
           if (newRequests.isEmpty) ZIO.succeed(completedRequestMap)
-          else run(newRequests).map(completedRequestMap ++ _)
+          else run(newRequests).map(completedRequestMap.addAllUnsafe)
         }
       }
   }
@@ -203,7 +203,7 @@ object DataSource {
     new DataSource.Batched[Any, A] {
       val identifier: String = name
       def run(requests: Chunk[A])(implicit trace: Trace): ZIO[Any, Nothing, CompletedRequestMap] =
-        ZIO.succeed(CompletedRequestMap.fromIterable(requests.map(a => (ev(a), Exit.succeed(f(a))))))
+        ZIO.succeed(CompletedRequestMap.fromIterableWith(requests)(a => Exit.succeed(f(a))))
     }
 
   /**
@@ -278,11 +278,13 @@ object DataSource {
       def run(requests: Chunk[A])(implicit trace: Trace): ZIO[R, Nothing, CompletedRequestMap] =
         f(requests)
           .foldCause(
-            e => requests.map(a => (ev(a), Exit.failCause(e))),
-            bs => bs.map(b => (g(b), Exit.succeed(b)))
+            e => CompletedRequestMap.failAll(ev.liftCo(requests), e),
+            bs => CompletedRequestMap.unsafe.fromWith(bs, bs)(g(_), Exit.succeed)
           )
-          .map(CompletedRequestMap.fromIterable)
+
     }
+
+  Chunk.apply()
 
   /**
    * Constructs a data source from an effectual function that takes a list of
@@ -298,10 +300,9 @@ object DataSource {
       def run(requests: Chunk[A])(implicit trace: Trace): ZIO[R, Nothing, CompletedRequestMap] =
         f(requests)
           .foldCause(
-            e => requests.map(a => (ev(a), Exit.failCause(e))),
-            bs => requests.zipWith(bs)((a, b) => (ev(a), Exit.succeed(b)))
+            e => CompletedRequestMap.failAll(ev.liftCo(requests), e),
+            CompletedRequestMap.unsafe.fromSuccesses(ev.liftCo(requests), _)
           )
-          .map(CompletedRequestMap.fromIterable)
     }
 
   /**
@@ -314,8 +315,8 @@ object DataSource {
       val identifier: String = name
       def run(requests: Chunk[A])(implicit trace: Trace): ZIO[R, Nothing, CompletedRequestMap] =
         ZIO
-          .foreachPar(requests)(a => f(a).exit.map((ev(a), _)))
-          .map(CompletedRequestMap.fromIterable)
+          .foreachPar(requests)(a => f(a).exit)
+          .map(CompletedRequestMap.unsafe.fromExits(ev.liftCo(requests), _))
     }
 
   /**
