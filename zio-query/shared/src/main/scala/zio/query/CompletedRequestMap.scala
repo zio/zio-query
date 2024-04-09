@@ -20,8 +20,7 @@ import zio.{Cause, Chunk, Exit}
 import zio.stacktracer.TracingImplicits.disableAutoTrace
 
 import scala.collection.compat._
-import scala.collection.immutable.HashMap
-import scala.collection.mutable
+import scala.collection.{mutable, immutable}
 
 /**
  * A `CompletedRequestMap` is a universally quantified mapping from requests of
@@ -37,7 +36,7 @@ final class CompletedRequestMap private (private val map: collection.Map[Any, Ex
   def ++(that: CompletedRequestMap): CompletedRequestMap =
     self.map match {
       case _: mutable.HashMap[_, _] =>
-        val builder = HashMap.newBuilder[Any, Exit[Any, Any]]
+        val builder = immutable.HashMap.newBuilder[Any, Exit[Any, Any]]
         builder ++= self.map
         builder ++= that.map
         new CompletedRequestMap(builder.result())
@@ -50,12 +49,12 @@ final class CompletedRequestMap private (private val map: collection.Map[Any, Ex
    * elements to the existing map, otherwise it will concat them immutably
    */
   private[query] def addAllUnsafe(that: CompletedRequestMap): CompletedRequestMap =
-    self.map match {
-      case map: mutable.HashMap[Any, Exit[Any, Any]] =>
-        map.addAll(that.map)
-        self
-      case _ => self ++ that
-    }
+    if (that.isEmpty) self
+    else
+      self.map match {
+        case map: mutable.HashMap[Any, Exit[Any, Any]] => map ++= that.map; self
+        case _                                         => self ++ that
+      }
 
   /**
    * Returns whether a result exists for the specified request.
@@ -107,7 +106,7 @@ final class CompletedRequestMap private (private val map: collection.Map[Any, Ex
 object CompletedRequestMap {
 
   val empty: CompletedRequestMap =
-    CompletedRequestMap.fromMutableMap(mutable.HashMap.empty)
+    new CompletedRequestMap(immutable.HashMap.empty)
 
   /**
    * Constructs a completed requests map from the specified results.
@@ -148,6 +147,9 @@ object CompletedRequestMap {
   }
 
   private[query] object unsafe {
+
+    def empty(size: Int): CompletedRequestMap =
+      CompletedRequestMap.fromMutableMap(newMap(size))
 
     def fromSuccesses[E, A, B](requests: Chunk[Request[E, B]], responses: Chunk[B]): CompletedRequestMap =
       fromWith(requests, responses)(identity, Exit.succeed)

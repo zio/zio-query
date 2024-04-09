@@ -111,10 +111,13 @@ trait DataSource[-R, -A] { self =>
         ZIO
           .foreach(requests) { requests =>
             val (as, bs) = requests.partitionMap(f.value)
-            self.runAll(Chunk(as)) <&> that.runAll(Chunk(bs))
+            self.runAll(Chunk.single(as)) <&> that.runAll(Chunk.single(bs))
           }
-          .map(_.foldLeft(CompletedRequestMap.empty) { case (acc, (l, r)) => acc.addAllUnsafe(l).addAllUnsafe(r) })
-
+          .map {
+            val size = requests.foldLeft(0)(_ + _.size)
+            val map  = CompletedRequestMap.unsafe.empty(size)
+            _.foldLeft(map) { case (acc, (l, r)) => acc.addAllUnsafe(l).addAllUnsafe(r) }
+          }
     }
 
   override final def equals(that: Any): Boolean =
@@ -169,15 +172,21 @@ object DataSource {
    */
   trait Batched[-R, -A] extends DataSource[R, A] {
     def run(requests: Chunk[A])(implicit trace: Trace): ZIO[R, Nothing, CompletedRequestMap]
+
     final def runAll(requests: Chunk[Chunk[A]])(implicit trace: Trace): ZIO[R, Nothing, CompletedRequestMap] =
-      ZIO.foldLeft(requests)(CompletedRequestMap.empty) { case (completedRequestMap, requests) =>
-        if (completedRequestMap.isEmpty && requests.nonEmpty) run(requests)
-        else {
-          val newRequests = requests.filterNot(completedRequestMap.contains)
-          if (newRequests.isEmpty) ZIO.succeed(completedRequestMap)
-          else run(newRequests).map(completedRequestMap.addAllUnsafe)
-        }
+      requests.size match {
+        case 0 => ZIO.succeed(CompletedRequestMap.empty)
+        case 1 =>
+          val reqs0 = requests.head
+          if (reqs0.nonEmpty) run(reqs0) else ZIO.succeed(CompletedRequestMap.empty)
+        case _ =>
+          val nRequests = requests.foldLeft(0)(_ + _.size)
+          ZIO.foldLeft(requests)(CompletedRequestMap.unsafe.empty(nRequests)) { case (crm, requests) =>
+            val newRequests = if (crm.isEmpty) requests else requests.filterNot(crm.contains)
+            if (newRequests.nonEmpty) run(newRequests).map(crm.addAllUnsafe) else ZIO.succeed(crm)
+          }
       }
+
   }
 
   object Batched {
@@ -284,8 +293,6 @@ object DataSource {
 
     }
 
-  Chunk.apply()
-
   /**
    * Constructs a data source from an effectual function that takes a list of
    * requests and returns a list of results of the same size. Each item in the
@@ -363,4 +370,9 @@ object DataSource {
       def runAll(requests: Chunk[Chunk[Any]])(implicit trace: Trace): ZIO[Any, Nothing, CompletedRequestMap] =
         ZIO.never
     }
+
+  // `liftCo` doesn't exist in Scala 2.12, so we need to add it as syntax
+  private implicit class LiftCoSyntax[E, A, B](private val ev: A <:< Request[E, B]) extends AnyVal {
+    def liftCo(in: Chunk[A]): Chunk[Request[E, B]] = in.asInstanceOf[Chunk[Request[E, B]]]
+  }
 }
