@@ -34,15 +34,7 @@ import scala.collection.{immutable, mutable}
 final class CompletedRequestMap private (private val map: collection.Map[Any, Exit[Any, Any]]) { self =>
 
   def ++(that: CompletedRequestMap): CompletedRequestMap =
-    self.map match {
-      case _: mutable.HashMap[_, _] =>
-        val builder = immutable.HashMap.newBuilder[Any, Exit[Any, Any]]
-        builder ++= self.map
-        builder ++= that.map
-        new CompletedRequestMap(builder.result())
-      case _ =>
-        new CompletedRequestMap(self.map ++ that.map)
-    }
+    new CompletedRequestMap(immutable.HashMap.from(self.map) ++ that.map)
 
   /**
    * If the underlying map is a mutable map, this method will add all the
@@ -66,7 +58,7 @@ final class CompletedRequestMap private (private val map: collection.Map[Any, Ex
    * Appends the specified result to the completed requests map.
    */
   def insert[E, A](request: Request[E, A], result: Exit[E, A]): CompletedRequestMap =
-    new CompletedRequestMap(self.map.toMap + (request -> result))
+    new CompletedRequestMap(immutable.HashMap.from(self.map).updated(request, result))
 
   /**
    * Appends the specified optional result to the completed request map.
@@ -183,6 +175,6 @@ object CompletedRequestMap {
     new CompletedRequestMap(map.asInstanceOf[mutable.HashMap[Any, Exit[Any, Any]]])
 
   private def newMap(size: Int): mutable.HashMap[Request[_, _], Exit[Any, Any]] =
-    CollectionUtilsVersionSpecific.emptyMutableMap[Request[?, ?], Exit[Any, Any]](size)
+    CollectionUtilsVersionSpecific.newHashMap[Request[?, ?], Exit[Any, Any]](size)
 
 }
