@@ -94,7 +94,7 @@ trait DataSource[-R, -A] { self =>
     new DataSource[R1, B] {
       val identifier = s"${self.identifier}.contramapZIO(${f.description})"
       def runAll(requests: Chunk[Chunk[B]])(implicit trace: Trace): ZIO[R1, Nothing, CompletedRequestMap] =
-        ZIO.foreachDiscard(requests)(ZIO.foreachPar(_)(f.value)).flatMap(self.runAll)
+        ZIO.foreach(requests)(ZIO.foreachPar(_)(f.value)).flatMap(self.runAll)
     }
 
   /**
