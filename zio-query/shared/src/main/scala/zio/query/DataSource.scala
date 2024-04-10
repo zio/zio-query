@@ -116,8 +116,8 @@ trait DataSource[-R, -A] { self =>
           .map { res =>
             val map = CompletedRequestMap.Mutable.empty(requests.foldLeft(0)(_ + _.size))
             res.foreach { case (l, r) =>
-              map.addAllUnsafe(l)
-              map.addAllUnsafe(r)
+              map.addAll(l)
+              map.addAll(r)
             }
             map
           }
@@ -190,7 +190,7 @@ object DataSource {
             ZIO
               .foreachDiscard(requests) { requests =>
                 val newRequests = if (crm.isEmpty) requests else requests.filterNot(crm.contains)
-                ZIO.when(newRequests.nonEmpty)(run(newRequests).map(crm.addAllUnsafe))
+                ZIO.when(newRequests.nonEmpty)(run(newRequests).map(crm.addAll))
               }
               .as(crm)
           }
