@@ -96,10 +96,10 @@ object CompletedRequestMap {
    * with the specified cause
    */
   def fail[E, A](requests: Chunk[Request[E, A]], cause: Cause[E]): CompletedRequestMap = {
-    val map  = emptyHashMap(requests.size)
+    val map  = Mutable.empty(requests.size)
     val exit = Exit.failCause(cause)
     requests.foreach(map.update(_, exit))
-    Mutable(map)
+    map
   }
 
   /**
@@ -115,22 +115,22 @@ object CompletedRequestMap {
   def fromIterableWith[E, A, B](
     iterable: Iterable[A]
   )(f: A => Exit[E, B])(implicit ev: A <:< Request[E, B]): CompletedRequestMap = {
-    val map = emptyHashMap(iterable.size)
+    val map = Mutable.empty(iterable.size)
     iterable.foreach(req => map.update(req, f(req)))
-    Mutable(map)
+    map
   }
 
   /**
    * Constructs a completed requests map from the specified optional results.
    */
   def fromIterableOption[E, A](iterable: Iterable[(Request[E, A], Exit[E, Option[A]])]): CompletedRequestMap = {
-    val map = emptyHashMap(iterable.size)
+    val map = Mutable.empty(iterable.size)
     iterable.foreach {
       case (request, Exit.Failure(e))       => map.update(request, Exit.failCause(e))
       case (request, Exit.Success(Some(a))) => map.update(request, Exit.succeed(a))
       case (_, Exit.Success(None))          => ()
     }
-    Mutable(map)
+    map
   }
 
   private[query] object unsafe {
@@ -146,7 +146,7 @@ object CompletedRequestMap {
       f2: A2 => Exit[E, B]
     ): CompletedRequestMap = {
       val size  = requests.size min responses.size
-      val map   = emptyHashMap(size)
+      val map   = Mutable.empty(size)
       val reqs  = requests.chunkIterator
       val resps = responses.chunkIterator
       var i     = 0
@@ -154,13 +154,10 @@ object CompletedRequestMap {
         map.update(f1(reqs.nextAt(i)), f2(resps.nextAt(i)))
         i += 1
       }
-      Mutable(map)
+      map
     }
 
   }
-
-  private def emptyHashMap(size: Int): mutable.HashMap[Request[_, _], Exit[Any, Any]] =
-    UtilsVersionSpecific.newHashMap[Request[?, ?], Exit[Any, Any]](size)
 
   final private class Immutable(override protected val map: immutable.HashMap[Any, Exit[Any, Any]])
       extends CompletedRequestMap
@@ -170,15 +167,20 @@ object CompletedRequestMap {
   ) extends CompletedRequestMap { self =>
     import UtilsVersionSpecific._
 
-    def addAll(that: CompletedRequestMap): Unit = if (!that.isEmpty) self.map.addAll(that.map)
+    def addAll(that: CompletedRequestMap): Unit =
+      if (!that.isEmpty) self.map.addAll(that.map)
+
+    def update[E, A](request: Request[E, A], exit: Exit[E, A]): Unit =
+      map.update(request, exit)
   }
 
   private[query] object Mutable {
-    def apply(map: mutable.HashMap[Request[?, ?], Exit[Any, Any]]): CompletedRequestMap.Mutable =
-      new Mutable(map.asInstanceOf[mutable.HashMap[Any, Exit[Any, Any]]])
+
+    def apply(map: mutable.HashMap[Any, Exit[Any, Any]]): CompletedRequestMap.Mutable =
+      new Mutable(map)
 
     def empty(size: Int): CompletedRequestMap.Mutable =
-      apply(emptyHashMap(size))
-  }
+      new Mutable(UtilsVersionSpecific.newHashMap(size))
 
+  }
 }
