@@ -16,11 +16,11 @@
 
 package zio.query
 
-import zio.{Cause, Chunk, Exit}
 import zio.stacktracer.TracingImplicits.disableAutoTrace
+import zio.{Cause, Chunk, Exit}
 
 import scala.collection.compat._
-import scala.collection.{mutable, immutable}
+import scala.collection.{immutable, mutable}
 
 /**
  * A `CompletedRequestMap` is a universally quantified mapping from requests of
