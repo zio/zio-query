@@ -94,7 +94,7 @@ trait DataSource[-R, -A] { self =>
     new DataSource[R1, B] {
       val identifier = s"${self.identifier}.contramapZIO(${f.description})"
       def runAll(requests: Chunk[Chunk[B]])(implicit trace: Trace): ZIO[R1, Nothing, CompletedRequestMap] =
-        ZIO.foreach(requests)(ZIO.foreachPar(_)(f.value)).flatMap(self.runAll)
+        ZIO.foreachDiscard(requests)(ZIO.foreachPar(_)(f.value)).flatMap(self.runAll)
     }
 
   /**
@@ -108,19 +108,20 @@ trait DataSource[-R, -A] { self =>
     new DataSource[R1, C] {
       val identifier = s"${self.identifier}.eitherWith(${that.identifier})(${f.description})"
       def runAll(requests: Chunk[Chunk[C]])(implicit trace: Trace): ZIO[R1, Nothing, CompletedRequestMap] =
-        ZIO
-          .foreach(requests) { requests =>
-            val (as, bs) = requests.partitionMap(f.value)
-            self.runAll(Chunk.single(as)) <&> that.runAll(Chunk.single(bs))
-          }
-          .map { res =>
-            val map = CompletedRequestMap.Mutable.empty(requests.foldLeft(0)(_ + _.size))
-            res.foreach { case (l, r) =>
-              map.addAll(l)
-              map.addAll(r)
+        ZIO.suspendSucceed {
+          val iter = requests.iterator
+          val crm  = CompletedRequestMap.Mutable.empty(requests.foldLeft(0)(_ + _.size))
+          ZIO
+            .whileLoop(iter.hasNext) {
+              val reqs     = iter.next()
+              val (as, bs) = reqs.partitionMap(f.value)
+              self.runAll(Chunk.single(as)) <&> that.runAll(Chunk.single(bs))
+            } { case (l, r) =>
+              crm.addAll(l)
+              crm.addAll(r)
             }
-            map
-          }
+            .as(crm)
+        }
     }
 
   override final def equals(that: Any): Boolean =
@@ -185,12 +186,16 @@ object DataSource {
           if (reqs0.nonEmpty) run(reqs0) else ZIO.succeed(CompletedRequestMap.empty)
         case _ =>
           ZIO.suspendSucceed {
-            val nRequests = requests.foldLeft(0)(_ + _.size)
-            val crm       = CompletedRequestMap.Mutable.empty(nRequests)
+            val crm  = CompletedRequestMap.Mutable.empty(requests.foldLeft(0)(_ + _.size))
+            val iter = requests.iterator
             ZIO
-              .foreachDiscard(requests) { requests =>
-                val newRequests = if (crm.isEmpty) requests else requests.filterNot(crm.contains)
-                ZIO.when(newRequests.nonEmpty)(run(newRequests).map(crm.addAll))
+              .whileLoop(iter.hasNext) {
+                val reqs        = iter.next()
+                val newRequests = if (crm.isEmpty) reqs else reqs.filterNot(crm.contains)
+                ZIO.when(newRequests.nonEmpty)(run(newRequests))
+              } {
+                case Some(map) => crm.addAll(map)
+                case _         => ()
               }
               .as(crm)
           }
