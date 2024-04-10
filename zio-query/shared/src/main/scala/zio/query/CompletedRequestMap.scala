@@ -31,40 +31,31 @@ import scala.collection.{immutable, mutable}
  * types for different requests while guaranteeing that results will be of the
  * type requested.
  */
-final class CompletedRequestMap private (private val map: collection.Map[Any, Exit[Any, Any]]) { self =>
+
+sealed abstract class CompletedRequestMap { self =>
   import UtilsVersionSpecific._
 
-  def ++(that: CompletedRequestMap): CompletedRequestMap =
-    new CompletedRequestMap(immutable.HashMap.from(self.map) ++ that.map)
+  protected val map: collection.Map[Any, Exit[Any, Any]]
 
-  /**
-   * If the underlying map is a mutable map, this method will add all the
-   * elements to the existing map, otherwise it will concat them immutably
-   */
-  private[query] def addAllUnsafe(that: CompletedRequestMap): CompletedRequestMap =
-    if (that.isEmpty) self
-    else
-      self.map match {
-        case map: mutable.HashMap[Any, Exit[Any, Any]] => map.addAll(that.map); self
-        case _                                         => self ++ that
-      }
+  final def ++(that: CompletedRequestMap): CompletedRequestMap =
+    new CompletedRequestMap.Immutable(immutable.HashMap.from(map) ++ that.map)
 
   /**
    * Returns whether a result exists for the specified request.
    */
-  def contains(request: Any): Boolean =
+  final def contains(request: Any): Boolean =
     map.contains(request)
 
   /**
    * Appends the specified result to the completed requests map.
    */
-  def insert[E, A](request: Request[E, A], result: Exit[E, A]): CompletedRequestMap =
-    new CompletedRequestMap(immutable.HashMap.from(self.map).updated(request, result))
+  final def insert[E, A](request: Request[E, A], result: Exit[E, A]): CompletedRequestMap =
+    new CompletedRequestMap.Immutable(immutable.HashMap.from(map).updated(request, result))
 
   /**
    * Appends the specified optional result to the completed request map.
    */
-  def insertOption[E, A](request: Request[E, A], result: Exit[E, Option[A]]): CompletedRequestMap =
+  final def insertOption[E, A](request: Request[E, A], result: Exit[E, Option[A]]): CompletedRequestMap =
     result match {
       case Exit.Failure(e)       => insert(request, Exit.failCause(e))
       case Exit.Success(Some(a)) => insert(request, Exit.succeed(a))
@@ -74,49 +65,49 @@ final class CompletedRequestMap private (private val map: collection.Map[Any, Ex
   /**
    * Retrieves the result of the specified request if it exists.
    */
-  def lookup[E, A](request: Request[E, A]): Option[Exit[E, A]] =
+  final def lookup[E, A](request: Request[E, A]): Option[Exit[E, A]] =
     map.get(request).asInstanceOf[Option[Exit[E, A]]]
 
   /**
    * Collects all requests in a set.
    */
-  def requests: Set[Request[_, _]] =
+  final def requests: Set[Request[_, _]] =
     map.keySet.asInstanceOf[Set[Request[_, _]]]
 
   /**
    * Whether the completed requests map is empty.
    */
-  def isEmpty: Boolean =
+  final def isEmpty: Boolean =
     map.isEmpty
 
-  private[query] def toMutableMap: mutable.HashMap[Request[?, ?], Exit[Any, Any]] =
+  final private[query] def toMutableMap: mutable.HashMap[Request[?, ?], Exit[Any, Any]] =
     mutable.HashMap.from(map.asInstanceOf[collection.Map[Request[?, ?], Exit[Any, Any]]])
 
-  override def toString: String =
+  final override def toString: String =
     s"CompletedRequestMap(${map.mkString(", ")})"
 }
 
 object CompletedRequestMap {
 
   val empty: CompletedRequestMap =
-    new CompletedRequestMap(immutable.HashMap.empty)
+    new Immutable(immutable.HashMap.empty)
 
   /**
    * Constructs a completed requests map that fails all the specified requests
    * with the specified cause
    */
   def fail[E, A](requests: Chunk[Request[E, A]], cause: Cause[E]): CompletedRequestMap = {
-    val map  = newMap(requests.size)
+    val map  = emptyHashMap(requests.size)
     val exit = Exit.failCause(cause)
     requests.foreach(map.update(_, exit))
-    fromMutableMap(map)
+    Mutable(map)
   }
 
   /**
    * Constructs a completed requests map from the specified results.
    */
   def fromIterable[E, A](iterable: Iterable[(Request[E, A], Exit[E, A])]): CompletedRequestMap =
-    fromMutableMap(mutable.HashMap.from(iterable))
+    Mutable(mutable.HashMap.from(iterable))
 
   /**
    * Constructs a completed requests map an iterable of requests and a function
@@ -125,28 +116,25 @@ object CompletedRequestMap {
   def fromIterableWith[E, A, B](
     iterable: Iterable[A]
   )(f: A => Exit[E, B])(implicit ev: A <:< Request[E, B]): CompletedRequestMap = {
-    val map = newMap(iterable.size)
+    val map = emptyHashMap(iterable.size)
     iterable.foreach(req => map.update(req, f(req)))
-    fromMutableMap(map)
+    Mutable(map)
   }
 
   /**
    * Constructs a completed requests map from the specified optional results.
    */
   def fromIterableOption[E, A](iterable: Iterable[(Request[E, A], Exit[E, Option[A]])]): CompletedRequestMap = {
-    val map = newMap(iterable.size)
+    val map = emptyHashMap(iterable.size)
     iterable.foreach {
       case (request, Exit.Failure(e))       => map.update(request, Exit.failCause(e))
       case (request, Exit.Success(Some(a))) => map.update(request, Exit.succeed(a))
       case (_, Exit.Success(None))          => ()
     }
-    fromMutableMap(map)
+    Mutable(map)
   }
 
   private[query] object unsafe {
-
-    def empty(size: Int): CompletedRequestMap =
-      fromMutableMap(newMap(size))
 
     def fromSuccesses[E, A, B](requests: Chunk[Request[E, B]], responses: Chunk[B]): CompletedRequestMap =
       fromWith(requests, responses)(identity, Exit.succeed)
@@ -159,7 +147,7 @@ object CompletedRequestMap {
       f2: A2 => Exit[E, B]
     ): CompletedRequestMap = {
       val size  = requests.size min responses.size
-      val map   = newMap(size)
+      val map   = emptyHashMap(size)
       val reqs  = requests.chunkIterator
       val resps = responses.chunkIterator
       var i     = 0
@@ -167,15 +155,29 @@ object CompletedRequestMap {
         map.update(f1(reqs.nextAt(i)), f2(resps.nextAt(i)))
         i += 1
       }
-      fromMutableMap(map)
+      Mutable(map)
     }
 
   }
 
-  private def fromMutableMap(map: mutable.HashMap[Request[?, ?], Exit[Any, Any]]): CompletedRequestMap =
-    new CompletedRequestMap(map.asInstanceOf[mutable.HashMap[Any, Exit[Any, Any]]])
-
-  private def newMap(size: Int): mutable.HashMap[Request[_, _], Exit[Any, Any]] =
+  private def emptyHashMap(size: Int): mutable.HashMap[Request[_, _], Exit[Any, Any]] =
     UtilsVersionSpecific.newHashMap[Request[?, ?], Exit[Any, Any]](size)
+
+  final private class Immutable(override protected val map: immutable.HashMap[Any, Exit[Any, Any]])
+      extends CompletedRequestMap
+
+  final private[query] class Mutable private (
+    override protected val map: mutable.HashMap[Any, Exit[Any, Any]]
+  ) extends CompletedRequestMap { self =>
+    def addAllUnsafe(that: CompletedRequestMap): Unit = if (!that.isEmpty) self.map.addAll(that.map)
+  }
+
+  private[query] object Mutable {
+    def apply(map: mutable.HashMap[Request[?, ?], Exit[Any, Any]]): CompletedRequestMap.Mutable =
+      new Mutable(map.asInstanceOf[mutable.HashMap[Any, Exit[Any, Any]]])
+
+    def empty(size: Int): CompletedRequestMap.Mutable =
+      apply(emptyHashMap(size))
+  }
 
 }

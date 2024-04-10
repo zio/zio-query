@@ -113,10 +113,13 @@ trait DataSource[-R, -A] { self =>
             val (as, bs) = requests.partitionMap(f.value)
             self.runAll(Chunk.single(as)) <&> that.runAll(Chunk.single(bs))
           }
-          .map {
-            val size = requests.foldLeft(0)(_ + _.size)
-            val map  = CompletedRequestMap.unsafe.empty(size)
-            _.foldLeft(map) { case (acc, (l, r)) => acc.addAllUnsafe(l).addAllUnsafe(r) }
+          .map { res =>
+            val map = CompletedRequestMap.Mutable.empty(requests.foldLeft(0)(_ + _.size))
+            res.foreach { case (l, r) =>
+              map.addAllUnsafe(l)
+              map.addAllUnsafe(r)
+            }
+            map
           }
     }
 
@@ -181,10 +184,15 @@ object DataSource {
           val reqs0 = requests.head
           if (reqs0.nonEmpty) run(reqs0) else ZIO.succeed(CompletedRequestMap.empty)
         case _ =>
-          val nRequests = requests.foldLeft(0)(_ + _.size)
-          ZIO.foldLeft(requests)(CompletedRequestMap.unsafe.empty(nRequests)) { case (crm, requests) =>
-            val newRequests = if (crm.isEmpty) requests else requests.filterNot(crm.contains)
-            if (newRequests.nonEmpty) run(newRequests).map(crm.addAllUnsafe) else ZIO.succeed(crm)
+          ZIO.suspendSucceed {
+            val nRequests = requests.foldLeft(0)(_ + _.size)
+            val crm       = CompletedRequestMap.Mutable.empty(nRequests)
+            ZIO
+              .foreachDiscard(requests) { requests =>
+                val newRequests = if (crm.isEmpty) requests else requests.filterNot(crm.contains)
+                ZIO.when(newRequests.nonEmpty)(run(newRequests).map(crm.addAllUnsafe))
+              }
+              .as(crm)
           }
       }
 
