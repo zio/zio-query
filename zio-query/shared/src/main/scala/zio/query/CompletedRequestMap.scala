@@ -32,6 +32,7 @@ import scala.collection.{immutable, mutable}
  * type requested.
  */
 final class CompletedRequestMap private (private val map: collection.Map[Any, Exit[Any, Any]]) { self =>
+  import UtilsVersionSpecific._
 
   def ++(that: CompletedRequestMap): CompletedRequestMap =
     new CompletedRequestMap(immutable.HashMap.from(self.map) ++ that.map)
@@ -44,7 +45,7 @@ final class CompletedRequestMap private (private val map: collection.Map[Any, Ex
     if (that.isEmpty) self
     else
       self.map match {
-        case map: mutable.HashMap[Any, Exit[Any, Any]] => map ++= that.map; self
+        case map: mutable.HashMap[Any, Exit[Any, Any]] => map.addAll(that.map); self
         case _                                         => self ++ that
       }
 
@@ -175,6 +176,6 @@ object CompletedRequestMap {
     new CompletedRequestMap(map.asInstanceOf[mutable.HashMap[Any, Exit[Any, Any]]])
 
   private def newMap(size: Int): mutable.HashMap[Request[_, _], Exit[Any, Any]] =
-    CollectionUtilsVersionSpecific.newHashMap[Request[?, ?], Exit[Any, Any]](size)
+    UtilsVersionSpecific.newHashMap[Request[?, ?], Exit[Any, Any]](size)
 
 }

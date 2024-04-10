@@ -164,6 +164,7 @@ trait DataSource[-R, -A] { self =>
 }
 
 object DataSource {
+  import UtilsVersionSpecific._
 
   /**
    * A data source that executes requests that can be performed in parallel in
@@ -371,8 +372,4 @@ object DataSource {
         ZIO.never
     }
 
-  // `liftCo` doesn't exist in Scala 2.12, so we need to add it as syntax
-  private implicit class LiftCoSyntax[E, A, B](private val ev: A <:< Request[E, B]) extends AnyVal {
-    def liftCo(in: Chunk[A]): Chunk[Request[E, B]] = in.asInstanceOf[Chunk[Request[E, B]]]
-  }
 }

@@ -2,7 +2,7 @@ package zio.query
 
 import scala.collection.mutable
 
-private[query] object CollectionUtilsVersionSpecific {
+private[query] object UtilsVersionSpecific {
   private final val DefaultLoadFactor = 0.75d
 
   def newHashMap[K, V](expectedNumElements: Int): mutable.HashMap[K, V] =
