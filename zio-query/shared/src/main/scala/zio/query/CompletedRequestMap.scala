@@ -33,7 +33,6 @@ import scala.collection.{immutable, mutable}
  */
 
 sealed abstract class CompletedRequestMap { self =>
-  import UtilsVersionSpecific._
 
   protected val map: collection.Map[Any, Exit[Any, Any]]
 
@@ -169,6 +168,8 @@ object CompletedRequestMap {
   final private[query] class Mutable private (
     override protected val map: mutable.HashMap[Any, Exit[Any, Any]]
   ) extends CompletedRequestMap { self =>
+    import UtilsVersionSpecific._
+
     def addAll(that: CompletedRequestMap): Unit = if (!that.isEmpty) self.map.addAll(that.map)
   }
 
