@@ -287,7 +287,7 @@ object DataSource {
       def run(requests: Chunk[A])(implicit trace: Trace): ZIO[R, Nothing, CompletedRequestMap] =
         f(requests)
           .foldCause(
-            e => CompletedRequestMap.failAll(ev.liftCo(requests), e),
+            e => CompletedRequestMap.fail(ev.liftCo(requests), e),
             bs => CompletedRequestMap.unsafe.fromWith(bs, bs)(g(_), Exit.succeed)
           )
 
@@ -307,7 +307,7 @@ object DataSource {
       def run(requests: Chunk[A])(implicit trace: Trace): ZIO[R, Nothing, CompletedRequestMap] =
         f(requests)
           .foldCause(
-            e => CompletedRequestMap.failAll(ev.liftCo(requests), e),
+            e => CompletedRequestMap.fail(ev.liftCo(requests), e),
             CompletedRequestMap.unsafe.fromSuccesses(ev.liftCo(requests), _)
           )
     }

@@ -113,7 +113,7 @@ private[query] sealed trait BlockedRequests[-R] { self =>
             .runAll(requests)
             .catchAllCause(cause =>
               ZIO.succeed {
-                CompletedRequestMap.failAll(
+                CompletedRequestMap.fail(
                   requests.flatten.asInstanceOf[Chunk[Request[Any, Any]]],
                   cause
                 )

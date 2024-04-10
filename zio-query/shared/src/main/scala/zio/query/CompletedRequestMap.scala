@@ -109,10 +109,21 @@ object CompletedRequestMap {
     new CompletedRequestMap(immutable.HashMap.empty)
 
   /**
+   * Constructs a completed requests map that fails all the specified requests
+   * with the specified cause
+   */
+  def fail[E, A](requests: Chunk[Request[E, A]], cause: Cause[E]): CompletedRequestMap = {
+    val map  = newMap(requests.size)
+    val exit = Exit.failCause(cause)
+    requests.foreach(map.update(_, exit))
+    fromMutableMap(map)
+  }
+
+  /**
    * Constructs a completed requests map from the specified results.
    */
   def fromIterable[E, A](iterable: Iterable[(Request[E, A], Exit[E, A])]): CompletedRequestMap =
-    CompletedRequestMap.fromMutableMap(mutable.HashMap.from(iterable))
+    fromMutableMap(mutable.HashMap.from(iterable))
 
   /**
    * Constructs a completed requests map an iterable of requests and a function
@@ -122,15 +133,8 @@ object CompletedRequestMap {
     iterable: Iterable[A]
   )(f: A => Exit[E, B])(implicit ev: A <:< Request[E, B]): CompletedRequestMap = {
     val map = newMap(iterable.size)
-    iterable.foreach(request => map.update(request, f(request)))
-    CompletedRequestMap.fromMutableMap(map)
-  }
-
-  def failAll[E, A](requests: Chunk[Request[E, A]], cause: Cause[E]): CompletedRequestMap = {
-    val map  = newMap(requests.size)
-    val exit = Exit.failCause(cause)
-    requests.foreach(request => map.update(request, exit))
-    CompletedRequestMap.fromMutableMap(map)
+    iterable.foreach(req => map.update(req, f(req)))
+    fromMutableMap(map)
   }
 
   /**
@@ -143,13 +147,13 @@ object CompletedRequestMap {
       case (request, Exit.Success(Some(a))) => map.update(request, Exit.succeed(a))
       case (_, Exit.Success(None))          => ()
     }
-    CompletedRequestMap.fromMutableMap(map)
+    fromMutableMap(map)
   }
 
   private[query] object unsafe {
 
     def empty(size: Int): CompletedRequestMap =
-      CompletedRequestMap.fromMutableMap(newMap(size))
+      fromMutableMap(newMap(size))
 
     def fromSuccesses[E, A, B](requests: Chunk[Request[E, B]], responses: Chunk[B]): CompletedRequestMap =
       fromWith(requests, responses)(identity, Exit.succeed)
@@ -170,7 +174,7 @@ object CompletedRequestMap {
         map.update(f1(reqs.nextAt(i)), f2(resps.nextAt(i)))
         i += 1
       }
-      CompletedRequestMap.fromMutableMap(map)
+      fromMutableMap(map)
     }
 
   }
@@ -178,10 +182,7 @@ object CompletedRequestMap {
   private def fromMutableMap(map: mutable.HashMap[Request[?, ?], Exit[Any, Any]]): CompletedRequestMap =
     new CompletedRequestMap(map.asInstanceOf[mutable.HashMap[Any, Exit[Any, Any]]])
 
-  private def newMap(size: Int) = {
-    val map = mutable.HashMap.empty[Request[?, ?], Exit[Any, Any]]
-    map.sizeHint(size)
-    map
-  }
+  private def newMap(size: Int): mutable.HashMap[Request[_, _], Exit[Any, Any]] =
+    CollectionUtilsVersionSpecific.emptyMutableMap[Request[?, ?], Exit[Any, Any]](size)
 
 }
