@@ -17,7 +17,7 @@
 package zio.query
 
 import zio.stacktracer.TracingImplicits.disableAutoTrace
-import zio.{Cause, Chunk, Exit, Unsafe}
+import zio.{Cause, Chunk, Exit}
 
 import scala.collection.compat._
 import scala.collection.{immutable, mutable}

@@ -17,7 +17,7 @@
 package zio.query
 
 import zio.stacktracer.TracingImplicits.disableAutoTrace
-import zio.{Chunk, Exit, Trace, Unsafe, ZEnvironment, ZIO}
+import zio.{Chunk, Exit, Trace, ZEnvironment, ZIO}
 
 /**
  * A `DataSource[R, A]` requires an environment `R` and is capable of executing
