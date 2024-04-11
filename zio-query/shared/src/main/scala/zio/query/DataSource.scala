@@ -35,10 +35,10 @@ import zio.{Chunk, Exit, Trace, ZEnvironment, ZIO}
  * though that is not strictly necessarily as long as the data source can map
  * the request type to a `Request[A]`. Data sources can then pattern match on
  * the collection of requests to determine the information requested, execute
- * the query, and place the results into the `CompletedRequestsMap` using
- * [[CompletedRequestMap.empty]] and [[CompletedRequestMap.insert]]. Data
- * sources must provide results for all requests received. Failure to do so will
- * cause a query to die with a `QueryFailure` when run.
+ * the query, and place the results into the `CompletedRequestsMap` one of the
+ * constructors in [[CompletedRequestMap$]]. Data sources must provide results
+ * for all requests received. Failure to do so will cause a query to die with a
+ * `QueryFailure` when run.
  */
 trait DataSource[-R, -A] { self =>
 
@@ -301,7 +301,7 @@ object DataSource {
       def run(requests: Chunk[A])(implicit trace: Trace): ZIO[R, Nothing, CompletedRequestMap] =
         f(requests)
           .foldCause(
-            e => CompletedRequestMap.fail(ev.liftCo(requests), e),
+            e => CompletedRequestMap.failCause(ev.liftCo(requests), e),
             bs => CompletedRequestMap.unsafe.fromWith(bs, bs)(g(_), Exit.succeed)
           )
 
@@ -321,7 +321,7 @@ object DataSource {
       def run(requests: Chunk[A])(implicit trace: Trace): ZIO[R, Nothing, CompletedRequestMap] =
         f(requests)
           .foldCause(
-            e => CompletedRequestMap.fail(ev.liftCo(requests), e),
+            e => CompletedRequestMap.failCause(ev.liftCo(requests), e),
             CompletedRequestMap.unsafe.fromSuccesses(ev.liftCo(requests), _)
           )
     }

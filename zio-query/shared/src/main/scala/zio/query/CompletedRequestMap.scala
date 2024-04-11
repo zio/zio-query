@@ -36,6 +36,15 @@ sealed abstract class CompletedRequestMap { self =>
 
   protected val map: collection.Map[Any, Exit[Any, Any]]
 
+  /**
+   * Appends the specified result to the completed requests map.
+   *
+   * @deprecated
+   *   Usage of this method is deprecated as it leads to performance
+   *   degradation. Prefer using one of the constructors in the companion object
+   *   instead
+   */
+  @deprecated("Use one of the constructors in the companion object instead. See scaladoc for more info", "0.7.0")
   final def ++(that: CompletedRequestMap): CompletedRequestMap =
     new CompletedRequestMap.Immutable(immutable.HashMap.from(map) ++ that.map)
 
@@ -46,14 +55,32 @@ sealed abstract class CompletedRequestMap { self =>
     map.contains(request)
 
   /**
-   * Appends the specified result to the completed requests map.
+   * Whether the completed requests map is empty.
    */
+  final def isEmpty: Boolean =
+    map.isEmpty
+
+  /**
+   * Appends the specified result to the completed requests map.
+   *
+   * @deprecated
+   *   Usage of this method is deprecated as it leads to performance
+   *   degradation. Prefer using one of the constructors in the companion object
+   *   instead
+   */
+  @deprecated("Use one of the constructors in the companion object instead. See scaladoc for more info", "0.7.0")
   final def insert[E, A](request: Request[E, A], result: Exit[E, A]): CompletedRequestMap =
     new CompletedRequestMap.Immutable(immutable.HashMap.from(map).updated(request, result))
 
   /**
    * Appends the specified optional result to the completed request map.
+   *
+   * @deprecated
+   *   Usage of this method is deprecated as it leads to performance
+   *   degradation. Prefer using one of the constructors in the companion object
+   *   instead
    */
+  @deprecated("Use one of the constructors in the companion object instead. See scaladoc for more info", "0.7.0")
   final def insertOption[E, A](request: Request[E, A], result: Exit[E, Option[A]]): CompletedRequestMap =
     result match {
       case Exit.Failure(e)       => insert(request, Exit.failCause(e))
@@ -73,29 +100,64 @@ sealed abstract class CompletedRequestMap { self =>
   final def requests: Set[Request[_, _]] =
     map.keySet.asInstanceOf[Set[Request[_, _]]]
 
-  /**
-   * Whether the completed requests map is empty.
-   */
-  final def isEmpty: Boolean =
-    map.isEmpty
-
-  final private[query] def toMutableMap: mutable.HashMap[Request[?, ?], Exit[Any, Any]] =
-    mutable.HashMap.from(map.asInstanceOf[collection.Map[Request[?, ?], Exit[Any, Any]]])
-
   final override def toString: String =
     s"CompletedRequestMap(${map.mkString(", ")})"
+
+  final private[query] def underlying: collection.Map[Request[?, ?], Exit[Any, Any]] =
+    map.asInstanceOf[collection.Map[Request[?, ?], Exit[Any, Any]]]
 }
 
 object CompletedRequestMap {
+
+  def apply[E, A](entries: (Request[E, A], Exit[E, A])*): CompletedRequestMap =
+    entries match {
+      case Seq()            => empty
+      case Seq((req, resp)) => single(req, resp)
+      case _                => fromIterable(entries)
+    }
 
   val empty: CompletedRequestMap =
     new Immutable(immutable.HashMap.empty)
 
   /**
+   * Combines all completed request maps into a single one.
+   *
+   * This method is left-associated, meaning that if a request is present in
+   * multiple maps, it will be overriden by the last map in the list.
+   */
+  def combine(maps: Iterable[CompletedRequestMap]): CompletedRequestMap = {
+    val map = Mutable.empty(maps.foldLeft(0)(_ + _.map.size))
+    maps.foreach(map.addAll)
+    map
+  }
+
+  /**
+   * Constructs a completed requests map that "dies" all the specified requests
+   * with the specified throwable
+   */
+  def die[E, A](requests: Chunk[Request[E, A]], error: Throwable): CompletedRequestMap = {
+    val map  = Mutable.empty(requests.size)
+    val exit = Exit.die(error)
+    requests.foreach(map.update(_, exit))
+    map
+  }
+
+  /**
+   * Constructs a completed requests map that fails all the specified requests
+   * with the specified error
+   */
+  def fail[E, A](requests: Chunk[Request[E, A]], error: E): CompletedRequestMap = {
+    val map  = Mutable.empty(requests.size)
+    val exit = Exit.fail(error)
+    requests.foreach(map.update(_, exit))
+    map
+  }
+
+  /**
    * Constructs a completed requests map that fails all the specified requests
    * with the specified cause
    */
-  def fail[E, A](requests: Chunk[Request[E, A]], cause: Cause[E]): CompletedRequestMap = {
+  def failCause[E, A](requests: Chunk[Request[E, A]], cause: Cause[E]): CompletedRequestMap = {
     val map  = Mutable.empty(requests.size)
     val exit = Exit.failCause(cause)
     requests.foreach(map.update(_, exit))
@@ -133,13 +195,33 @@ object CompletedRequestMap {
     map
   }
 
-  private[query] object unsafe {
+  /**
+   * Constructs a completed requests map containing a single entry
+   */
+  def single[E, A](request: Request[E, A], exit: Exit[E, A]): CompletedRequestMap =
+    new Immutable(immutable.HashMap((request, exit)))
 
-    def fromSuccesses[E, A, B](requests: Chunk[Request[E, B]], responses: Chunk[B]): CompletedRequestMap =
-      fromWith(requests, responses)(identity, Exit.succeed)
+  /**
+   * Unsafe API for constructing completed request maps.
+   *
+   * Constructing a [[CompletedRequestMap]] via these methods can improve
+   * performance in some cases as they allow skipping the creation of
+   * intermediate `Iterable[ Tuple2[_, _] ]`.
+   *
+   * NOTE: These methods are marked as unsafe because they do not check that the
+   * requests and responses are of the same size. It is the responsibility of
+   * the caller to ensure that the provided requests maps elements 1-to-1 to the
+   * responses.
+   */
+  val unsafe: UnsafeApi = new UnsafeApi {}
 
-    def fromExits[E, A1, B](requests: Chunk[Request[E, B]], responses: Chunk[Exit[E, B]]): CompletedRequestMap =
+  trait UnsafeApi {
+
+    def fromExits[E, A](requests: Chunk[Request[E, A]], responses: Chunk[Exit[E, A]]): CompletedRequestMap =
       fromWith(requests, responses)(identity, identity)
+
+    def fromSuccesses[E, A](requests: Chunk[Request[E, A]], responses: Chunk[A]): CompletedRequestMap =
+      fromWith(requests, responses)(identity, Exit.succeed)
 
     def fromWith[E, A1, A2, B](requests: Chunk[A1], responses: Chunk[A2])(
       f1: A1 => Request[E, B],
@@ -172,6 +254,7 @@ object CompletedRequestMap {
 
     def update[E, A](request: Request[E, A], exit: Exit[E, A]): Unit =
       map.update(request, exit)
+
   }
 
   private[query] object Mutable {
