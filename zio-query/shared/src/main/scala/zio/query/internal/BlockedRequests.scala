@@ -19,9 +19,10 @@ package zio.query.internal
 import zio.query._
 import zio.query.internal.BlockedRequests._
 import zio.stacktracer.TracingImplicits.disableAutoTrace
-import zio.{Chunk, Exit, Promise, Trace, UIO, Unsafe, ZEnvironment, ZIO}
+import zio.{Chunk, Exit, Trace, UIO, Unsafe, ZEnvironment, ZIO}
 
 import scala.annotation.tailrec
+import scala.collection.compat._
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 

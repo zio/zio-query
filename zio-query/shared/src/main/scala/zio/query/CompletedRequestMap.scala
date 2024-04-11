@@ -109,6 +109,13 @@ sealed abstract class CompletedRequestMap { self =>
 
 object CompletedRequestMap {
 
+  def apply[E, A](entries: (Request[E, A], Exit[E, A])*): CompletedRequestMap =
+    entries match {
+      case Seq()            => empty
+      case Seq((req, resp)) => single(req, resp)
+      case _                => fromIterable(entries)
+    }
+
   val empty: CompletedRequestMap =
     new Immutable(immutable.HashMap.empty)
 
@@ -118,9 +125,8 @@ object CompletedRequestMap {
    * This method is left-associated, meaning that if a request is present in
    * multiple maps, it will be overriden by the last map in the list.
    */
-  def fromCompletedRequestMaps(maps: Iterable[CompletedRequestMap]): CompletedRequestMap = {
-    val size = maps.foldLeft(0)(_ + _.map.size)
-    val map  = Mutable.empty(size)
+  def combine(maps: Iterable[CompletedRequestMap]): CompletedRequestMap = {
+    val map = Mutable.empty(maps.foldLeft(0)(_ + _.map.size))
     maps.foreach(map.addAll)
     map
   }
@@ -198,7 +204,7 @@ object CompletedRequestMap {
   /**
    * Unsafe API for constructing completed request maps.
    *
-   * Constructing a [[CompletedRequestMap]] via these megthods can improve
+   * Constructing a [[CompletedRequestMap]] via these methods can improve
    * performance in some cases as they allow skipping the creation of
    * intermediate `Iterable[ Tuple2[_, _] ]`.
    *
