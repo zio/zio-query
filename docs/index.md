@@ -97,7 +97,7 @@ object ZQueryExample extends ZIOAppDefault {
               ZIO.succeed(???)
             }
 
-            result.exit.map(CompletedRequestMap.empty.insert(request, _))
+            result.exit.map(CompletedRequestMap.single(request, _))
 
           case batch: Seq[GetUserName] =>
             val result: Task[List[(Int, String)]] = {
@@ -106,8 +106,8 @@ object ZQueryExample extends ZIOAppDefault {
             }
 
             result.foldCause(
-              cause => CompletedRequestMap.fail(requests, cause),
-              vs => CompletedRequestMap.fromIterable(vs.map { case (k, v) => GetUserName(k) -> Exit.succeed(v) })
+              CompletedRequestMap.failCause(requests, _),
+              CompletedRequestMap.fromIterableWith(_)(kv => GetUserName(kv._1), kv => Exit.succeed(kv._2))
             )
         }
     }

@@ -226,7 +226,7 @@ object DataSource {
     new DataSource.Batched[Any, A] {
       val identifier: String = name
       def run(requests: Chunk[A])(implicit trace: Trace): ZIO[Any, Nothing, CompletedRequestMap] =
-        ZIO.succeed(CompletedRequestMap.fromIterableWith(requests)(a => Exit.succeed(f(a))))
+        ZIO.succeed(CompletedRequestMap.fromIterableWith(requests)(ev.apply, a => Exit.succeed(f(a))))
     }
 
   /**

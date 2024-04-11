@@ -171,18 +171,6 @@ object CompletedRequestMap {
     Mutable(mutable.HashMap.from(iterable))
 
   /**
-   * Constructs a completed requests map an iterable of requests and a function
-   * that maps each request to a result
-   */
-  def fromIterableWith[E, A, B](
-    iterable: Iterable[A]
-  )(f: A => Exit[E, B])(implicit ev: A <:< Request[E, B]): CompletedRequestMap = {
-    val map = Mutable.empty(iterable.size)
-    iterable.foreach(req => map.update(req, f(req)))
-    map
-  }
-
-  /**
    * Constructs a completed requests map from the specified optional results.
    */
   def fromIterableOption[E, A](iterable: Iterable[(Request[E, A], Exit[E, Option[A]])]): CompletedRequestMap = {
@@ -192,6 +180,26 @@ object CompletedRequestMap {
       case (request, Exit.Success(Some(a))) => map.update(request, Exit.succeed(a))
       case (_, Exit.Success(None))          => ()
     }
+    map
+  }
+
+  /**
+   * Constructs a completed requests map an iterable of A and functions that map
+   * each A to a request and a result
+   *
+   * @param f1
+   *   function that maps each element of A to a request
+   * @param f2
+   *   function that maps each element of A to an Exit, e.g., Exit.succeed(_)
+   */
+  def fromIterableWith[E, A, B](
+    iterable: Iterable[A]
+  )(
+    f1: A => Request[E, B],
+    f2: A => Exit[E, B]
+  ): CompletedRequestMap = {
+    val map = Mutable.empty(iterable.size)
+    iterable.foreach(req => map.update(f1(req), f2(req)))
     map
   }
 
