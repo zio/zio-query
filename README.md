@@ -85,8 +85,7 @@ object ZQueryExample extends ZIOAppDefault {
     new DataSource.Batched[Any, GetUserName] {
       val identifier: String = "UserDataSource"
 
-      def run(requests: Chunk[GetUserName])(implicit trace: Trace): ZIO[Any, Nothing, CompletedRequestMap] = {
-        val resultMap = CompletedRequestMap.empty
+      def run(requests: Chunk[GetUserName])(implicit trace: Trace): ZIO[Any, Nothing, CompletedRequestMap] =
         requests.toList match {
           case request :: Nil =>
             val result: Task[String] = {
@@ -94,7 +93,7 @@ object ZQueryExample extends ZIOAppDefault {
               ZIO.succeed(???)
             }
 
-            result.exit.map(resultMap.insert(request, _))
+            result.exit.map(CompletedRequestMap.single(request, _))
 
           case batch: Seq[GetUserName] =>
             val result: Task[List[(Int, String)]] = {
@@ -102,18 +101,11 @@ object ZQueryExample extends ZIOAppDefault {
               ZIO.succeed(???)
             }
 
-            result.fold(
-              err =>
-                requests.foldLeft(resultMap) { case (map, req) =>
-                  map.insert(req, Exit.fail(err))
-                },
-              _.foldLeft(resultMap) { case (map, (id, name)) =>
-                map.insert(GetUserName(id), Exit.succeed(name))
-              }
+            result.foldCause(
+              CompletedRequestMap.failCause(requests, _),
+              CompletedRequestMap.fromIterableWith(_)(kv => GetUserName(kv._1), kv => Exit.succeed(kv._2))
             )
         }
-      }
-
     }
 
   def getUserNameById(id: Int): ZQuery[Any, Throwable, String] =
