@@ -24,7 +24,8 @@ inThisBuild(
       Map(
         (zioQueryJVM / thisProject).value.id -> (zioQueryJVM / crossScalaVersions).value,
         (zioQueryJS / thisProject).value.id  -> (zioQueryJS / crossScalaVersions).value
-      )
+      ),
+    versionScheme := Some("early-semver")
   )
 )
 
@@ -105,7 +106,7 @@ lazy val docs = project
 
 Global / onChangedBuildSource := ReloadOnSourceChanges
 
-lazy val enforceMimaCompatibility = false // Enable / disable failing CI on binary incompatibilities
+lazy val enforceMimaCompatibility = true // Enable / disable failing CI on binary incompatibilities
 
 lazy val enableMimaSettingsJVM =
   Def.settings(
