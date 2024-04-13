@@ -19,16 +19,16 @@ import java.util.concurrent.TimeUnit
 @OutputTimeUnit(TimeUnit.SECONDS)
 class DataSourceBenchmark {
 
-  /* Results as of 26/03/2024:
+  /* Results as of 13/04/2024 (v0.7.0):
    * [info] Benchmark                                         (count)   Mode  Cnt      Score      Error  Units
-   * [info] DataSourceBenchmark.fetchSumDuplicatedBenchmark       100  thrpt    3  13528.452 ±  396.882  ops/s
-   * [info] DataSourceBenchmark.fetchSumDuplicatedBenchmark      1000  thrpt    3   1723.441 ±  143.993  ops/s
-   * [info] DataSourceBenchmark.fetchSumUniqueBenchmark           100  thrpt    3   1419.737 ±   75.093  ops/s
-   * [info] DataSourceBenchmark.fetchSumUniqueBenchmark          1000  thrpt    3    166.192 ±   17.058  ops/s
-   * [info] DataSourceBenchmark.zquerySumDuplicatedBenchmark      100  thrpt    3  26221.070 ± 4448.063  ops/s
-   * [info] DataSourceBenchmark.zquerySumDuplicatedBenchmark     1000  thrpt    3   2975.877 ±  487.800  ops/s
-   * [info] DataSourceBenchmark.zquerySumUniqueBenchmark          100  thrpt    3  12315.194 ±  409.126  ops/s
-   * [info] DataSourceBenchmark.zquerySumUniqueBenchmark         1000  thrpt    3   1049.548 ±   33.398  ops/s
+   * [info] DataSourceBenchmark.fetchSumDuplicatedBenchmark       100  thrpt    3  13079.078 ± 1766.290  ops/s
+   * [info] DataSourceBenchmark.fetchSumDuplicatedBenchmark      1000  thrpt    3   1750.691 ±  515.567  ops/s
+   * [info] DataSourceBenchmark.fetchSumUniqueBenchmark           100  thrpt    3   1452.417 ±  301.895  ops/s
+   * [info] DataSourceBenchmark.fetchSumUniqueBenchmark          1000  thrpt    3    170.926 ±   16.258  ops/s
+   * [info] DataSourceBenchmark.zquerySumDuplicatedBenchmark      100  thrpt    3  50938.486 ± 2185.032  ops/s
+   * [info] DataSourceBenchmark.zquerySumDuplicatedBenchmark     1000  thrpt    3   6260.981 ±  137.187  ops/s
+   * [info] DataSourceBenchmark.zquerySumUniqueBenchmark          100  thrpt    3  38385.921 ± 4523.814  ops/s
+   * [info] DataSourceBenchmark.zquerySumUniqueBenchmark         1000  thrpt    3   4287.090 ±  688.067  ops/s
    */
 
   @Param(Array("100", "1000"))
