@@ -152,6 +152,21 @@ trait DataSource[-R, -A] { self =>
     }
 
   /**
+   * Submits a request to this datasource and returns the result.
+   */
+  final def query[E, A1 <: A, B](request: A1)(implicit ev: A1 <:< Request[E, B], trace: Trace): ZQuery[R, E, B] =
+    ZQuery.fromRequest(request)(self)
+
+  /**
+   * Submits a Chunk of requests to this datasource and returns the results in
+   * the same order
+   */
+  final def queryAll[E, A1 <: A, B](
+    requests: Chunk[A1]
+  )(implicit ev: A1 <:< Request[E, B], trace: Trace): ZQuery[R, E, Chunk[B]] =
+    ZQuery.fromRequests(requests)(self)
+
+  /**
    * Returns a new data source that executes requests by sending them to this
    * data source and that data source, returning the results from the first data
    * source to complete and safely interrupting the loser.

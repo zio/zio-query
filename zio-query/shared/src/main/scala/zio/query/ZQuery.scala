@@ -76,12 +76,6 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     zipParRight(that)
 
   /**
-   * A symbolic alias for `zipRight`.
-   */
-  final def *>[R1 <: R, E1 >: E, B](that: => ZQuery[R1, E1, B])(implicit trace: Trace): ZQuery[R1, E1, B] =
-    zipRight(that)
-
-  /**
    * A symbolic alias for `zipParLeft`.
    */
   final def <&[R1 <: R, E1 >: E, B](that: => ZQuery[R1, E1, B])(implicit trace: Trace): ZQuery[R1, E1, A] =
@@ -97,6 +91,12 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     zipPar(that)
 
   /**
+   * A symbolic alias for `zipRight`.
+   */
+  final def *>[R1 <: R, E1 >: E, B](that: => ZQuery[R1, E1, B])(implicit trace: Trace): ZQuery[R1, E1, B] =
+    zipRight(that)
+
+  /**
    * A symbolic alias for `zipLeft`.
    */
   final def <*[R1 <: R, E1 >: E, B](that: => ZQuery[R1, E1, B])(implicit trace: Trace): ZQuery[R1, E1, A] =
@@ -110,6 +110,27 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     trace: Trace
   ): ZQuery[R1, E1, zippable.Out] =
     zip(that)
+
+  /**
+   * A symbolic alias for `zipBatchedRight`.
+   */
+  final def ~>[R1 <: R, E1 >: E, B](that: => ZQuery[R1, E1, B])(implicit trace: Trace): ZQuery[R1, E1, B] =
+    zipBatchedRight(that)
+
+  /**
+   * A symbolic alias for `zipBatchedLeft`.
+   */
+  final def <~[R1 <: R, E1 >: E, B](that: => ZQuery[R1, E1, B])(implicit trace: Trace): ZQuery[R1, E1, A] =
+    zipBatchedLeft(that)
+
+  /**
+   * A symbolic alias for `zipBatched`.
+   */
+  final def <~>[R1 <: R, E1 >: E, B](that: => ZQuery[R1, E1, B])(implicit
+    zippable: Zippable[A, B],
+    trace: Trace
+  ): ZQuery[R1, E1, zippable.Out] =
+    zipBatched(that)
 
   /**
    * Returns a query which submerges the error case of `Either` into the error
@@ -1168,7 +1189,7 @@ object ZQuery {
     mode: Int // 0 = sequential, 1 = parallel, 2 = batched
   )(implicit bf: BuildFrom[Collection[A], B, Collection[B]], trace: Trace): Result[R, E, Collection[B]] = {
 
-    def addToArray(array: Array[B])(idxs: Chunk[RuntimeFlags], values: Chunk[B]): Unit =
+    def addToArray(array: Array[B])(idxs: Chunk[Int], values: Chunk[B]): Unit =
       if (idxs.nonEmpty) {
         var i       = 0
         val iter    = values.chunkIterator
@@ -1321,6 +1342,10 @@ object ZQuery {
    * a `QueryFailure` when run if the data source does not provide results for
    * all requests received. Queries must be constructed with `fromRequest` or
    * one of its variants for optimizations to be applied.
+   *
+   * @see
+   *   [[fromRequests]] for variants that allow for multiple requests to be
+   *   submitted at once
    */
   def fromRequest[R, E, A, B](
     request0: => A
@@ -1329,34 +1354,10 @@ object ZQuery {
       ZQuery.cachingEnabled.getWith { isCachingEnabled =>
         val request    = request0
         val dataSource = dataSource0
-        if (isCachingEnabled) {
-          def foldPromise(either: Either[Promise[E, B], Promise[E, B]]): UIO[Result[R, E, B]] = either match {
-            case Left(promise) =>
-              ZIO.succeed(
-                Result.blocked(
-                  BlockedRequests.single(dataSource, BlockedRequest(request, promise)),
-                  Continue(promise)
-                )
-              )
-            case Right(promise) =>
-              promise.poll.flatMap {
-                case None     => ZIO.succeed(Result.blocked(BlockedRequests.empty, Continue(promise)))
-                case Some(io) => io.exit.map(Result.fromExit)
-              }
-          }
-          ZQuery.currentCache.getWith {
-            case cache: Cache.Default => foldPromise(cache.lookupUnsafe(request)(Unsafe.unsafe))
-            case cache                => cache.lookup(request).flatMap(foldPromise)
-          }
-        } else {
-          ZIO.succeed {
-            val promise = Promise.unsafe.make[E, B](FiberId.None)(Unsafe.unsafe)
-            Result.blocked(
-              BlockedRequests.single(dataSource, BlockedRequest(request, promise)),
-              Continue(promise)
-            )
-          }
-        }
+        if (isCachingEnabled)
+          ZQuery.currentCache.getWith(cachedResult(_, dataSource, request).toZIO)
+        else
+          uncachedResult(dataSource, request)
       }
     }
 
@@ -1367,7 +1368,116 @@ object ZQuery {
   def fromRequestUncached[R, E, A, B](
     request: => A
   )(dataSource: => DataSource[R, A])(implicit ev: A <:< Request[E, B], trace: Trace): ZQuery[R, E, B] =
-    fromRequest(request)(dataSource).uncached
+    new ZQuery(uncachedResult(dataSource, request)).uncached
+
+  /**
+   * Constructs a query from a Chunk of requests and a data source. Queries will
+   * die with a QueryFailure when run the data source does not provide results
+   * for all requests received.
+   *
+   * @see
+   *   [[fromRequest]] for submitting a single request to a datasource
+   * @see
+   *   [[fromRequestsWith]] for a variant that allows transforming the input to
+   *   a request
+   */
+  def fromRequests[R, E, A, B](
+    requests: Chunk[A]
+  )(dataSource: DataSource[R, A])(implicit trace: Trace, ev: A <:< Request[E, B]): ZQuery[R, E, Chunk[B]] =
+    fromRequestsWith(requests, ZIO.identityFn[A])(dataSource)
+
+  /**
+   * Constructs a query from a List of requests and a data source. Queries will
+   * die with a QueryFailure when run the data source does not provide results
+   * for all requests received.
+   *
+   * @see
+   *   [[fromRequest]] for submitting a single request to a datasource
+   * @see
+   *   [[fromRequestsWith]] for a variant that allows transforming the input to
+   *   a request
+   */
+  def fromRequests[R, E, A, B](
+    requests: List[A]
+  )(dataSource: DataSource[R, A])(implicit trace: Trace, ev: A <:< Request[E, B]): ZQuery[R, E, List[B]] =
+    fromRequestsWith(requests, ZIO.identityFn[A])(dataSource)
+
+  /**
+   * Constructs a query from a Chunk of values, a function transforming them
+   * into requests and a data source. Queries will die with a QueryFailure when
+   * run the data source does not provide results for all requests received.
+   */
+  def fromRequestsWith[R, E, In, A, B](
+    as: Chunk[In],
+    f: In => A
+  )(dataSource: DataSource[R, A])(implicit ev: A <:< Request[E, B], trace: Trace): ZQuery[R, E, Chunk[B]] =
+    ZQuery {
+      ZQuery.cachingEnabled.getWith {
+        if (_) {
+          ZQuery.currentCache.getWith(cache => CachedResult.foreach(as)(r => cachedResult(cache, dataSource, f(r))))
+        } else {
+          ZIO.foreach(as)(r => uncachedResult(dataSource, f(r)))
+        }
+      }.map(collectResults(as, _, mode = 2))
+    }
+
+  /**
+   * Constructs a query from a List of values, a function transforming them into
+   * requests and a data source. Queries will die with a QueryFailure when run
+   * the data source does not provide results for all requests received.
+   */
+  def fromRequestsWith[R, E, In, A, B](
+    as: List[In],
+    f: In => A
+  )(dataSource: DataSource[R, A])(implicit ev: A <:< Request[E, B], trace: Trace): ZQuery[R, E, List[B]] =
+    ZQuery {
+      ZQuery.cachingEnabled.getWith {
+        if (_) {
+          ZQuery.currentCache.getWith(cache => CachedResult.foreach(as)(r => cachedResult(cache, dataSource, f(r))))
+        } else {
+          ZIO.foreach(as)(r => uncachedResult(dataSource, f(r)))
+        }
+      }.map(collectResults(as, _, mode = 2))
+    }
+
+  private def cachedResult[R, E, A, B](
+    cache: Cache,
+    dataSource: DataSource[R, A],
+    request: A
+  )(implicit ev: A <:< Request[E, B], trace: Trace): CachedResult[R, E, B] = {
+
+    def foldPromise(either: Either[Promise[E, B], Promise[E, B]]): CachedResult[R, E, B] =
+      either match {
+        case Left(promise) =>
+          CachedResult.Pure(
+            Result.blocked(
+              BlockedRequests.single(dataSource, BlockedRequest(request, promise)),
+              Continue(promise)
+            )
+          )
+        case Right(promise) =>
+          CachedResult.Effectful(promise.poll.flatMap {
+            case None     => ZIO.succeed(Result.blocked(BlockedRequests.empty, Continue(promise)))
+            case Some(io) => io.exit.map(Result.fromExit)
+          })
+      }
+
+    cache match {
+      case cache: Cache.Default => foldPromise(cache.lookupUnsafe(request)(Unsafe.unsafe))
+      case cache                => CachedResult.Effectful(cache.lookup(request).flatMap(foldPromise(_).toZIO))
+    }
+  }
+
+  private def uncachedResult[R, E, A, B](dataSource: DataSource[R, A], request: A)(implicit
+    ev: A <:< Request[E, B],
+    trace: Trace
+  ): UIO[Result[R, E, B]] = Exit.succeed {
+    val promise = Promise.unsafe.make[E, B](FiberId.None)(Unsafe.unsafe)
+    Result.blocked(
+      BlockedRequests.single(dataSource, BlockedRequest(request, promise)),
+      Continue(promise)
+    )
+  }
 
   /**
    * Constructs a query from an effect.
@@ -1658,4 +1768,82 @@ object ZQuery {
         }
       }
   }
+
+  /**
+   * The `CachedResult` represents a cache entry that can either be extracted
+   * purely, or that it requires an effect to be run to obtain the result.
+   */
+  private sealed abstract class CachedResult[R, E, A] { self =>
+    def toZIO: UIO[Result[R, E, A]]
+  }
+
+  private object CachedResult {
+
+    def foreach[R, E, A, B, Collection[+x] <: Iterable[x]](
+      as: Collection[A]
+    )(
+      f: A => CachedResult[R, E, B]
+    )(implicit
+      trace: Trace,
+      bf1: BuildFrom[Collection[?], Result[R, E, B], Collection[Result[R, E, B]]],
+      bf2: BuildFrom[Collection[?], UIO[Result[R, E, B]], Collection[UIO[Result[R, E, B]]]]
+    ): UIO[Collection[Result[R, E, B]]] = ZIO.suspendSucceed {
+      val size    = as.size
+      val puresB  = bf1.newBuilder(as)
+      val pureIdx = new ChunkBuilder.Int
+      pureIdx.sizeHint(size)
+
+      val effectfulB   = bf2.newBuilder(as)
+      val effectfulIdx = new ChunkBuilder.Int
+
+      val iter = as.iterator
+      var i    = 0
+      while (iter.hasNext) {
+        val next = f(iter.next())
+        next match {
+          case Pure(result) =>
+            puresB.addOne(result)
+            pureIdx.addOne(i)
+          case Effectful(io) =>
+            effectfulB.addOne(io)
+            effectfulIdx.addOne(i)
+        }
+        i += 1
+      }
+
+      val pures     = puresB.result()
+      val effectful = effectfulB.result()
+
+      if (effectful.isEmpty) ZIO.succeed(pures)
+      else if (pures.isEmpty) ZIO.collectAll(effectful)
+      else {
+        val pIdxs = pureIdx.result()
+        val eIdxs = effectfulIdx.result()
+        ZIO.collectAll(effectful).map { effectful =>
+          val arr = Array.ofDim[Result[R, E, B]](pIdxs.size + eIdxs.size)
+
+          def addToArray(idxs: Chunk[Int], values: Iterable[Result[R, E, B]]): Unit = {
+            val iter    = values.iterator
+            val idxIter = idxs.iterator
+            while (idxIter.hasNext) {
+              val idx   = idxIter.next()
+              val value = iter.next()
+              arr(idx) = value
+            }
+          }
+
+          addToArray(pIdxs, pures)
+          addToArray(eIdxs, effectful)
+          bf1.fromSpecific(as)(arr)
+        }
+      }
+    }
+
+    final case class Pure[R, E, B](result: Result[R, E, B]) extends CachedResult[R, E, B] {
+      def toZIO: UIO[Result[R, E, B]] = Exit.succeed(result)
+    }
+
+    final case class Effectful[R, E, B](toZIO: UIO[Result[R, E, B]]) extends CachedResult[R, E, B]
+  }
+
 }

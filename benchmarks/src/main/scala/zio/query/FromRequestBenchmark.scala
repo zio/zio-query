@@ -18,31 +18,40 @@ class FromRequestBenchmark {
   @Param(Array("100", "1000"))
   var count: Int = 100
 
+  var queries: Chunk[UQuery[Int]] = _
+
+  @Setup(Level.Trial)
+  def setup() =
+    queries = Chunk.fromIterable((0 until count).map(i => ds.query(Req(i))))
+
   @Benchmark
   def fromRequestDefault(): Long = {
-    val reqs  = Chunk.fromIterable((0 until count).map(i => ZQuery.fromRequest(Req(i))(ds)))
-    val query = ZQuery.collectAllBatched(reqs).map(_.sum.toLong)
+    val query = ZQuery.collectAllBatched(queries).map(_.sum.toLong)
     unsafeRun(query)
   }
 
   @Benchmark
   def fromRequestSized(): Long = {
-    val reqs  = Chunk.fromIterable((0 until count).map(i => ZQuery.fromRequest(Req(i))(ds)))
-    val query = ZQuery.collectAllBatched(reqs).map(_.sum.toLong)
+    val query = ZQuery.collectAllBatched(queries).map(_.sum.toLong)
+    unsafeRunCache(query, Cache.unsafeMake(count))
+  }
+
+  @Benchmark
+  def fromRequests(): Long = {
+    val reqs  = Chunk.fromIterable((0 until count).map(i => Req(i)))
+    val query = ds.queryAll(reqs).map(_.sum.toLong)
     unsafeRunCache(query, Cache.unsafeMake(count))
   }
 
   @Benchmark
   def fromRequestUncached(): Long = {
-    val reqs  = Chunk.fromIterable((0 until count).map(i => ZQuery.fromRequest(Req(i))(ds)))
-    val query = ZQuery.collectAllBatched(reqs).map(_.sum.toLong)
+    val query = ZQuery.collectAllBatched(queries).map(_.sum.toLong)
     unsafeRun(query.uncached)
   }
 
   @Benchmark
   def fromRequestZipRight(): Long = {
-    val reqs  = Chunk.fromIterable((0 until count).map(i => ZQuery.fromRequest(Req(i))(ds)))
-    val query = ZQuery.collectAllBatched(reqs).map(_.sum.toLong)
+    val query = ZQuery.collectAllBatched(queries).map(_.sum.toLong)
     unsafeRun(query *> query *> query)
   }
 

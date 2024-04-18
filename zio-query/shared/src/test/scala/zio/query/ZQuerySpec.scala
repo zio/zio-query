@@ -94,12 +94,12 @@ object ZQuerySpec extends ZIOBaseSpec {
           val query = Cache.getAll *> Cache.put(0, 1) *> Cache.getAll
           assertZIO(query.uncached.run)(equalTo(Map(0 -> 1)))
         } @@ nonFlaky
-      ).provideCustom(Cache.live),
+      ).provide(Cache.live),
       suite("zipBatched")(
         test("queries to multiple data sources can be executed in parallel") {
           for {
             promise <- Promise.make[Nothing, Unit]
-            _       <- (neverQuery.zipBatched(succeedQuery(promise))).run.fork
+            _       <- (neverQuery <~> succeedQuery(promise)).run.fork
             _       <- promise.await
           } yield assertCompletes
         },
@@ -108,7 +108,7 @@ object ZQuerySpec extends ZIOBaseSpec {
             ref    <- Ref.make(List.empty[Int])
             query1  = ZQuery.fromZIO(ref.update(1 :: _))
             query2  = ZQuery.fromZIO(ref.update(2 :: _))
-            _      <- (query1.zipBatchedRight(query2)).run
+            _      <- (query1 ~> query2).run
             result <- ref.get
           } yield assert(result)(equalTo(List(2, 1)))
         } @@ nonFlaky
@@ -346,17 +346,16 @@ object ZQuerySpec extends ZIOBaseSpec {
 
   val UserRequestDataSource: DataSource[Any, UserRequest[_]] =
     DataSource.Batched.make[Any, UserRequest[_]]("UserRequestDataSource") { requests =>
-      ZIO.when(requests.toSet.size != requests.size)(ZIO.dieMessage("Duplicate requests)")) *>
-        Console.printLine(requests.toString).orDie *>
-        ZIO.succeed {
-          requests.foldLeft(CompletedRequestMap.empty) {
-            case (completedRequests, GetAllIds) => completedRequests.insert(GetAllIds, Exit.succeed(userIds))
-            case (completedRequests, GetNameById(id)) =>
-              userNames
-                .get(id)
-                .fold(completedRequests)(name => completedRequests.insert(GetNameById(id), Exit.succeed(name)))
-          }
+      (ZIO.when(requests.toSet.size != requests.size)(ZIO.dieMessage("Duplicate requests)")) *>
+        Console.printLine(requests.toString).orDie).as {
+        requests.foldLeft(CompletedRequestMap.empty) {
+          case (completedRequests, GetAllIds) => completedRequests.insert(GetAllIds, Exit.succeed(userIds))
+          case (completedRequests, GetNameById(id)) =>
+            userNames
+              .get(id)
+              .fold(completedRequests)(name => completedRequests.insert(GetNameById(id), Exit.succeed(name)))
         }
+      }
     }
 
   val getAllUserIds: ZQuery[Any, Nothing, List[Int]] =
@@ -368,17 +367,17 @@ object ZQuerySpec extends ZIOBaseSpec {
   val getAllUserNames: ZQuery[Any, Nothing, List[String]] =
     for {
       userIds   <- getAllUserIds
-      userNames <- ZQuery.foreachPar(userIds)(getUserNameById)
+      userNames <- ZQuery.fromRequestsWith(userIds, GetNameById.apply)(UserRequestDataSource)
     } yield userNames
 
   case object GetFoo extends Request[Nothing, String]
   val getFoo: ZQuery[Any, Nothing, String] = ZQuery.fromRequest(GetFoo)(
-    DataSource.fromFunctionZIO("foo")(_ => Console.printLine("Running foo query").orDie *> ZIO.succeed("foo"))
+    DataSource.fromFunctionZIO("foo")(_ => Console.printLine("Running foo query").orDie.as("foo"))
   )
 
   case object GetBar extends Request[Nothing, String]
   val getBar: ZQuery[Any, Nothing, String] = ZQuery.fromRequest(GetBar)(
-    DataSource.fromFunctionZIO("bar")(_ => Console.printLine("Running bar query").orDie *> ZIO.succeed("bar"))
+    DataSource.fromFunctionZIO("bar")(_ => Console.printLine("Running bar query").orDie.as("bar"))
   )
 
   case object NeverRequest extends Request[Nothing, Nothing]
