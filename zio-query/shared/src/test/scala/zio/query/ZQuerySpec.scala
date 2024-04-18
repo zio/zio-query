@@ -367,7 +367,7 @@ object ZQuerySpec extends ZIOBaseSpec {
   val getAllUserNames: ZQuery[Any, Nothing, List[String]] =
     for {
       userIds   <- getAllUserIds
-      userNames <- ZQuery.fromRequestsWith(userIds, GetNameById.apply)(UserRequestDataSource)
+      userNames <- ZQuery.fromRequestsWith(userIds, GetNameById(_))(UserRequestDataSource)
     } yield userNames
 
   case object GetFoo extends Request[Nothing, String]

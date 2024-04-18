@@ -1779,71 +1779,70 @@ object ZQuery {
 
   private object CachedResult {
 
+    final case class Pure[R, E, B](result: Result[R, E, B]) extends CachedResult[R, E, B] {
+      def toZIO: UIO[Result[R, E, B]] = Exit.succeed(result)
+    }
+
+    final case class Effectful[R, E, B](toZIO: UIO[Result[R, E, B]]) extends CachedResult[R, E, B]
+
     def foreach[R, E, A, B, Collection[+x] <: Iterable[x]](
       as: Collection[A]
     )(
       f: A => CachedResult[R, E, B]
     )(implicit
       trace: Trace,
-      bf1: BuildFrom[Collection[?], Result[R, E, B], Collection[Result[R, E, B]]],
-      bf2: BuildFrom[Collection[?], UIO[Result[R, E, B]], Collection[UIO[Result[R, E, B]]]]
-    ): UIO[Collection[Result[R, E, B]]] = ZIO.suspendSucceed {
-      val size    = as.size
-      val puresB  = bf1.newBuilder(as)
-      val pureIdx = new ChunkBuilder.Int
-      pureIdx.sizeHint(size)
+      bf: BuildFrom[Collection[A], Result[R, E, B], Collection[Result[R, E, B]]]
+    ): UIO[Collection[Result[R, E, B]]] =
+      ZIO.suspendSucceed {
+        val puresB  = bf.newBuilder(as)
+        val pureIdx = new ChunkBuilder.Int
 
-      val effectfulB   = bf2.newBuilder(as)
-      val effectfulIdx = new ChunkBuilder.Int
+        val effectfulB   = Chunk.newBuilder[UIO[Result[R, E, B]]]
+        val effectfulIdx = new ChunkBuilder.Int
 
-      val iter = as.iterator
-      var i    = 0
-      while (iter.hasNext) {
-        val next = f(iter.next())
-        next match {
-          case Pure(result) =>
-            puresB.addOne(result)
-            pureIdx.addOne(i)
-          case Effectful(io) =>
-            effectfulB.addOne(io)
-            effectfulIdx.addOne(i)
-        }
-        i += 1
-      }
-
-      val pures     = puresB.result()
-      val effectful = effectfulB.result()
-
-      if (effectful.isEmpty) ZIO.succeed(pures)
-      else if (pures.isEmpty) ZIO.collectAll(effectful)
-      else {
-        val pIdxs = pureIdx.result()
-        val eIdxs = effectfulIdx.result()
-        ZIO.collectAll(effectful).map { effectful =>
-          val arr = Array.ofDim[Result[R, E, B]](pIdxs.size + eIdxs.size)
-
-          def addToArray(idxs: Chunk[Int], values: Iterable[Result[R, E, B]]): Unit = {
-            val iter    = values.iterator
-            val idxIter = idxs.iterator
-            while (idxIter.hasNext) {
-              val idx   = idxIter.next()
-              val value = iter.next()
-              arr(idx) = value
-            }
+        val iter = as.iterator
+        var i    = 0
+        while (iter.hasNext) {
+          val next = f(iter.next())
+          next match {
+            case Pure(result) =>
+              puresB += result
+              pureIdx.addOne(i)
+            case Effectful(io) =>
+              effectfulB += io
+              effectfulIdx.addOne(i)
           }
+          i += 1
+        }
 
-          addToArray(pIdxs, pures)
-          addToArray(eIdxs, effectful)
-          bf1.fromSpecific(as)(arr)
+        val pures     = puresB.result()
+        val effectful = effectfulB.result()
+
+        if (effectful.isEmpty) ZIO.succeed(pures)
+        else if (pures.isEmpty) ZIO.collectAll(effectful).map(bf.fromSpecific(as))
+        else {
+          val pIdxs = pureIdx.result()
+          val eIdxs = effectfulIdx.result()
+
+          ZIO.collectAll(effectful).map { effectful =>
+            val arr = Array.ofDim[Result[R, E, B]](pIdxs.size + eIdxs.size)
+
+            def addToArray(idxs: Chunk[Int], values: Iterable[Result[R, E, B]]): Unit = {
+              val iter    = values.iterator
+              val idxIter = idxs.iterator
+              while (idxIter.hasNext) {
+                val idx   = idxIter.next()
+                val value = iter.next()
+                arr(idx) = value
+              }
+            }
+
+            addToArray(pIdxs, pures)
+            addToArray(eIdxs, effectful)
+            bf.fromSpecific(as)(arr)
+          }
         }
       }
-    }
-
-    final case class Pure[R, E, B](result: Result[R, E, B]) extends CachedResult[R, E, B] {
-      def toZIO: UIO[Result[R, E, B]] = Exit.succeed(result)
-    }
-
-    final case class Effectful[R, E, B](toZIO: UIO[Result[R, E, B]]) extends CachedResult[R, E, B]
   }
 
 }
