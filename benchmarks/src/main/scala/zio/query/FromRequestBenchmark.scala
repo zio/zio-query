@@ -55,6 +55,12 @@ class FromRequestBenchmark {
     unsafeRun(query *> query *> query)
   }
 
+  @Benchmark
+  def fromRequestZipRightMemoized(): Long = {
+    val f = ZQuery.collectAllBatched(queries).map(_.sum.toLong).memoize
+    unsafeRun(ZQuery.unwrap(f.map(q => q *> q *> q)))
+  }
+
   private case class Req(i: Int) extends Request[Nothing, Int]
   private val ds = DataSource.fromFunctionBatchedZIO("Datasource") { reqs: Chunk[Req] => ZIO.succeed(reqs.map(_.i)) }
 }

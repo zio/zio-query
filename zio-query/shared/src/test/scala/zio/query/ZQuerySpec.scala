@@ -333,7 +333,44 @@ object ZQuerySpec extends ZIOBaseSpec {
         for {
           _ <- query.run
         } yield assertCompletes
-      }
+      },
+      suite("memoize")(
+        test("results are memoized") {
+          for {
+            ref   <- Ref.make(0)
+            query <- ZQuery.fromZIO(ref.update(_ + 1)).memoize
+            _     <- (ZQuery.foreachPar((1 to 100).toList)(_ => query) <* query).run
+            value <- ref.get
+          } yield assertTrue(value == 1)
+        },
+        test("results are not computed when the outer effect is executed") {
+          for {
+            ref   <- Ref.make(0)
+            query <- ZQuery.fromZIO(ref.update(_ + 1)).memoize
+            value <- ref.get
+          } yield assertTrue(value == 0)
+        },
+        test("errors are memoized") {
+          for {
+            ref     <- Ref.make(0)
+            query   <- ZQuery.fromZIO(ref.updateAndGet(_ + 1).flatMap(i => ZIO.fail(new Exception(i.toString)))).memoize
+            results <- ZQuery.foreachPar((1 to 100).toList)(_ => query.either).run
+            value   <- ref.get
+          } yield assertTrue(value == 1, results.forall(_.isLeft))
+        },
+        test("defects are memoized") {
+          for {
+            ref   <- Ref.make(0)
+            query <- ZQuery.fromZIO(ref.updateAndGet(_ + 1).flatMap(i => ZIO.die(new Exception(i.toString)))).memoize
+            results <- ZQuery
+                         .foreachPar((1 to 100).toList)(_ =>
+                           query.foldCauseQuery(c => ZQuery.succeed(Left(c)), v => ZQuery.succeed(Right(v)))
+                         )
+                         .run
+            value <- ref.get
+          } yield assertTrue(value == 1, results.forall(_.isLeft))
+        }
+      )
     ) @@ silent
 
   val userIds: List[Int]          = (1 to 26).toList

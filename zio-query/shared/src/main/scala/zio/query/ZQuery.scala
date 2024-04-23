@@ -158,6 +158,9 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * Enables caching for this query. Note that caching is enabled by default so
    * this will only be effective to enable caching in part of a larger query in
    * which caching has been disabled.
+   *
+   * @see
+   *   [[memoize]] for memoizing the result of a single query
    */
   def cached(implicit trace: Trace): ZQuery[R, E, A] =
     ZQuery.acquireReleaseWith(ZQuery.cachingEnabled.getAndSet(true))(ZQuery.cachingEnabled.set)(_ => self)
@@ -274,6 +277,35 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
       e => ZQuery.fail(Left(e)),
       a => ev(a).fold(b => ZQuery.succeed(b), c => ZQuery.fail(Right(c)))
     )
+
+  /**
+   * Returns an effect that, that if evaluated, will return a lazily computed
+   * version of this query
+   *
+   * This differs from query caching, as caching will only cache the output of a
+   * [[DataSource]]. Memoize will ensure that the query (including
+   * non-DataSource backed queries) is computed at-most-once.
+   *
+   * This can beneficial for cases that a query is composed of multiple queries
+   * and it's reused multiple times, e.g.,
+   *
+   * {{{
+   *    case class Foo(x: UQuery[Int], y: UQuery[Int])
+   *    val query: UQuery[Int] = ???
+   *
+   *    // Query will be run exactly once; might not be necessary if `x` or `y` are not used afterwards
+   *    query.map(i => Foo(ZQuery.succeed(i +1), ZQuery.succeed(i + 2)))
+   *
+   *    // Query will be recomputed each time x or y are used
+   *    Foo(query.map(_ + 1), query.map(_ + 2))
+   *
+   *    // Query will be computed / run at-most-once
+   *    query.memoize.map(q => Foo(q.map(_ + 1), q.map(_ + 2)))
+   *
+   * }}}
+   */
+  final def memoize(implicit trace: Trace): UIO[ZQuery[R, E, A]] =
+    ZIO.succeed(unsafe.memoize(Unsafe.unsafe, trace))
 
   /**
    * Maps the specified function over the successful result of this query.
@@ -833,6 +865,27 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
         case (_, Result.Fail(e))                                => Result.fail(e)
       }
     }
+
+  /**
+   * These methods can improve UX and performance in some cases, but when used
+   * improperly they can lead to unexpected behaviour in the application code.
+   *
+   * Make sure you really understand them before using them!
+   */
+  def unsafe: UnsafeApi = new UnsafeApi {}
+
+  trait UnsafeApi {
+
+    def memoize(implicit unsafe: Unsafe, trace: Trace): ZQuery[R, E, A] = {
+      val ref = Ref.Synchronized.unsafe.make[Option[Result[R, E, A]]](None)
+      new ZQuery[R, E, A](ref.modifyZIO {
+        case s @ Some(result) => Exit.succeed((result, s))
+        case _                => self.step.map(result => (result, Some(result)))
+      })
+    }
+
+  }
+
 }
 
 object ZQuery {
@@ -1344,7 +1397,7 @@ object ZQuery {
    * one of its variants for optimizations to be applied.
    *
    * @see
-   *   [[fromRequests]] for variants that allow for multiple requests to be
+   *   `fromRequests` for variants that allow for multiple requests to be
    *   submitted at once
    */
   def fromRequest[R, E, A, B](
@@ -1378,8 +1431,8 @@ object ZQuery {
    * @see
    *   [[fromRequest]] for submitting a single request to a datasource
    * @see
-   *   [[fromRequestsWith]] for a variant that allows transforming the input to
-   *   a request
+   *   `fromRequestsWith` for a variant that allows transforming the input to a
+   *   request
    */
   def fromRequests[R, E, A, B](
     requests: Chunk[A]
@@ -1394,8 +1447,8 @@ object ZQuery {
    * @see
    *   [[fromRequest]] for submitting a single request to a datasource
    * @see
-   *   [[fromRequestsWith]] for a variant that allows transforming the input to
-   *   a request
+   *   `fromRequestsWith` for a variant that allows transforming the input to a
+   *   request
    */
   def fromRequests[R, E, A, B](
     requests: List[A]
