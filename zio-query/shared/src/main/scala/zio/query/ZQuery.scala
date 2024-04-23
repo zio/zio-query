@@ -305,7 +305,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * }}}
    */
   final def memoize(implicit trace: Trace): UIO[ZQuery[R, E, A]] =
-    ZIO.succeed(unsafe.memoize(Unsafe.unsafe, trace))
+    ZIO.succeed(ZQuery.unsafe.memoize(self)(Unsafe.unsafe, trace))
 
   /**
    * Maps the specified function over the successful result of this query.
@@ -865,26 +865,6 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
         case (_, Result.Fail(e))                                => Result.fail(e)
       }
     }
-
-  /**
-   * These methods can improve UX and performance in some cases, but when used
-   * improperly they can lead to unexpected behaviour in the application code.
-   *
-   * Make sure you really understand them before using them!
-   */
-  def unsafe: UnsafeApi = new UnsafeApi {}
-
-  trait UnsafeApi {
-
-    def memoize(implicit unsafe: Unsafe, trace: Trace): ZQuery[R, E, A] = {
-      val ref = Ref.Synchronized.unsafe.make[Option[Result[R, E, A]]](None)
-      new ZQuery[R, E, A](ref.modifyZIO {
-        case s @ Some(result) => Exit.succeed((result, s))
-        case _                => self.step.map(result => (result, Some(result)))
-      })
-    }
-
-  }
 
 }
 
@@ -1637,6 +1617,24 @@ object ZQuery {
    */
   val unit: ZQuery[Any, Nothing, Unit] =
     ZQuery.succeed(())(Trace.empty)
+
+  /**
+   * These methods can improve UX and performance in some cases, but when used
+   * improperly they can lead to unexpected behaviour in the application code.
+   *
+   * Make sure you really understand them before using them!
+   */
+  object unsafe {
+
+    def memoize[R, E, A](query: ZQuery[R, E, A])(implicit unsafe: Unsafe, trace: Trace): ZQuery[R, E, A] = {
+      val ref = Ref.Synchronized.unsafe.make[Option[Result[R, E, A]]](None)
+      new ZQuery[R, E, A](ref.modifyZIO {
+        case s @ Some(result) => Exit.succeed((result, s))
+        case _                => query.step.map(result => (result, Some(result)))
+      })
+    }
+
+  }
 
   /**
    * The inverse operation [[ZQuery.sandbox]]
