@@ -283,7 +283,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * version of this query
    *
    * This differs from query caching, as caching will only cache the output of a
-   * [[DataSource]]. Memoize will ensure that the query (including
+   * [[DataSource]]. `memoize` will ensure that the query (including
    * non-DataSource backed queries) is computed at-most-once.
    *
    * This can beneficial for cases that a query is composed of multiple queries
