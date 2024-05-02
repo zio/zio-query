@@ -139,7 +139,12 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * The inverse of [[ZQuery.either]]
    */
   def absolve[E1 >: E, B](implicit ev: A IsSubtypeOfOutput Either[E1, B], trace: Trace): ZQuery[R, E1, B] =
-    ZQuery.absolve(self.map(ev))
+    self.flatMap {
+      ev(_) match {
+        case Right(b) => ZQuery.succeed(b)
+        case Left(e)  => ZQuery.fail(e)
+      }
+    }
 
   /**
    * Maps the success value of this query to the specified constant value.
@@ -583,15 +588,14 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    */
   final def summarized[R1 <: R, E1 >: E, B, C](
     summary0: ZIO[R1, E1, B]
-  )(f: (B, B) => C)(implicit trace: Trace): ZQuery[R1, E1, (C, A)] =
-    ZQuery.suspend {
-      val summary = summary0
-      for {
-        start <- ZQuery.fromZIONow(summary)
-        value <- self
-        end   <- ZQuery.fromZIONow(summary)
-      } yield (f(start, end), value)
-    }
+  )(f: (B, B) => C)(implicit trace: Trace): ZQuery[R1, E1, (C, A)] = {
+    val summary = summary0
+    for {
+      start <- ZQuery.fromZIONow(summary0)
+      value <- self
+      end   <- ZQuery.fromZIONow(summary0)
+    } yield (f(start, end), value)
+  }
 
   /**
    * Returns a new query that executes this one and times the execution.
@@ -871,7 +875,10 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
 object ZQuery {
 
   final def absolve[R, E, A](v: => ZQuery[R, E, Either[E, A]])(implicit trace: Trace): ZQuery[R, E, A] =
-    ZQuery.suspend(v).flatMap(fromEither(_))
+    ZQuery.suspend(v).flatMap {
+      case Right(v) => ZQuery.succeed(v)
+      case Left(e)  => ZQuery.fail(e)
+    }
 
   /**
    * Acquires the specified resource before the query begins execution and
@@ -1067,7 +1074,7 @@ object ZQuery {
   )(implicit bf: BuildFrom[Collection[A], B, Collection[B]], trace: Trace): ZQuery[R, E, Collection[B]] =
     as.sizeCompare(1) match {
       case -1 => ZQuery.succeed(bf.newBuilder(as).result())
-      case 0  => f(as.head).map(bf.newBuilder(as) += _).map(_.result())
+      case 0  => f(as.head).map(v => (bf.newBuilder(as) += v).result())
       case _ =>
         ZQuery {
           ZIO
@@ -1145,7 +1152,7 @@ object ZQuery {
   )(implicit bf: BuildFrom[Collection[A], B, Collection[B]], trace: Trace): ZQuery[R, E, Collection[B]] =
     as.sizeCompare(1) match {
       case -1 => ZQuery.succeed(bf.newBuilder(as).result())
-      case 0  => f(as.head).map(bf.newBuilder(as) += _).map(_.result())
+      case 0  => f(as.head).map(v => (bf.newBuilder(as) += v).result())
       case _ =>
         ZQuery {
           ZIO
@@ -1207,7 +1214,7 @@ object ZQuery {
   )(implicit bf: BuildFrom[Collection[A], B, Collection[B]], trace: Trace): ZQuery[R, E, Collection[B]] =
     as.sizeCompare(1) match {
       case -1 => ZQuery.succeed(bf.newBuilder(as).result())
-      case 0  => f(as.head).map(bf.newBuilder(as) += _).map(_.result())
+      case 0  => f(as.head).map(v => (bf.newBuilder(as) += v).result())
       case _ =>
         ZQuery {
           ZIO
@@ -1616,7 +1623,7 @@ object ZQuery {
    * The query that succeeds with the unit value.
    */
   val unit: ZQuery[Any, Nothing, Unit] =
-    ZQuery.succeed(())(Trace.empty)
+    new ZQuery(ZIO.succeed(Result.unit)(Trace.empty))
 
   /**
    * These methods can improve UX and performance in some cases, but when used

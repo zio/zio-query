@@ -129,6 +129,8 @@ private[query] object Result {
   def fromExit[E, A](exit: Exit[E, A]): Result[Any, E, A] =
     exit.foldExit(Result.fail, Result.done)
 
+  val unit: Result[Any, Nothing, Unit] = done(())
+
   final case class Blocked[-R, +E, +A](blockedRequests: BlockedRequests[R], continue: Continue[R, E, A])
       extends Result[R, E, A]
 
