@@ -591,9 +591,9 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
   )(f: (B, B) => C)(implicit trace: Trace): ZQuery[R1, E1, (C, A)] = {
     val summary = summary0
     for {
-      start <- ZQuery.fromZIONow(summary0)
+      start <- ZQuery.fromZIONow(summary)
       value <- self
-      end   <- ZQuery.fromZIONow(summary0)
+      end   <- ZQuery.fromZIONow(summary)
     } yield (f(start, end), value)
   }
 
