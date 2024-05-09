@@ -10,7 +10,7 @@ crossScalaVersions := Seq.empty
 inThisBuild(
   List(
     name       := "ZIO Query",
-    zioVersion := "2.0.22",
+    zioVersion := "2.1.0",
     developers := List(
       Developer(
         "kyri-petrou",
@@ -54,7 +54,7 @@ lazy val zioQuery = crossProject(JSPlatform, JVMPlatform)
   .settings(scalacOptions += "-Wconf:msg=[zio.stacktracer.TracingImplicits.disableAutoTrace]:silent")
   .settings(
     libraryDependencies ++= Seq(
-      "org.scala-lang.modules" %% "scala-collection-compat" % "2.11.0"
+      "org.scala-lang.modules" %% "scala-collection-compat" % "2.12.0"
     ),
     scalacOptions ++=
       (if (scalaBinaryVersion.value == "3")
