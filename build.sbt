@@ -2,7 +2,6 @@ import com.typesafe.tools.mima.core.*
 import explicitdeps.ExplicitDepsPlugin.autoImport.moduleFilterRemoveValue
 import sbtcrossproject.CrossPlugin.autoImport.crossProject
 import zio.sbt.githubactions.*
-import _root_.io.circe.syntax.*
 
 enablePlugins(ZioSbtEcosystemPlugin, ZioSbtCiPlugin)
 
@@ -11,7 +10,7 @@ crossScalaVersions := Seq.empty
 inThisBuild(
   List(
     name       := "ZIO Query",
-    zioVersion := "2.1.0",
+    zioVersion := "2.1.1",
     developers := List(
       Developer(
         "kyri-petrou",
@@ -128,55 +127,3 @@ ThisBuild / ciCheckArtifactsBuildSteps +=
     "Check binary compatibility",
     run = Some("sbt \"+zioQueryJVM/mimaReportBinaryIssues; +zioQueryJS/mimaReportBinaryIssues\"")
   )
-
-// Temporary, until zio-test issue with ScalaJS 2.12 is resolved
-ThisBuild / ciTestJobs := Seq(
-  Job(
-    id = "test",
-    name = "Test",
-    runsOn = "ubuntu-latest",
-    timeoutMinutes = 15,
-    continueOnError = false,
-    strategy = Some(
-      Strategy(
-        matrix = Map(
-          "java" -> List("11", "21"),
-          "scala-project" -> List(
-            "++2.12 zioQueryJVM",
-            "++2.13 zioQueryJVM",
-            "++3.3 zioQueryJVM",
-            "++2.13 zioQueryJS",
-            "++3.3 zioQueryJS"
-          )
-        ),
-        failFast = false
-      )
-    ),
-    steps = List(
-      Step.SingleStep(
-        name = "Setup Scala",
-        uses = Some(ActionRef("actions/setup-java@v4")),
-        parameters = Map(
-          "distribution" -> "corretto".asJson,
-          "java-version" -> "${{ matrix.java }}".asJson,
-          "check-latest" -> true.asJson
-        )
-      ),
-      Step.SingleStep(
-        name = "Cache Dependencies",
-        uses = Some(ActionRef("coursier/cache-action@v6"))
-      ),
-      Step.SingleStep(
-        name = "Git Checkout",
-        uses = Some(ActionRef("actions/checkout@v4")),
-        parameters = Map(
-          "fetch-depth" -> "0".asJson
-        )
-      ),
-      Step.SingleStep(
-        name = "Test",
-        run = Some("sbt ${{ matrix.scala-project }}/test")
-      )
-    )
-  )
-)

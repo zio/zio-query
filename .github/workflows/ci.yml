@@ -75,14 +75,18 @@ jobs:
       matrix:
         java:
         - '11'
+        - '17'
         - '21'
         scala-project:
-        - ++2.12 zioQueryJVM
-        - ++2.13 zioQueryJVM
-        - ++3.3 zioQueryJVM
-        - ++2.13 zioQueryJS
-        - ++3.3 zioQueryJS
+        - ++2.12.19 zioQueryJVM
+        - ++2.13.13 zioQueryJVM
+        - ++3.3.3 zioQueryJVM
+        - ++2.12.19 zioQueryJS
+        - ++2.13.13 zioQueryJS
+        - ++3.3.3 zioQueryJS
     steps:
+    - name: Install libuv
+      run: sudo apt-get update && sudo apt-get install -y libuv1-dev
     - name: Setup Scala
       uses: actions/setup-java@v4
       with:
