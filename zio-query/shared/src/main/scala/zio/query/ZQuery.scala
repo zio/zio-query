@@ -1510,7 +1510,7 @@ object ZQuery {
         case Right(promise) =>
           promise.unsafe.poll(Unsafe.unsafe) match {
             case None                 => CachedResult.Pure(Result.blocked(BlockedRequests.empty, Continue(promise)))
-            case Some(io: Exit[?, ?]) => CachedResult.Pure(Result.fromExit(io))
+            case Some(io: Exit[E, B]) => CachedResult.Pure(Result.fromExit(io))
             case Some(io)             => CachedResult.Effectful(io.exit.map(Result.fromExit))
           }
       }
