@@ -1092,7 +1092,7 @@ object ZQuery {
     failCause(Cause.fail(error))
 
   /**
-   * Lazily constructs a query that fails with the specified error.
+   * Eagerly constructs a query that fails with the specified error.
    */
   def failNow[E](error: E): ZQuery[Any, E, Nothing] =
     failCauseNow(Cause.fail(error))
