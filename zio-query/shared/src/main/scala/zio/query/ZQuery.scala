@@ -909,7 +909,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
 
 object ZQuery {
 
-  final def absolve[R, E, A](v: => ZQuery[R, E, Either[E, A]])(implicit trace: Trace): ZQuery[R, E, A] =
+  def absolve[R, E, A](v: => ZQuery[R, E, Either[E, A]])(implicit trace: Trace): ZQuery[R, E, A] =
     ZQuery.suspend(v).flatMap {
       case Right(v) => ZQuery.succeedNow(v)
       case Left(e)  => ZQuery.failNow(e)
@@ -1070,19 +1070,19 @@ object ZQuery {
    * val portNumber = effect.access(_.config.portNumber)
    * }}}
    */
-  final def environmentWith[R]: EnvironmentWithPartiallyApplied[R] =
+  def environmentWith[R]: EnvironmentWithPartiallyApplied[R] =
     new EnvironmentWithPartiallyApplied[R]
 
   /**
    * Effectfully accesses the environment of the effect.
    */
-  final def environmentWithQuery[R]: EnvironmentWithQueryPartiallyApplied[R] =
+  def environmentWithQuery[R]: EnvironmentWithQueryPartiallyApplied[R] =
     new EnvironmentWithQueryPartiallyApplied[R]
 
   /**
    * Effectfully accesses the environment of the effect.
    */
-  final def environmentWithZIO[R]: EnvironmentWithZIOPartiallyApplied[R] =
+  def environmentWithZIO[R]: EnvironmentWithZIOPartiallyApplied[R] =
     new EnvironmentWithZIOPartiallyApplied[R]
 
   /**
@@ -1137,7 +1137,7 @@ object ZQuery {
    * For a parallel version of this method, see `foreachPar`. If you do not need
    * the results, see `foreach_` for a more efficient implementation.
    */
-  final def foreach[R, E, A, B](in: Set[A])(f: A => ZQuery[R, E, B])(implicit
+  def foreach[R, E, A, B](in: Set[A])(f: A => ZQuery[R, E, B])(implicit
     trace: Trace
   ): ZQuery[R, E, Set[B]] =
     foreach[R, E, A, B, Iterable](in)(f).map(_.toSet)
@@ -1149,7 +1149,7 @@ object ZQuery {
    * For a parallel version of this method, see `foreachPar`. If you do not need
    * the results, see `foreach_` for a more efficient implementation.
    */
-  final def foreach[R, E, A, B: ClassTag](in: Array[A])(f: A => ZQuery[R, E, B])(implicit
+  def foreach[R, E, A, B: ClassTag](in: Array[A])(f: A => ZQuery[R, E, B])(implicit
     trace: Trace
   ): ZQuery[R, E, Array[B]] =
     foreach[R, E, A, B, Iterable](in)(f).map(_.toArray)
@@ -1170,7 +1170,7 @@ object ZQuery {
    * Applies the function `f` if the argument is non-empty and returns the
    * results in a new `Option[B]`.
    */
-  final def foreach[R, E, A, B](in: Option[A])(f: A => ZQuery[R, E, B])(implicit
+  def foreach[R, E, A, B](in: Option[A])(f: A => ZQuery[R, E, B])(implicit
     trace: Trace
   ): ZQuery[R, E, Option[B]] =
     in.fold[ZQuery[R, E, Option[B]]](none)(f(_).map(Some(_)))
@@ -1182,7 +1182,7 @@ object ZQuery {
    * For a parallel version of this method, see `foreachPar`. If you do not need
    * the results, see `foreach_` for a more efficient implementation.
    */
-  final def foreach[R, E, A, B](in: NonEmptyChunk[A])(f: A => ZQuery[R, E, B])(implicit
+  def foreach[R, E, A, B](in: NonEmptyChunk[A])(f: A => ZQuery[R, E, B])(implicit
     trace: Trace
   ): ZQuery[R, E, NonEmptyChunk[B]] =
     foreach[R, E, A, B, Chunk](in)(f).map(NonEmptyChunk.nonEmpty)
@@ -1208,7 +1208,7 @@ object ZQuery {
         }
     }
 
-  final def foreachBatched[R, E, A, B](as: Set[A])(fn: A => ZQuery[R, E, B])(implicit
+  def foreachBatched[R, E, A, B](as: Set[A])(fn: A => ZQuery[R, E, B])(implicit
     trace: Trace
   ): ZQuery[R, E, Set[B]] =
     foreachBatched[R, E, A, B, Iterable](as)(fn).map(_.toSet)
@@ -1220,7 +1220,7 @@ object ZQuery {
    *
    * For a sequential version of this method, see `foreach`.
    */
-  final def foreachBatched[R, E, A, B: ClassTag](as: Array[A])(f: A => ZQuery[R, E, B])(implicit
+  def foreachBatched[R, E, A, B: ClassTag](as: Array[A])(f: A => ZQuery[R, E, B])(implicit
     trace: Trace
   ): ZQuery[R, E, Array[B]] =
     foreachBatched[R, E, A, B, Iterable](as)(f).map(_.toArray)
@@ -1244,7 +1244,7 @@ object ZQuery {
    *
    * For a sequential version of this method, see `foreach`.
    */
-  final def foreachBatched[R, E, A, B](as: NonEmptyChunk[A])(f: A => ZQuery[R, E, B])(implicit
+  def foreachBatched[R, E, A, B](as: NonEmptyChunk[A])(f: A => ZQuery[R, E, B])(implicit
     trace: Trace
   ): ZQuery[R, E, NonEmptyChunk[B]] =
     foreachBatched[R, E, A, B, Chunk](as)(f).map(NonEmptyChunk.nonEmpty)
@@ -1371,7 +1371,7 @@ object ZQuery {
    * query returning a collection of their results. Requests will be executed in
    * parallel and will be batched.
    */
-  final def foreachPar[R, E, A, B](as: Set[A])(fn: A => ZQuery[R, E, B])(implicit
+  def foreachPar[R, E, A, B](as: Set[A])(fn: A => ZQuery[R, E, B])(implicit
     trace: Trace
   ): ZQuery[R, E, Set[B]] =
     foreachPar[R, E, A, B, Iterable](as)(fn).map(_.toSet)
@@ -1383,7 +1383,7 @@ object ZQuery {
    *
    * For a sequential version of this method, see `foreach`.
    */
-  final def foreachPar[R, E, A, B: ClassTag](as: Array[A])(f: A => ZQuery[R, E, B])(implicit
+  def foreachPar[R, E, A, B: ClassTag](as: Array[A])(f: A => ZQuery[R, E, B])(implicit
     trace: Trace
   ): ZQuery[R, E, Array[B]] =
     foreachPar[R, E, A, B, Iterable](as)(f).map(_.toArray)
@@ -1407,7 +1407,7 @@ object ZQuery {
    *
    * For a sequential version of this method, see `foreach`.
    */
-  final def foreachPar[R, E, A, B](as: NonEmptyChunk[A])(fn: A => ZQuery[R, E, B])(implicit
+  def foreachPar[R, E, A, B](as: NonEmptyChunk[A])(fn: A => ZQuery[R, E, B])(implicit
     trace: Trace
   ): ZQuery[R, E, NonEmptyChunk[B]] =
     foreachPar[R, E, A, B, Chunk](as)(fn).map(NonEmptyChunk.nonEmpty)
@@ -1634,19 +1634,19 @@ object ZQuery {
    * val portNumber = effect.access(_.config.portNumber)
    * }}}
    */
-  final def serviceWith[R]: ServiceWithPartiallyApplied[R] =
+  def serviceWith[R]: ServiceWithPartiallyApplied[R] =
     new ServiceWithPartiallyApplied[R]
 
   /**
    * Effectfully accesses the environment of the effect.
    */
-  final def serviceWithQuery[R]: ServiceWithQueryPartiallyApplied[R] =
+  def serviceWithQuery[R]: ServiceWithQueryPartiallyApplied[R] =
     new ServiceWithQueryPartiallyApplied[R]
 
   /**
    * Effectfully accesses the environment of the effect.
    */
-  final def serviceWithZIO[R]: ServiceWithZIOPartiallyApplied[R] =
+  def serviceWithZIO[R]: ServiceWithZIOPartiallyApplied[R] =
     new ServiceWithZIOPartiallyApplied[R]
 
   /**
