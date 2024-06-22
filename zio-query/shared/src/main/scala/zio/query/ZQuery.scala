@@ -153,6 +153,25 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     map(_ => b)
 
   /**
+   * Extracts the value of this ZQuery as an exit if the result of the query is
+   * known, and it does not contain any side effects.
+   *
+   * This applies to queries that have been constructed via
+   * [[ZQuery.succeedNow]] and other xNow constructors. The only exception is
+   * [[ZQuery.fromZIONow]], which is assumed to contain side effects unless the
+   * provided effect was an [[zio.Exit]]
+   */
+  final def asExitMaybe: Option[Exit[E, A]] =
+    Option(asExitOrElse(null))
+
+  final def asExitOrElse[E1 >: E, A1 >: A](default: Exit[E1, A1]): Exit[E1, A1] =
+    self.step match {
+      case Exit.Success(Result.Done(a: A))        => Exit.succeed(a)
+      case Exit.Success(Result.Fail(e: Cause[E])) => Exit.failCause(e)
+      case _                                      => default
+    }
+
+  /**
    * Lifts the error channel into a `Some` value for composition with other
    * optional queries
    */
@@ -326,6 +345,16 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     foldQuery(e => ZQuery.failNow(f(e)), a => ZQuery.succeedNow(g(a)))
 
   /**
+   * Returns a query whose failure cause and success channels have been mapped
+   * by the specified pair of functions, `f` and `g`.
+   */
+  final def mapBothCause[E1, B](f: Cause[E] => Cause[E1], g: A => B)(implicit
+    ev: CanFail[E],
+    trace: Trace
+  ): ZQuery[R, E1, B] =
+    foldCauseQuery(e => ZQuery.failCauseNow(f(e)), a => ZQuery.succeedNow(g(a)))
+
+  /**
    * Transforms all data sources with the specified data source aspect.
    */
   final def mapDataSources[R1 <: R](f: => DataSourceAspect[R1])(implicit trace: Trace): ZQuery[R1, E, A] =
@@ -482,34 +511,40 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
       a => ev(a).fold(b => ZQuery.failNow(Left(b)), ZQuery.succeedNow)
     )
 
-  /**
-   * Returns an effect that models executing this query.
-   */
-  final def run(implicit trace: Trace): ZIO[R, E, A] =
-    runLog.map(_._2)
-
-  /**
-   * Returns an effect that models executing this query with the specified
-   * cache.
-   */
-  final def runCache(cache: => Cache)(implicit trace: Trace): ZIO[R, E, A] = {
-
+  private[this] def runToZIO(implicit trace: Trace): ZIO[R, E, A] = {
     def run(query: ZQuery[R, E, A]): ZIO[R, E, A] =
       query.step.flatMap {
         case Result.Blocked(br, Continue.Effect(c)) => br.run *> run(c)
         case Result.Blocked(br, Continue.Get(io))   => br.run *> io
         case Result.Done(a)                         => Exit.succeed(a)
-        case Result.Fail(e)                         => ZIO.failCause(e)
+        case Result.Fail(e)                         => Exit.failCause(e)
       }
 
-    ZIO.acquireReleaseExitWith {
-      Scope.make
-    } { (scope: Scope.Closeable, exit: Exit[E, A]) =>
-      scope.close(exit)
-    } { scope =>
-      ZQuery.currentScope.locally(scope)(ZQuery.currentCache.locally(cache)(run(self)))
-    }
+    run(self)
   }
+
+  /**
+   * Returns an effect that models executing this query.
+   */
+  final def run(implicit trace: Trace): ZIO[R, E, A] =
+    runCache(Cache.unsafeMake())
+
+  /**
+   * Returns an effect that models executing this query with the specified
+   * cache.
+   */
+  final def runCache(cache: => Cache)(implicit trace: Trace): ZIO[R, E, A] =
+    asExitOrElse(null) match {
+      case null =>
+        ZIO.acquireReleaseExitWith {
+          Scope.make
+        } { (scope: Scope.Closeable, exit: Exit[E, A]) =>
+          scope.close(exit)
+        } { scope =>
+          ZQuery.currentScope.locally(scope)(ZQuery.currentCache.locally(cache)(runToZIO))
+        }
+      case exit => exit
+    }
 
   /**
    * Returns an effect that models executing this query, returning the query
