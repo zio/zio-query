@@ -64,7 +64,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
   /**
    * Syntax for adding aspects.
    */
-  final def @@[LowerR <: UpperR, UpperR <: R, LowerE >: E, UpperE >: LowerE, LowerA >: A, UpperA >: LowerA](
+  def @@[LowerR <: UpperR, UpperR <: R, LowerE >: E, UpperE >: LowerE, LowerA >: A, UpperA >: LowerA](
     aspect: => QueryAspect[LowerR, UpperR, LowerE, UpperE, LowerA, UpperA]
   )(implicit trace: Trace): ZQuery[UpperR, LowerE, LowerA] =
     ZQuery.suspend(aspect(self))
@@ -72,19 +72,19 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
   /**
    * A symbolic alias for `zipParRight`.
    */
-  final def &>[R1 <: R, E1 >: E, B](that: => ZQuery[R1, E1, B])(implicit trace: Trace): ZQuery[R1, E1, B] =
+  def &>[R1 <: R, E1 >: E, B](that: => ZQuery[R1, E1, B])(implicit trace: Trace): ZQuery[R1, E1, B] =
     zipParRight(that)
 
   /**
    * A symbolic alias for `zipParLeft`.
    */
-  final def <&[R1 <: R, E1 >: E, B](that: => ZQuery[R1, E1, B])(implicit trace: Trace): ZQuery[R1, E1, A] =
+  def <&[R1 <: R, E1 >: E, B](that: => ZQuery[R1, E1, B])(implicit trace: Trace): ZQuery[R1, E1, A] =
     zipParLeft(that)
 
   /**
    * A symbolic alias for `zipPar`.
    */
-  final def <&>[R1 <: R, E1 >: E, B](that: => ZQuery[R1, E1, B])(implicit
+  def <&>[R1 <: R, E1 >: E, B](that: => ZQuery[R1, E1, B])(implicit
     zippable: Zippable[A, B],
     trace: Trace
   ): ZQuery[R1, E1, zippable.Out] =
@@ -93,19 +93,19 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
   /**
    * A symbolic alias for `zipRight`.
    */
-  final def *>[R1 <: R, E1 >: E, B](that: => ZQuery[R1, E1, B])(implicit trace: Trace): ZQuery[R1, E1, B] =
+  def *>[R1 <: R, E1 >: E, B](that: => ZQuery[R1, E1, B])(implicit trace: Trace): ZQuery[R1, E1, B] =
     zipRight(that)
 
   /**
    * A symbolic alias for `zipLeft`.
    */
-  final def <*[R1 <: R, E1 >: E, B](that: => ZQuery[R1, E1, B])(implicit trace: Trace): ZQuery[R1, E1, A] =
+  def <*[R1 <: R, E1 >: E, B](that: => ZQuery[R1, E1, B])(implicit trace: Trace): ZQuery[R1, E1, A] =
     zipLeft(that)
 
   /**
    * A symbolic alias for `zip`.
    */
-  final def <*>[R1 <: R, E1 >: E, B](that: => ZQuery[R1, E1, B])(implicit
+  def <*>[R1 <: R, E1 >: E, B](that: => ZQuery[R1, E1, B])(implicit
     zippable: Zippable[A, B],
     trace: Trace
   ): ZQuery[R1, E1, zippable.Out] =
@@ -114,19 +114,19 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
   /**
    * A symbolic alias for `zipBatchedRight`.
    */
-  final def ~>[R1 <: R, E1 >: E, B](that: => ZQuery[R1, E1, B])(implicit trace: Trace): ZQuery[R1, E1, B] =
+  def ~>[R1 <: R, E1 >: E, B](that: => ZQuery[R1, E1, B])(implicit trace: Trace): ZQuery[R1, E1, B] =
     zipBatchedRight(that)
 
   /**
    * A symbolic alias for `zipBatchedLeft`.
    */
-  final def <~[R1 <: R, E1 >: E, B](that: => ZQuery[R1, E1, B])(implicit trace: Trace): ZQuery[R1, E1, A] =
+  def <~[R1 <: R, E1 >: E, B](that: => ZQuery[R1, E1, B])(implicit trace: Trace): ZQuery[R1, E1, A] =
     zipBatchedLeft(that)
 
   /**
    * A symbolic alias for `zipBatched`.
    */
-  final def <~>[R1 <: R, E1 >: E, B](that: => ZQuery[R1, E1, B])(implicit
+  def <~>[R1 <: R, E1 >: E, B](that: => ZQuery[R1, E1, B])(implicit
     zippable: Zippable[A, B],
     trace: Trace
   ): ZQuery[R1, E1, zippable.Out] =
@@ -149,7 +149,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
   /**
    * Maps the success value of this query to the specified constant value.
    */
-  final def as[B](b: => B)(implicit trace: Trace): ZQuery[R, E, B] =
+  def as[B](b: => B)(implicit trace: Trace): ZQuery[R, E, B] =
     map(_ => b)
 
   /**
@@ -161,10 +161,10 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * [[ZQuery.fromZIONow]], which is assumed to contain side effects unless the
    * provided effect was an [[zio.Exit]]
    */
-  final def asExitMaybe: Option[Exit[E, A]] =
+  def asExitMaybe: Option[Exit[E, A]] =
     Option(asExitOrElse(null))
 
-  final def asExitOrElse[E1 >: E, A1 >: A](default: Exit[E1, A1]): Exit[E1, A1] =
+  def asExitOrElse[E1 >: E, A1 >: A](default: Exit[E1, A1]): Exit[E1, A1] =
     self.step match {
       case Exit.Success(Result.Done(a: A))        => Exit.succeed(a)
       case Exit.Success(Result.Fail(e: Cause[E])) => Exit.failCause(e)
@@ -210,7 +210,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * `Either`. The resulting query cannot fail, because the failure case has
    * been exposed as part of the `Either` success case.
    */
-  final def either(implicit ev: CanFail[E], trace: Trace): ZQuery[R, Nothing, Either[E, A]] =
+  def either(implicit ev: CanFail[E], trace: Trace): ZQuery[R, Nothing, Either[E, A]] =
     fold(Left(_), Right(_))
 
   /**
@@ -218,7 +218,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * executed immediately after this query completes execution, whether by
    * success or failure.
    */
-  final def ensuring[R1 <: R](finalizer: => ZIO[R1, Nothing, Any])(implicit trace: Trace): ZQuery[R1, E, A] =
+  def ensuring[R1 <: R](finalizer: => ZIO[R1, Nothing, Any])(implicit trace: Trace): ZQuery[R1, E, A] =
     ZQuery.acquireReleaseWith(ZIO.unit)(_ => finalizer)(_ => self)
 
   /**
@@ -228,7 +228,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * sequentially and will not be pipelined, though deduplication and caching of
    * requests may still be applied.
    */
-  final def flatMap[R1 <: R, E1 >: E, B](f: A => ZQuery[R1, E1, B])(implicit trace: Trace): ZQuery[R1, E1, B] =
+  def flatMap[R1 <: R, E1 >: E, B](f: A => ZQuery[R1, E1, B])(implicit trace: Trace): ZQuery[R1, E1, B] =
     ZQuery {
       step.flatMap {
         case Result.Blocked(br, c) => Exit.succeed(Result.blocked(br, c.mapQuery(f)))
@@ -243,7 +243,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    *
    * This method can be used to "flatten" nested queries.
    */
-  final def flatten[R1 <: R, E1 >: E, B](implicit
+  def flatten[R1 <: R, E1 >: E, B](implicit
     ev: A IsSubtypeOfOutput ZQuery[R1, E1, B],
     trace: Trace
   ): ZQuery[R1, E1, B] =
@@ -254,7 +254,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * that does not fail, but succeeds with the value returned by the left or
    * right function passed to `fold`.
    */
-  final def fold[B](failure: E => B, success: A => B)(implicit
+  def fold[B](failure: E => B, success: A => B)(implicit
     ev: CanFail[E],
     trace: Trace
   ): ZQuery[R, Nothing, B] =
@@ -264,7 +264,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * A more powerful version of `foldQuery` that allows recovering from any type
    * of failure except interruptions.
    */
-  final def foldCauseQuery[R1 <: R, E1, B](
+  def foldCauseQuery[R1 <: R, E1, B](
     failure: Cause[E] => ZQuery[R1, E1, B],
     success: A => ZQuery[R1, E1, B]
   )(implicit trace: Trace): ZQuery[R1, E1, B] =
@@ -283,7 +283,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * Recovers from errors by accepting one query to execute for the case of an
    * error, and one query to execute for the case of success.
    */
-  final def foldQuery[R1 <: R, E1, B](failure: E => ZQuery[R1, E1, B], success: A => ZQuery[R1, E1, B])(implicit
+  def foldQuery[R1 <: R, E1, B](failure: E => ZQuery[R1, E1, B], success: A => ZQuery[R1, E1, B])(implicit
     ev: CanFail[E],
     trace: Trace
   ): ZQuery[R1, E1, B] =
@@ -293,7 +293,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * "Zooms in" on the value in the `Left` side of an `Either`, moving the
    * possibility that the value is a `Right` to the error channel.
    */
-  final def left[B, C](implicit
+  def left[B, C](implicit
     ev: A IsSubtypeOfOutput Either[B, C],
     trace: Trace
   ): ZQuery[R, Either[E, C], B] =
@@ -328,27 +328,27 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    *
    * }}}
    */
-  final def memoize(implicit trace: Trace): UIO[ZQuery[R, E, A]] =
+  def memoize(implicit trace: Trace): UIO[ZQuery[R, E, A]] =
     ZIO.succeed(ZQuery.unsafe.memoize(self)(Unsafe.unsafe, trace))
 
   /**
    * Maps the specified function over the successful result of this query.
    */
-  final def map[B](f: A => B)(implicit trace: Trace): ZQuery[R, E, B] =
+  def map[B](f: A => B)(implicit trace: Trace): ZQuery[R, E, B] =
     ZQuery(step.map(_.map(f)))
 
   /**
    * Returns a query whose failure and success channels have been mapped by the
    * specified pair of functions, `f` and `g`.
    */
-  final def mapBoth[E1, B](f: E => E1, g: A => B)(implicit ev: CanFail[E], trace: Trace): ZQuery[R, E1, B] =
+  def mapBoth[E1, B](f: E => E1, g: A => B)(implicit ev: CanFail[E], trace: Trace): ZQuery[R, E1, B] =
     foldQuery(e => ZQuery.failNow(f(e)), a => ZQuery.succeedNow(g(a)))
 
   /**
    * Returns a query whose failure cause and success channels have been mapped
    * by the specified pair of functions, `f` and `g`.
    */
-  final def mapBothCause[E1, B](f: Cause[E] => Cause[E1], g: A => B)(implicit
+  def mapBothCause[E1, B](f: Cause[E] => Cause[E1], g: A => B)(implicit
     ev: CanFail[E],
     trace: Trace
   ): ZQuery[R, E1, B] =
@@ -357,13 +357,13 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
   /**
    * Transforms all data sources with the specified data source aspect.
    */
-  final def mapDataSources[R1 <: R](f: => DataSourceAspect[R1])(implicit trace: Trace): ZQuery[R1, E, A] =
+  def mapDataSources[R1 <: R](f: => DataSourceAspect[R1])(implicit trace: Trace): ZQuery[R1, E, A] =
     ZQuery(step.map(_.mapDataSources(f)))
 
   /**
    * Maps the specified function over the failed result of this query.
    */
-  final def mapError[E1](f: E => E1)(implicit ev: CanFail[E], trace: Trace): ZQuery[R, E1, A] =
+  def mapError[E1](f: E => E1)(implicit ev: CanFail[E], trace: Trace): ZQuery[R, E1, A] =
     mapBoth(f, identity)
 
   /**
@@ -377,14 +377,14 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
   /**
    * Maps the specified effectual function over the result of this query.
    */
-  final def mapZIO[R1 <: R, E1 >: E, B](f: A => ZIO[R1, E1, B])(implicit trace: Trace): ZQuery[R1, E1, B] =
+  def mapZIO[R1 <: R, E1 >: E, B](f: A => ZIO[R1, E1, B])(implicit trace: Trace): ZQuery[R1, E1, B] =
     flatMap(a => ZQuery.fromZIONow(f(a)))
 
   /**
    * Converts this query to one that returns `Some` if data sources return
    * results for all requests received and `None` otherwise.
    */
-  final def optional(implicit trace: Trace): ZQuery[R, E, Option[A]] =
+  def optional(implicit trace: Trace): ZQuery[R, E, Option[A]] =
     foldCauseQuery(
       _.stripSomeDefects { case _: QueryFailure => () }.fold[ZQuery[R, E, Option[A]]](ZQuery.none)(ZQuery.failCause(_)),
       ZQuery.some(_)
@@ -393,7 +393,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
   /**
    * Converts this query to one that dies if a query failure occurs.
    */
-  final def orDie(implicit
+  def orDie(implicit
     ev1: E IsSubtypeOfError Throwable,
     ev2: CanFail[E],
     trace: Trace
@@ -404,13 +404,13 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * Converts this query to one that dies if a query failure occurs, using the
    * specified function to map the error to a `Throwable`.
    */
-  final def orDieWith(f: E => Throwable)(implicit ev: CanFail[E], trace: Trace): ZQuery[R, Nothing, A] =
+  def orDieWith(f: E => Throwable)(implicit ev: CanFail[E], trace: Trace): ZQuery[R, Nothing, A] =
     foldQuery(e => ZQuery.die(f(e)), a => ZQuery.succeedNow(a))
 
   /**
    * Provides a layer to this query, which translates it to another level.
    */
-  final def provideLayer[E1 >: E, R0](
+  def provideLayer[E1 >: E, R0](
     layer: => Described[ZLayer[R0, E1, R]]
   )(implicit trace: Trace): ZQuery[R0, E1, A] =
     ZQuery {
@@ -425,7 +425,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
   /**
    * Provides this query with its required environment.
    */
-  final def provideEnvironment(
+  def provideEnvironment(
     r: => Described[ZEnvironment[R]]
   )(implicit trace: Trace): ZQuery[Any, E, A] =
     provideSomeEnvironment(Described(_ => r.value, s"_ => ${r.description}"))
@@ -434,13 +434,13 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * Splits the environment into two parts, providing one part using the
    * specified layer and leaving the remainder `R0`.
    */
-  final def provideSomeLayer[R0]: ZQuery.ProvideSomeLayer[R0, R, E, A] =
+  def provideSomeLayer[R0]: ZQuery.ProvideSomeLayer[R0, R, E, A] =
     new ZQuery.ProvideSomeLayer(self)
 
   /**
    * Provides this query with part of its required environment.
    */
-  final def provideSomeEnvironment[R0](
+  def provideSomeEnvironment[R0](
     f: => Described[ZEnvironment[R0] => ZEnvironment[R]]
   )(implicit trace: Trace): ZQuery[R0, E, A] =
     ZQuery(step.map(_.provideSomeEnvironment(f)).provideSomeEnvironment((r => (f.value(r)))))
@@ -502,7 +502,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * "Zooms in" on the value in the `Right` side of an `Either`, moving the
    * possibility that the value is a `Left` to the error channel.
    */
-  final def right[B, C](implicit
+  def right[B, C](implicit
     ev: A IsSubtypeOfOutput Either[B, C],
     trace: Trace
   ): ZQuery[R, Either[B, E], C] =
@@ -526,14 +526,14 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
   /**
    * Returns an effect that models executing this query.
    */
-  final def run(implicit trace: Trace): ZIO[R, E, A] =
+  def run(implicit trace: Trace): ZIO[R, E, A] =
     runCache(Cache.unsafeMake())
 
   /**
    * Returns an effect that models executing this query with the specified
    * cache.
    */
-  final def runCache(cache: => Cache)(implicit trace: Trace): ZIO[R, E, A] =
+  def runCache(cache: => Cache)(implicit trace: Trace): ZIO[R, E, A] =
     asExitOrElse(null) match {
       case null =>
         ZIO.acquireReleaseExitWith {
@@ -550,7 +550,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * Returns an effect that models executing this query, returning the query
    * result along with the cache.
    */
-  final def runLog(implicit trace: Trace): ZIO[R, E, (Cache, A)] =
+  def runLog(implicit trace: Trace): ZIO[R, E, (Cache, A)] =
     for {
       cache <- Cache.empty
       a     <- runCache(cache)
@@ -595,7 +595,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
   /**
    * Extracts the optional value or executes the given 'default' query.
    */
-  final def someOrElseZIO[B, R1 <: R, E1 >: E](
+  def someOrElseZIO[B, R1 <: R, E1 >: E](
     default: ZQuery[R1, E1, B]
   )(implicit ev: A <:< Option[B], trace: Trace): ZQuery[R1, E1, B] =
     self.flatMap(ev(_) match {
@@ -606,7 +606,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
   /**
    * Extracts the optional value or fails with the given error `e`.
    */
-  final def someOrFail[B, E1 >: E](
+  def someOrFail[B, E1 >: E](
     e: => E1
   )(implicit ev: A IsSubtypeOfOutput Option[B], trace: Trace): ZQuery[R, E1, B] =
     self.flatMap { a =>
@@ -621,7 +621,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * then combining the values to produce a summary, together with the result of
    * execution.
    */
-  final def summarized[R1 <: R, E1 >: E, B, C](
+  def summarized[R1 <: R, E1 >: E, B, C](
     summary0: ZIO[R1, E1, B]
   )(f: (B, B) => C)(implicit trace: Trace): ZQuery[R1, E1, (C, A)] = {
     val summary = summary0
@@ -635,21 +635,21 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
   /**
    * Returns a new query that executes this one and times the execution.
    */
-  final def timed(implicit trace: Trace): ZQuery[R, E, (Duration, A)] =
+  def timed(implicit trace: Trace): ZQuery[R, E, (Duration, A)] =
     summarized(Clock.nanoTime)((start, end) => Duration.fromNanos(end - start))
 
   /**
    * Returns an effect that will timeout this query, returning `None` if the
    * timeout elapses before the query was completed.
    */
-  final def timeout(duration: => Duration)(implicit trace: Trace): ZQuery[R, E, Option[A]] =
+  def timeout(duration: => Duration)(implicit trace: Trace): ZQuery[R, E, Option[A]] =
     timeoutTo(None)(Some(_))(duration)
 
   /**
    * The same as [[timeout]], but instead of producing a `None` in the event of
    * timeout, it will produce the specified error.
    */
-  final def timeoutFail[E1 >: E](e: => E1)(duration: => Duration)(implicit
+  def timeoutFail[E1 >: E](e: => E1)(duration: => Duration)(implicit
     trace: Trace
   ): ZQuery[R, E1, A] =
     timeoutTo(ZQuery.failNow(e))(ZQuery.succeedNow)(duration).flatten
@@ -658,7 +658,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * The same as [[timeout]], but instead of producing a `None` in the event of
    * timeout, it will produce the specified failure.
    */
-  final def timeoutFailCause[E1 >: E](cause: => Cause[E1])(duration: => Duration)(implicit
+  def timeoutFailCause[E1 >: E](cause: => Cause[E1])(duration: => Duration)(implicit
     trace: Trace
   ): ZQuery[R, E1, A] =
     timeoutTo(ZQuery.failCause(cause))(ZQuery.succeedNow)(duration).flatten
@@ -668,7 +668,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * value if the timeout elapses before the query has completed or the result
    * of applying the function `f` to the successful result of the query.
    */
-  final def timeoutTo[B](b: => B): ZQuery.TimeoutTo[R, E, A, B] =
+  def timeoutTo[B](b: => B): ZQuery.TimeoutTo[R, E, A, B] =
     new ZQuery.TimeoutTo(self, () => b)
 
   /**
@@ -681,7 +681,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * Converts a `ZQuery[R, Either[E, B], A]` into a `ZQuery[R, E, Either[A,
    * B]]`. The inverse of `left`.
    */
-  final def unleft[E1, B](implicit
+  def unleft[E1, B](implicit
     ev: E IsSubtypeOfError Either[E1, B],
     trace: Trace
   ): ZQuery[R, E1, Either[A, B]] =
@@ -693,7 +693,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
   /**
    * Converts an option on errors into an option on values.
    */
-  final def unoption[E1](implicit ev: E IsSubtypeOfError Option[E1], trace: Trace): ZQuery[R, E1, Option[A]] =
+  def unoption[E1](implicit ev: E IsSubtypeOfError Option[E1], trace: Trace): ZQuery[R, E1, Option[A]] =
     self.foldQuery(
       e => ev(e).fold[ZQuery[R, E1, Option[A]]](ZQuery.succeedNow(None))(ZQuery.failNow),
       a => ZQuery.succeedNow(Some(a))
@@ -702,20 +702,20 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
   /**
    * Takes some fiber failures and converts them into errors.
    */
-  final def unrefine[E1 >: E](pf: PartialFunction[Throwable, E1])(implicit trace: Trace): ZQuery[R, E1, A] =
+  def unrefine[E1 >: E](pf: PartialFunction[Throwable, E1])(implicit trace: Trace): ZQuery[R, E1, A] =
     unrefineWith(pf)(identity)
 
   /**
    * Takes some fiber failures and converts them into errors.
    */
-  final def unrefineTo[E1 >: E: ClassTag](implicit trace: Trace): ZQuery[R, E1, A] =
+  def unrefineTo[E1 >: E: ClassTag](implicit trace: Trace): ZQuery[R, E1, A] =
     unrefine { case e: E1 => e }
 
   /**
    * Takes some fiber failures and converts them into errors, using the
    * specified function to convert the `E` into an `E1`.
    */
-  final def unrefineWith[E1](
+  def unrefineWith[E1](
     pf: PartialFunction[Throwable, E1]
   )(f: E => E1)(implicit trace: Trace): ZQuery[R, E1, A] =
     catchAllCause { cause =>
@@ -728,7 +728,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * Converts a `ZQuery[R, Either[B, E], A]` into a `ZQuery[R, E, Either[B,
    * A]]`. The inverse of `right`.
    */
-  final def unright[E1, B](implicit
+  def unright[E1, B](implicit
     ev: E IsSubtypeOfError Either[B, E1],
     trace: Trace
   ): ZQuery[R, E1, Either[B, A]] =
@@ -755,29 +755,29 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * Returns a query that models the execution of this query and the specified
    * query sequentially, combining their results into a tuple.
    */
-  final def zip[R1 <: R, E1 >: E, B](that: => ZQuery[R1, E1, B])(implicit
+  def zip[R1 <: R, E1 >: E, B](that: => ZQuery[R1, E1, B])(implicit
     zippable: Zippable[A, B],
     trace: Trace
   ): ZQuery[R1, E1, zippable.Out] =
-    zipWith(that)(zippable.zip(_, _))
+    zipWith(that)(zippable.zip)
 
   /**
    * Returns a query that models the execution of this query and the specified
    * query, batching requests to data sources and combining their results into a
    * tuple.
    */
-  final def zipBatched[R1 <: R, E1 >: E, B](that: => ZQuery[R1, E1, B])(implicit
+  def zipBatched[R1 <: R, E1 >: E, B](that: => ZQuery[R1, E1, B])(implicit
     zippable: Zippable[A, B],
     trace: Trace
   ): ZQuery[R1, E1, zippable.Out] =
-    zipWithBatched(that)(zippable.zip(_, _))
+    zipWithBatched(that)(zippable.zip)
 
   /**
    * Returns a query that models the execution of this query and the specified
    * query, batching requests to data sources and returning the result of this
    * query.
    */
-  final def zipBatchedLeft[R1 <: R, E1 >: E, B](that: => ZQuery[R1, E1, B])(implicit
+  def zipBatchedLeft[R1 <: R, E1 >: E, B](that: => ZQuery[R1, E1, B])(implicit
     trace: Trace
   ): ZQuery[R1, E1, A] =
     zipWithBatched(that)((a, _) => a)
@@ -787,7 +787,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * query, batching requests to data sources and returning the result of the
    * specified query.
    */
-  final def zipBatchedRight[R1 <: R, E1 >: E, B](that: => ZQuery[R1, E1, B])(implicit
+  def zipBatchedRight[R1 <: R, E1 >: E, B](that: => ZQuery[R1, E1, B])(implicit
     trace: Trace
   ): ZQuery[R1, E1, B] =
     zipWithBatched(that)((_, b) => b)
@@ -796,24 +796,24 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * Returns a query that models the execution of this query and the specified
    * query sequentially, returning the result of this query.
    */
-  final def zipLeft[R1 <: R, E1 >: E, B](that: => ZQuery[R1, E1, B])(implicit trace: Trace): ZQuery[R1, E1, A] =
+  def zipLeft[R1 <: R, E1 >: E, B](that: => ZQuery[R1, E1, B])(implicit trace: Trace): ZQuery[R1, E1, A] =
     zipWith(that)((a, _) => a)
 
   /**
    * Returns a query that models the execution of this query and the specified
    * query in parallel, combining their results into a tuple.
    */
-  final def zipPar[R1 <: R, E1 >: E, B](that: => ZQuery[R1, E1, B])(implicit
+  def zipPar[R1 <: R, E1 >: E, B](that: => ZQuery[R1, E1, B])(implicit
     zippable: Zippable[A, B],
     trace: Trace
   ): ZQuery[R1, E1, zippable.Out] =
-    zipWithPar(that)(zippable.zip(_, _))
+    zipWithPar(that)(zippable.zip)
 
   /**
    * Returns a query that models the execution of this query and the specified
    * query in parallel, returning the result of this query.
    */
-  final def zipParLeft[R1 <: R, E1 >: E, B](that: => ZQuery[R1, E1, B])(implicit
+  def zipParLeft[R1 <: R, E1 >: E, B](that: => ZQuery[R1, E1, B])(implicit
     trace: Trace
   ): ZQuery[R1, E1, A] =
     zipWithPar(that)((a, _) => a)
@@ -822,7 +822,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * Returns a query that models the execution of this query and the specified
    * query in parallel, returning the result of the specified query.
    */
-  final def zipParRight[R1 <: R, E1 >: E, B](that: => ZQuery[R1, E1, B])(implicit
+  def zipParRight[R1 <: R, E1 >: E, B](that: => ZQuery[R1, E1, B])(implicit
     trace: Trace
   ): ZQuery[R1, E1, B] =
     zipWithPar(that)((_, b) => b)
@@ -831,7 +831,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * Returns a query that models the execution of this query and the specified
    * query sequentially, returning the result of the specified query.
    */
-  final def zipRight[R1 <: R, E1 >: E, B](that: => ZQuery[R1, E1, B])(implicit
+  def zipRight[R1 <: R, E1 >: E, B](that: => ZQuery[R1, E1, B])(implicit
     trace: Trace
   ): ZQuery[R1, E1, B] =
     zipWith(that)((_, b) => b)
@@ -842,7 +842,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * Requests composed with `zipWith` or combinators derived from it will
    * automatically be pipelined.
    */
-  final def zipWith[R1 <: R, E1 >: E, B, C](
+  def zipWith[R1 <: R, E1 >: E, B, C](
     that: => ZQuery[R1, E1, B]
   )(f: (A, B) => C)(implicit trace: Trace): ZQuery[R1, E1, C] =
     ZQuery {
@@ -869,7 +869,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * Returns a query that models the execution of this query and the specified
    * query, batching requests to data sources.
    */
-  final def zipWithBatched[R1 <: R, E1 >: E, B, C](
+  def zipWithBatched[R1 <: R, E1 >: E, B, C](
     that: => ZQuery[R1, E1, B]
   )(f: (A, B) => C)(implicit trace: Trace): ZQuery[R1, E1, C] =
     ZQuery {
@@ -890,7 +890,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * Requests composed with `zipWithPar` or combinators derived from it will
    * automatically be batched.
    */
-  final def zipWithPar[R1 <: R, E1 >: E, B, C](
+  def zipWithPar[R1 <: R, E1 >: E, B, C](
     that: => ZQuery[R1, E1, B]
   )(f: (A, B) => C)(implicit trace: Trace): ZQuery[R1, E1, C] =
     ZQuery {
