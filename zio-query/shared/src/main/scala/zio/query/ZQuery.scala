@@ -759,7 +759,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     zippable: Zippable[A, B],
     trace: Trace
   ): ZQuery[R1, E1, zippable.Out] =
-    zipWith(that)(zippable.zip)
+    zipWith(that)(zippable.zip(_, _))
 
   /**
    * Returns a query that models the execution of this query and the specified
@@ -770,7 +770,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     zippable: Zippable[A, B],
     trace: Trace
   ): ZQuery[R1, E1, zippable.Out] =
-    zipWithBatched(that)(zippable.zip)
+    zipWithBatched(that)(zippable.zip(_, _))
 
   /**
    * Returns a query that models the execution of this query and the specified
@@ -807,7 +807,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     zippable: Zippable[A, B],
     trace: Trace
   ): ZQuery[R1, E1, zippable.Out] =
-    zipWithPar(that)(zippable.zip)
+    zipWithPar(that)(zippable.zip(_, _))
 
   /**
    * Returns a query that models the execution of this query and the specified
