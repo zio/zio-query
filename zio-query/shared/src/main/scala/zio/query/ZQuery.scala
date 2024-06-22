@@ -1658,7 +1658,8 @@ object ZQuery {
   /**
    * Lazily constructs a query that succeeds with the specified value.
    *
-   * '''NOTE''': If the `value` is side-effect free, prefer using [[succeedNow]] instead
+   * '''NOTE''': If the `value` is side-effect free, prefer using [[succeedNow]]
+   * instead
    */
   def succeed[A](value: => A)(implicit trace: Trace): ZQuery[Any, Nothing, A] =
     ZQuery(ZIO.succeed(Result.done(value)))
