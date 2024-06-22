@@ -6,9 +6,9 @@ import zio.{Chunk, ZIO}
 
 import java.util.concurrent.TimeUnit
 
-@Measurement(iterations = 5, time = 1, timeUnit = TimeUnit.SECONDS)
-@Warmup(iterations = 5, time = 1, timeUnit = TimeUnit.SECONDS)
-@Fork(2)
+@Measurement(iterations = 3, time = 1, timeUnit = TimeUnit.SECONDS)
+@Warmup(iterations = 3, time = 1, timeUnit = TimeUnit.SECONDS)
+@Fork(1)
 @Threads(1)
 @State(JScope.Thread)
 @BenchmarkMode(Array(Mode.Throughput))
@@ -39,6 +39,13 @@ class FromRequestBenchmark {
   @Benchmark
   def fromRequests(): Long = {
     val reqs  = Chunk.fromIterable((0 until count).map(i => Req(i)))
+    val query = ds.queryAll(reqs).map(_.sum.toLong)
+    unsafeRunCache(query, Cache.unsafeMake(count))
+  }
+
+  @Benchmark
+  def fromRequestsCached(): Long = {
+    val reqs  = Chunk.fromIterable((0 until count).map(_ => Req(1)))
     val query = ds.queryAll(reqs).map(_.sum.toLong)
     unsafeRunCache(query, Cache.unsafeMake(count))
   }

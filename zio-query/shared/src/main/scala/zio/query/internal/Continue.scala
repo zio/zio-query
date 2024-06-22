@@ -41,7 +41,7 @@ private[query] sealed trait Continue[-R, +E, +A] { self =>
   ): Continue[R, Nothing, B] =
     self match {
       case Effect(query) => effect(query.fold(failure, success))
-      case Get(io)       => get(io.fold(failure, success))
+      case Get(io)       => get(io.foldZIO(e => Exit.succeed(failure(e)), a => Exit.succeed(success(a))))
     }
 
   /**

@@ -10,7 +10,7 @@ crossScalaVersions := Seq.empty
 inThisBuild(
   List(
     name       := "ZIO Query",
-    zioVersion := "2.1.3",
+    zioVersion := "2.1.4",
     developers := List(
       Developer(
         "kyri-petrou",
