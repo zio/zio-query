@@ -7,10 +7,14 @@ enablePlugins(ZioSbtEcosystemPlugin, ZioSbtCiPlugin)
 
 crossScalaVersions := Seq.empty
 
+lazy val scalaV    = "2.13.14"
+lazy val allScalas = List("2.12", "2.13", "3.3")
+
 inThisBuild(
   List(
-    name       := "ZIO Query",
-    zioVersion := "2.1.4",
+    name         := "ZIO Query",
+    zioVersion   := "2.1.4",
+    scalaVersion := scalaV,
     developers := List(
       Developer(
         "kyri-petrou",
@@ -19,11 +23,12 @@ inThisBuild(
         url("https://github.com/kyri-petrou")
       )
     ),
-    ciEnabledBranches := Seq("series/2.x"),
+    ciEnabledBranches    := Seq("series/2.x"),
+    ciTargetJavaVersions := List("11", "21"),
     ciTargetScalaVersions :=
       Map(
-        (zioQueryJVM / thisProject).value.id -> (zioQueryJVM / crossScalaVersions).value,
-        (zioQueryJS / thisProject).value.id  -> (zioQueryJS / crossScalaVersions).value
+        (zioQueryJVM / thisProject).value.id -> allScalas,
+        (zioQueryJS / thisProject).value.id  -> allScalas
       ),
     versionScheme := Some("early-semver")
   )
@@ -96,8 +101,7 @@ lazy val docs = project
     scalacOptions -= "-Xfatal-warnings",
     projectName                                := (ThisBuild / name).value,
     mainModuleName                             := (zioQueryJVM / moduleName).value,
-    scalaVersion                               := scala213.value,
-    crossScalaVersions                         := Seq(scala213.value),
+    crossScalaVersions                         := Seq(scalaV),
     projectStage                               := ProjectStage.ProductionReady,
     ScalaUnidoc / unidoc / unidocProjectFilter := inProjects(zioQueryJVM)
   )
