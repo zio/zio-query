@@ -105,42 +105,41 @@ private[query] sealed trait BlockedRequests[-R] { self =>
   /**
    * Executes all requests, submitting requests to each data source in parallel.
    */
-  def run(implicit trace: Trace): ZIO[R, Nothing, Unit] =
-    ZQuery.currentCache.getWith { cache =>
-      val flattened = BlockedRequests.flatten(self)
-      ZIO.foreachDiscard(flattened) { requestsByDataSource =>
-        ZIO.foreachParDiscard(requestsByDataSource.toIterable) { case (dataSource, sequential) =>
-          val requests = sequential.map(_.map(_.request))
+  def run(implicit trace: Trace): ZIO[R, Nothing, Unit] = {
+    val flattened = BlockedRequests.flatten(self)
+    ZIO.foreachDiscard(flattened) { requestsByDataSource =>
+      ZIO.foreachParDiscard(requestsByDataSource.toIterable) { case (dataSource, sequential) =>
+        val requests = sequential.map(_.map(_.request))
 
-          dataSource
-            .runAll(requests)
-            .catchAllCause(cause =>
-              ZIO.succeed {
-                CompletedRequestMap.failCause(
-                  requests.flatten.asInstanceOf[Chunk[Request[Any, Any]]],
-                  cause
-                )
-              }
-            )
-            .flatMap { completedRequests =>
-              ZQuery.cachingEnabled.getWith {
-                val completedRequestsM = mutable.HashMap.from(completedRequests.underlying)
-                if (_) {
-                  completePromises(dataSource, sequential) { req =>
-                    // Pop the entry, and fallback to the immutable one if we already removed it
-                    completedRequestsM.remove(req) orElse completedRequests.lookup(req)
-                  }
-                  // cache responses that were not requested but were completed by the DataSource
-                  if (completedRequestsM.nonEmpty) cacheLeftovers(cache, completedRequestsM) else ZIO.unit
-                } else {
-                  // No need to remove entries here since we don't need to know which ones we need to put in the cache
-                  ZIO.succeed(completePromises(dataSource, sequential)(completedRequestsM.get))
+        dataSource
+          .runAll(requests)
+          .catchAllCause(cause =>
+            Exit.succeed {
+              CompletedRequestMap.failCause(
+                requests.flatten.asInstanceOf[Chunk[Request[Any, Any]]],
+                cause
+              )
+            }
+          )
+          .flatMap { completedRequests =>
+            val completedRequestsM = mutable.HashMap.from(completedRequests.underlying)
+            ZQuery.currentCache.getWith {
+              case Some(cache) =>
+                completePromises(dataSource, sequential) { req =>
+                  // Pop the entry, and fallback to the immutable one if we already removed it
+                  completedRequestsM.remove(req) orElse completedRequests.lookup(req)
                 }
+                // cache responses that were not requested but were completed by the DataSource
+                if (completedRequestsM.nonEmpty) cacheLeftovers(cache, completedRequestsM) else Exit.unit
+              case _ => {
+                // No need to remove entries here since we don't need to know which ones we need to put in the cache
+                ZIO.succeed(completePromises(dataSource, sequential)(completedRequestsM.get))
               }
             }
-        }
+          }
       }
     }
+  }
 }
 
 private[query] object BlockedRequests {
