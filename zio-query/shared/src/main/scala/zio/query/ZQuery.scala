@@ -1540,6 +1540,7 @@ object ZQuery {
     dataSource: DataSource[R, A],
     request: A
   )(implicit ev: A <:< Request[E, B], trace: Trace): CachedResult[R, E, B] = {
+    implicit val unsafe: Unsafe = Unsafe.unsafe
 
     def foldPromise(either: Either[Promise[E, B], Promise[E, B]]): CachedResult[R, E, B] =
       either match {
@@ -1551,7 +1552,7 @@ object ZQuery {
             )
           )
         case Right(promise) =>
-          promise.unsafe.poll(Unsafe.unsafe) match {
+          promise.unsafe.poll match {
             case None                 => CachedResult.Pure(Result.blocked(BlockedRequests.empty, Continue(promise)))
             case Some(io: Exit[E, B]) => CachedResult.Pure(Result.fromExit(io))
             case Some(io)             => CachedResult.Effectful(io.exit.map(Result.fromExit))
@@ -1559,8 +1560,8 @@ object ZQuery {
       }
 
     cache match {
-      case cache: Cache.Default => foldPromise(cache.lookupUnsafe(request)(Unsafe.unsafe))
-      case cache                => CachedResult.Effectful(cache.lookup(request).flatMap(foldPromise(_).toZIO))
+      case cache: Cache.Default => foldPromise(cache.lookupUnsafe(dataSource, request))
+      case cache                => CachedResult.Effectful(cache.lookup(dataSource, request).flatMap(foldPromise(_).toZIO))
     }
   }
 

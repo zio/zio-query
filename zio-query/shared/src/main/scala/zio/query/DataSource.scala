@@ -40,7 +40,7 @@ import zio.{Chunk, Exit, Trace, ZEnvironment, ZIO}
  * for all requests received. Failure to do so will cause a query to die with a
  * `QueryFailure` when run.
  */
-trait DataSource[-R, -A] { self =>
+trait DataSource[-R, -A] extends Serializable { self =>
 
   /**
    * Syntax for adding aspects.
@@ -65,7 +65,7 @@ trait DataSource[-R, -A] { self =>
    */
   def batchN(n: Int): DataSource[R, A] =
     new DataSource[R, A] {
-      val identifier = s"${self}.batchN($n)"
+      val identifier = s"$self.batchN($n)"
       def runAll(requests: Chunk[Chunk[A]])(implicit trace: Trace): ZIO[R, Nothing, CompletedRequestMap] =
         if (n < 1)
           ZIO.die(new IllegalArgumentException("batchN: n must be at least 1"))

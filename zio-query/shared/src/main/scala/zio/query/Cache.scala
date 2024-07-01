@@ -27,14 +27,20 @@ import java.util.concurrent.ConcurrentHashMap
  * executed. This is used internally by the library to provide deduplication and
  * caching of requests.
  */
-trait Cache {
+abstract class Cache {
 
   /**
    * Looks up a request in the cache, failing with the unit value if the request
    * is not in the cache or succeeding with a `Promise` if the request is in the
    * cache that will contain the result of the request when it is executed.
    */
-  def get[E, A](request: Request[E, A])(implicit trace: Trace): IO[Unit, Promise[E, A]]
+  def get[E, A, B](
+    datasource: DataSource[?, A],
+    request: A
+  )(implicit
+    trace: Trace,
+    ev: A <:< Request[E, B]
+  ): IO[Unit, Promise[E, B]]
 
   /**
    * Looks up a request in the cache. If the request is not in the cache returns
@@ -42,7 +48,10 @@ trait Cache {
    * the request is in the cache returns a `Right` with a `Promise` that will
    * contain the result of the request when it is executed.
    */
-  def lookup[E, A, B](request: A)(implicit
+  def lookup[E, A, B](
+    dataSource: DataSource[?, A],
+    request: A
+  )(implicit
     ev: A <:< Request[E, B],
     trace: Trace
   ): UIO[Either[Promise[E, B], Promise[E, B]]]
@@ -51,12 +60,25 @@ trait Cache {
    * Inserts a request and a `Promise` that will contain the result of the
    * request when it is executed into the cache.
    */
-  def put[E, A](request: Request[E, A], result: Promise[E, A])(implicit trace: Trace): UIO[Unit]
+  def put[E, A, B](
+    dataSource: DataSource[?, A],
+    request: A,
+    result: Promise[E, B]
+  )(implicit
+    ev: A <:< Request[E, B],
+    trace: Trace
+  ): UIO[Unit]
 
   /**
    * Removes a request from the cache.
    */
-  def remove[E, A](request: Request[E, A])(implicit trace: Trace): UIO[Unit]
+  def remove[E, A, B](
+    dataSource: DataSource[?, A],
+    request: A
+  )(implicit
+    ev: A <:< Request[E, B],
+    trace: Trace
+  ): UIO[Unit]
 }
 
 object Cache {
@@ -74,33 +96,45 @@ object Cache {
   def empty(expectedNumOfElements: Int)(implicit trace: Trace): UIO[Cache] =
     ZIO.succeed(Cache.unsafeMake(expectedNumOfElements))
 
-  private[query] final class Default(private val map: ConcurrentHashMap[Request[_, _], Promise[_, _]]) extends Cache {
+  private type Key = (DataSource[_, _], Request[_, _])
 
-    def get[E, A](request: Request[E, A])(implicit trace: Trace): IO[Unit, Promise[E, A]] =
+  private[query] final class Default(private val map: ConcurrentHashMap[Key, Promise[_, _]]) extends Cache {
+
+    def get[E, A, B](ds: DataSource[?, A], request: A)(implicit
+      trace: Trace,
+      ev: A <:< Request[E, B]
+    ): IO[Unit, Promise[E, B]] =
       ZIO.suspendSucceed {
-        val out = map.get(request).asInstanceOf[Promise[E, A]]
+        val out = map.get((ds, request)).asInstanceOf[Promise[E, B]]
         if (out eq null) Exit.fail(()) else Exit.succeed(out)
       }
 
-    def lookup[E, A, B](request: A)(implicit
+    def lookup[E, A, B](ds: DataSource[?, A], request: A)(implicit
       ev: A <:< Request[E, B],
       trace: Trace
     ): UIO[Either[Promise[E, B], Promise[E, B]]] =
-      ZIO.succeed(lookupUnsafe(request)(Unsafe.unsafe))
+      ZIO.succeed(lookupUnsafe(ds, request)(ev, Unsafe.unsafe))
 
-    def lookupUnsafe[E, A, B](request: Request[_, _])(implicit
+    def lookupUnsafe[E, A, B](ds: DataSource[?, A], request: A)(implicit
+      ev: A <:< Request[E, B],
       unsafe: Unsafe
     ): Either[Promise[E, B], Promise[E, B]] = {
       val newPromise = Promise.unsafe.make[E, B](FiberId.None)
-      val existing   = map.putIfAbsent(request, newPromise).asInstanceOf[Promise[E, B]]
+      val existing   = map.putIfAbsent((ds, request), newPromise).asInstanceOf[Promise[E, B]]
       if (existing eq null) Left(newPromise) else Right(existing)
     }
 
-    def put[E, A](request: Request[E, A], result: Promise[E, A])(implicit trace: Trace): UIO[Unit] =
-      ZIO.succeed(map.put(request, result))
+    def put[E, A, B](ds: DataSource[?, A], request: A, result: Promise[E, B])(implicit
+      ev: A <:< Request[E, B],
+      trace: Trace
+    ): UIO[Unit] =
+      ZIO.succeed(map.put((ds, request), result))
 
-    def remove[E, A](request: Request[E, A])(implicit trace: Trace): UIO[Unit] =
-      ZIO.succeed(map.remove(request))
+    def remove[E, A, B](ds: DataSource[?, A], request: A)(implicit
+      ev: A <:< Request[E, B],
+      trace: Trace
+    ): UIO[Unit] =
+      ZIO.succeed(map.remove((ds, request)))
   }
 
   // TODO: Initialize the map with a sensible default value. Default is 16, which seems way too small for a cache

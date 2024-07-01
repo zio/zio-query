@@ -30,4 +30,4 @@ import zio.stacktracer.TracingImplicits.disableAutoTrace
  *
  * }}}
  */
-trait Request[E, A]
+trait Request[E, A] extends Product with Serializable

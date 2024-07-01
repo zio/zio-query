@@ -110,7 +110,7 @@ lazy val docs = project
 
 Global / onChangedBuildSource := ReloadOnSourceChanges
 
-lazy val enforceMimaCompatibility = true // Enable / disable failing CI on binary incompatibilities
+lazy val enforceMimaCompatibility = false // Enable / disable failing CI on binary incompatibilities
 
 lazy val enableMimaSettingsJVM =
   Def.settings(

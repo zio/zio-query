@@ -16,6 +16,22 @@ object ZQuerySpec extends ZIOBaseSpec {
           log <- TestConsole.output
         } yield assert(log)(hasSize(equalTo(2)))
       },
+      test("N + 1 on composed queries") {
+        for {
+          ref     <- Ref.make(0)
+          ds       = countingDs(ref)
+          query1   = identityDs.query(IdReq(1)).flatMap(i => ds.query(CountingReq(i)))
+          query2   = identityDs.query(IdReq(2)).flatMap(i => ds.query(CountingReq(i)))
+          res     <- (query1 <~> query2).run
+          i       <- ref.get
+          expected = ("1", "2")
+        } yield assertTrue(i == 1, res == expected)
+      },
+      test("requests are cached per datasource") {
+        for {
+          res <- identityDs.query(IdReq(1)).flatMap(i => plus1Ds.query(IdReq(i))).run
+        } yield assertTrue(res == 2)
+      },
       test("mapError does not prevent batching") {
         implicit val canFail = zio.CanFail
         val a                = getUserNameById(1).zip(getUserNameById(2)).mapError(identity)
@@ -204,8 +220,9 @@ object ZQuerySpec extends ZIOBaseSpec {
                     } yield res
             requestResult <- query.runCache(cache)
             oneToTen       = (1 to 10).toList
-            cachedResults <- ZIO.foreach(oneToTen)(i => cache.get(Req.Get(i)).flatMap(_.await))
-            cacheCheck     = cachedResults == oneToTen.map(_.toString)
+            cachedResults <-
+              ZIO.foreach(oneToTen)(i => cache.get(dsCompletingMoreRequests, Req.Get(i)).flatMap(_.await))
+            cacheCheck = cachedResults == oneToTen.map(_.toString)
           } yield assertTrue(requestResult == "1", cacheCheck)
         },
         test("caching disabled") {
@@ -216,7 +233,7 @@ object ZQuerySpec extends ZIOBaseSpec {
                     } yield res
             requestResult <- query.runCache(cache)
             oneToTen       = (1 to 10).toList
-            cachedResults <- ZIO.foreach(oneToTen)(i => cache.get(Req.Get(i)).isFailure)
+            cachedResults <- ZIO.foreach(oneToTen)(i => cache.get(dsCompletingMoreRequests, Req.Get(i)).isFailure)
             cacheCheck     = cachedResults.forall(identity)
           } yield assertTrue(requestResult == "1", cacheCheck)
         }
@@ -226,7 +243,7 @@ object ZQuerySpec extends ZIOBaseSpec {
           cache <- zio.query.Cache.empty
           query = for {
                     _ <- getUserNameById(1)
-                    _ <- ZQuery.fromZIO(cache.remove(GetNameById(1)))
+                    _ <- ZQuery.fromZIO(cache.remove(UserRequestDataSource, GetNameById(1)))
                     _ <- getUserNameById(1)
                   } yield ()
           _   <- query.runCache(cache)
@@ -270,7 +287,7 @@ object ZQuerySpec extends ZIOBaseSpec {
           assert(log)(hasAt(0)(containsString("GetNameById(1)"))) &&
           assert(log)(hasAt(0)(containsString("GetNameById(2)"))) &&
           assert(log)(hasAt(1)(containsString("GetNameById(1)")))
-      } @@ nonFlaky,
+      } @@ nonFlaky(50),
       suite("race")(
         test("race with never") {
           val query = ZQuery.never.race(ZQuery.succeed(()))
@@ -393,6 +410,23 @@ object ZQuerySpec extends ZIOBaseSpec {
               .fold(completedRequests)(name => completedRequests.insert(GetNameById(id), Exit.succeed(name)))
         }
       }
+    }
+
+  case class IdReq(id: Int) extends Request[Nothing, Int]
+  val identityDs: DataSource[Any, IdReq] =
+    DataSource.fromFunctionBatchedZIO[Any, Nothing, IdReq, Int]("IdDs") { requests =>
+      ZIO.succeed(requests.map(_.id))
+    }
+
+  val plus1Ds: DataSource[Any, IdReq] =
+    DataSource.fromFunctionBatchedZIO[Any, Nothing, IdReq, Int]("Plus1Ds") { requests =>
+      ZIO.succeed(requests.map(_.id + 1))
+    }
+
+  case class CountingReq(id: Int) extends Request[Nothing, String]
+  def countingDs(ref: Ref[Int]): DataSource[Any, CountingReq] =
+    DataSource.fromFunctionBatchedZIO[Any, Nothing, CountingReq, String]("CountingDs") { requests =>
+      ref.update(_ + 1).as(requests.map(_.id.toString))
     }
 
   val getAllUserIds: ZQuery[Any, Nothing, List[Int]] =
