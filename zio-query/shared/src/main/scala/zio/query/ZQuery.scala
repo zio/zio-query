@@ -851,9 +851,11 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
           Exit.succeed(Result.blocked(br, Continue.effect(c.zipWith(that)(f))))
         case Result.Blocked(br1, c1) =>
           that.step.map {
-            case Result.Blocked(br2, c2) => Result.blocked(br1 ++ br2, c1.zipWith(c2)(f))
-            case Result.Done(b)          => Result.blocked(br1, c1.map(a => f(a, b)))
-            case Result.Fail(e)          => Result.fail(e)
+            case Result.Blocked(br2, c2) =>
+              val br = if (br1.isEmpty) br2 else if (br2.isEmpty) br1 else br1 ++ br2
+              Result.blocked(br, c1.zipWith(c2)(f))
+            case Result.Done(b) => Result.blocked(br1, c1.map(a => f(a, b)))
+            case Result.Fail(e) => Result.fail(e)
           }
         case Result.Done(a) =>
           that.step.map {
@@ -874,13 +876,15 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
   )(f: (A, B) => C)(implicit trace: Trace): ZQuery[R1, E1, C] =
     ZQuery {
       self.step.zipWith(that.step) {
-        case (Result.Blocked(br1, c1), Result.Blocked(br2, c2)) => Result.blocked(br1 && br2, c1.zipWithBatched(c2)(f))
-        case (Result.Blocked(br, c), Result.Done(b))            => Result.blocked(br, c.map(a => f(a, b)))
-        case (Result.Done(a), Result.Blocked(br, c))            => Result.blocked(br, c.map(b => f(a, b)))
-        case (Result.Done(a), Result.Done(b))                   => Result.done(f(a, b))
-        case (Result.Fail(e1), Result.Fail(e2))                 => Result.fail(Cause.Both(e1, e2))
-        case (Result.Fail(e), _)                                => Result.fail(e)
-        case (_, Result.Fail(e))                                => Result.fail(e)
+        case (Result.Blocked(br1, c1), Result.Blocked(br2, c2)) =>
+          val br = if (br1.isEmpty) br2 else if (br2.isEmpty) br1 else br1 && br2
+          Result.blocked(br, c1.zipWithBatched(c2)(f))
+        case (Result.Blocked(br, c), Result.Done(b)) => Result.blocked(br, c.map(a => f(a, b)))
+        case (Result.Done(a), Result.Blocked(br, c)) => Result.blocked(br, c.map(b => f(a, b)))
+        case (Result.Done(a), Result.Done(b))        => Result.done(f(a, b))
+        case (Result.Fail(e1), Result.Fail(e2))      => Result.fail(Cause.Both(e1, e2))
+        case (Result.Fail(e), _)                     => Result.fail(e)
+        case (_, Result.Fail(e))                     => Result.fail(e)
       }
     }
 
@@ -895,13 +899,15 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
   )(f: (A, B) => C)(implicit trace: Trace): ZQuery[R1, E1, C] =
     ZQuery {
       self.step.zipWithPar(that.step) {
-        case (Result.Blocked(br1, c1), Result.Blocked(br2, c2)) => Result.blocked(br1 && br2, c1.zipWithPar(c2)(f))
-        case (Result.Blocked(br, c), Result.Done(b))            => Result.blocked(br, c.map(a => f(a, b)))
-        case (Result.Done(a), Result.Blocked(br, c))            => Result.blocked(br, c.map(b => f(a, b)))
-        case (Result.Done(a), Result.Done(b))                   => Result.done(f(a, b))
-        case (Result.Fail(e1), Result.Fail(e2))                 => Result.fail(Cause.Both(e1, e2))
-        case (Result.Fail(e), _)                                => Result.fail(e)
-        case (_, Result.Fail(e))                                => Result.fail(e)
+        case (Result.Blocked(br1, c1), Result.Blocked(br2, c2)) =>
+          val br = if (br1.isEmpty) br2 else if (br2.isEmpty) br1 else br1 && br2
+          Result.blocked(br, c1.zipWithPar(c2)(f))
+        case (Result.Blocked(br, c), Result.Done(b)) => Result.blocked(br, c.map(a => f(a, b)))
+        case (Result.Done(a), Result.Blocked(br, c)) => Result.blocked(br, c.map(b => f(a, b)))
+        case (Result.Done(a), Result.Done(b))        => Result.done(f(a, b))
+        case (Result.Fail(e1), Result.Fail(e2))      => Result.fail(Cause.Both(e1, e2))
+        case (Result.Fail(e), _)                     => Result.fail(e)
+        case (_, Result.Fail(e))                     => Result.fail(e)
       }
     }
 
@@ -1302,8 +1308,10 @@ object ZQuery {
 
     while (iter.hasNext) {
       iter.next() match {
-        case Result.Blocked(blockedRequest, continue) =>
-          blockedRequests = if (mode == 0) blockedRequests ++ blockedRequest else blockedRequests && blockedRequest
+        case Result.Blocked(br, continue) =>
+          if (!br.isEmpty) {
+            blockedRequests = if (mode == 0) blockedRequests ++ br else blockedRequests && br
+          }
           continue match {
             case Continue.Effect(query) =>
               effectBuilder.addOne(query)

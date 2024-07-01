@@ -86,6 +86,8 @@ private[query] sealed trait BlockedRequests[-R] { self =>
     loop(List(self), List.empty).head
   }
 
+  final def isEmpty: Boolean = self eq Empty
+
   /**
    * Transforms all data sources with the specified data source aspect, which
    * can change the environment type of data sources but must preserve the
@@ -158,7 +160,9 @@ private[query] object BlockedRequests {
 
   final case class Both[-R](left: BlockedRequests[R], right: BlockedRequests[R]) extends BlockedRequests[R]
 
-  case object Empty extends BlockedRequests[Any]
+  case object Empty extends BlockedRequests[Any] {
+    override def run(implicit trace: Trace): ZIO[Any, Nothing, Unit] = Exit.unit
+  }
 
   final case class Single[-R, A](dataSource: DataSource[R, A], blockedRequest: BlockedRequest[A])
       extends BlockedRequests[R]
