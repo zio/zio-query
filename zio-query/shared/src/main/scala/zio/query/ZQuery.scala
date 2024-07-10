@@ -545,7 +545,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
         ZIO.uninterruptibleMask { restore =>
           ZIO.withFiberRuntime[R, E, A] { (state, _) =>
             val scope = QueryScope.make()
-            state.setFiberRef(ZQuery.currentCache, cache)
+            state.setFiberRef(ZQuery.currentCache, Some(cache))
             state.setFiberRef(ZQuery.currentScope, scope)
             restore(runToZIO).exitWith { exit =>
               state.deleteFiberRef(ZQuery.currentCache)
@@ -1460,8 +1460,8 @@ object ZQuery {
    *   submitted at once
    */
   def fromRequest[R, E, A, B](
-    request0: A
-  )(dataSource0: DataSource[R, A])(implicit ev: A <:< Request[E, B], trace: Trace): ZQuery[R, E, B] =
+    request0: => A
+  )(dataSource0: => DataSource[R, A])(implicit ev: A <:< Request[E, B], trace: Trace): ZQuery[R, E, B] =
     ZQuery {
       ZQuery.currentCache.getWith {
         case Some(cache) => cachedResult(cache, dataSource0, request0).toZIO
@@ -1474,8 +1474,8 @@ object ZQuery {
    * caching to the query.
    */
   def fromRequestUncached[R, E, A, B](
-    request: A
-  )(dataSource: DataSource[R, A])(implicit ev: A <:< Request[E, B], trace: Trace): ZQuery[R, E, B] =
+    request: => A
+  )(dataSource: => DataSource[R, A])(implicit ev: A <:< Request[E, B], trace: Trace): ZQuery[R, E, B] =
     new ZQuery(uncachedResult(dataSource, request)).uncached
 
   /**
@@ -1826,6 +1826,10 @@ object ZQuery {
     }
     (bs.result(), cs.result())
   }
+
+  @deprecated("No longer used, kept for binary compatibility only", "0.7.4")
+  val cachingEnabled: FiberRef[Boolean] =
+    FiberRef.unsafe.make(true)(Unsafe.unsafe)
 
   val currentCache: FiberRef[Option[Cache]] =
     FiberRef.unsafe.make(Option.empty[Cache])(Unsafe.unsafe)
