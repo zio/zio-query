@@ -8,7 +8,7 @@ import java.util.concurrent.atomic.AtomicReference
 /**
  * Lightweight variant of [[zio.Scope]], optimized for usage with ZQuery
  */
-private[query] sealed abstract class QueryScope {
+sealed trait QueryScope {
   def addFinalizerExit(f: Exit[Any, Any] => UIO[Any])(implicit trace: Trace): UIO[Unit]
   def closeAndExitWith[E, A](exit: Exit[E, A])(implicit trace: Trace): IO[E, A]
 }
@@ -21,7 +21,7 @@ private[query] object QueryScope {
     def closeAndExitWith[E, A](exit: Exit[E, A])(implicit trace: Trace): IO[E, A]         = exit
   }
 
-  final class Default extends QueryScope {
+  final private class Default extends QueryScope {
     private val ref = new AtomicReference(List.empty[Exit[Any, Any] => UIO[Any]])
 
     def addFinalizerExit(f: Exit[Any, Any] => UIO[Any])(implicit trace: Trace): UIO[Unit] =
