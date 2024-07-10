@@ -3,7 +3,7 @@ package zio.query
 import cats.effect.IO
 import cats.effect.unsafe.implicits._
 import cats.syntax.all._
-import fetch.Fetch
+import fetch.{Fetch, fetchM}
 import org.openjdk.jmh.annotations.{Scope => JScope, _}
 import zio.query.BenchmarkUtil._
 import zio.{Chunk, ZIO}

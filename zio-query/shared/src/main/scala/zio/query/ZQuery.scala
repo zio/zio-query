@@ -542,12 +542,17 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
   def runCache(cache: => Cache)(implicit trace: Trace): ZIO[R, E, A] =
     asExitOrElse(null) match {
       case null =>
-        ZIO.acquireReleaseExitWith {
-          Scope.make
-        } { (scope: Scope.Closeable, exit: Exit[E, A]) =>
-          scope.close(exit)
-        } { scope =>
-          ZQuery.currentScope.locally(scope)(ZQuery.currentCache.locally(Some(cache))(runToZIO))
+        ZIO.uninterruptibleMask { restore =>
+          ZIO.withFiberRuntime[R, E, A] { (state, _) =>
+            val scope = QueryScope.make()
+            state.setFiberRef(ZQuery.currentCache, cache)
+            state.setFiberRef(ZQuery.currentScope, scope)
+            restore(runToZIO).exitWith { exit =>
+              state.deleteFiberRef(ZQuery.currentCache)
+              state.deleteFiberRef(ZQuery.currentScope)
+              scope.closeAndExitWith(exit)
+            }
+          }
         }
       case exit => exit
     }
@@ -1828,8 +1833,8 @@ object ZQuery {
   private val disabledCache: FiberRef[Option[Cache]] =
     FiberRef.unsafe.make(Option.empty[Cache])(Unsafe.unsafe)
 
-  val currentScope: FiberRef[Scope] =
-    FiberRef.unsafe.make[Scope](Scope.global)(Unsafe.unsafe)
+  val currentScope: FiberRef[QueryScope] =
+    FiberRef.unsafe.make[QueryScope](QueryScope.NoOp)(Unsafe.unsafe)
 
   final class Acquire[-R, +E, +A](private val acquire: () => ZIO[R, E, A]) extends AnyVal {
     def apply[R1](release: A => URIO[R1, Any]): Release[R with R1, E, A] =

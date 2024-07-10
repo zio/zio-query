@@ -13,7 +13,7 @@ lazy val allScalas = List("2.12", "2.13", "3.3")
 inThisBuild(
   List(
     name         := "ZIO Query",
-    zioVersion   := "2.1.4",
+    zioVersion   := "2.1.6",
     scalaVersion := scalaV,
     developers := List(
       Developer(
