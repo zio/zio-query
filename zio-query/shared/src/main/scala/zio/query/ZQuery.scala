@@ -539,23 +539,35 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * Returns an effect that models executing this query with the specified
    * cache.
    */
-  def runCache(cache: => Cache)(implicit trace: Trace): ZIO[R, E, A] =
+  def runCache(cache: => Cache)(implicit trace: Trace): ZIO[R, E, A] = {
+    import ZQuery.{currentCache, currentScope}
+
+    def setRef[V](state: Fiber.Runtime[E, A], fiberRef: FiberRef[V], newValue: V): V = {
+      val oldValue = state.getFiberRefOrNull(fiberRef)
+      state.setFiberRef(fiberRef, newValue)
+      oldValue
+    }
+
+    def resetRef[V <: AnyRef](state: Fiber.Runtime[E, A], fiberRef: FiberRef[V], oldValue: V): Unit =
+      if (oldValue ne null) state.setFiberRef(fiberRef, oldValue) else state.deleteFiberRef(fiberRef)
+
     asExitOrElse(null) match {
       case null =>
         ZIO.uninterruptibleMask { restore =>
           ZIO.withFiberRuntime[R, E, A] { (state, _) =>
-            val scope = QueryScope.make()
-            state.setFiberRef(ZQuery.currentCache, Some(cache))
-            state.setFiberRef(ZQuery.currentScope, scope)
+            val scope    = QueryScope.make()
+            val oldCache = setRef(state, currentCache, Some(cache))
+            val oldScope = setRef(state, currentScope, scope)
             restore(runToZIO).exitWith { exit =>
-              state.deleteFiberRef(ZQuery.currentCache)
-              state.deleteFiberRef(ZQuery.currentScope)
+              resetRef(state, currentCache, oldCache)
+              resetRef(state, currentScope, oldScope)
               scope.closeAndExitWith(exit)
             }
           }
         }
       case exit => exit
     }
+  }
 
   /**
    * Returns an effect that models executing this query, returning the query

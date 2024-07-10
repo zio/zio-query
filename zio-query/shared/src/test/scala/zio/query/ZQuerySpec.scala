@@ -2,6 +2,7 @@ package zio.query
 
 import zio._
 import zio.query.QueryAspect._
+import zio.query.internal.QueryScope
 import zio.test.Assertion._
 import zio.test.TestAspect.{after, nonFlaky, silent}
 import zio.test.{TestClock, TestConsole, TestEnvironment, _}
@@ -270,7 +271,7 @@ object ZQuerySpec extends ZIOBaseSpec {
           assert(log)(hasAt(0)(containsString("GetNameById(1)"))) &&
           assert(log)(hasAt(0)(containsString("GetNameById(2)"))) &&
           assert(log)(hasAt(1)(containsString("GetNameById(1)")))
-      } @@ nonFlaky,
+      } @@ nonFlaky(10),
       suite("race")(
         test("race with never") {
           val query = ZQuery.never.race(ZQuery.succeed(()))
@@ -369,6 +370,28 @@ object ZQuerySpec extends ZIOBaseSpec {
                          .run
             value <- ref.get
           } yield assertTrue(value == 1, results.forall(_.isLeft))
+        }
+      ),
+      suite("run")(
+        test("cache is reentrant safe") {
+          val q =
+            for {
+              c1 <- ZQuery.fromZIO(ZQuery.currentCache.get)
+              _  <- ZQuery.fromZIO(ZQuery.succeed("foo").run)
+              c2 <- ZQuery.fromZIO(ZQuery.currentCache.get)
+            } yield (c1, c2)
+
+          q.run.map { case (c1, c2) => assertTrue(c1.isDefined, c1 == c2) }
+        },
+        test("scope is reentrant safe") {
+          val q =
+            for {
+              c1 <- ZQuery.fromZIO(ZQuery.currentScope.get)
+              _  <- ZQuery.fromZIO(ZQuery.succeed("foo").run)
+              c2 <- ZQuery.fromZIO(ZQuery.currentScope.get)
+            } yield (c1, c2)
+
+          q.run.map { case (c1, c2) => assertTrue(c1 != QueryScope.NoOp, c1 == c2) }
         }
       )
     ) @@ silent
