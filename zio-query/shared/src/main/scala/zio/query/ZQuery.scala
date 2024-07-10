@@ -533,18 +533,28 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * Returns an effect that models executing this query with the specified
    * cache.
    */
-  def runCache(cache: => Cache)(implicit trace: Trace): ZIO[R, E, A] =
+  def runCache(cache: => Cache)(implicit trace: Trace): ZIO[R, E, A] = {
+
+    def cleanup(fiber: Fiber.Runtime[E, A], scope: Scope.Closeable)(exit: Exit[E, A]) = {
+      fiber.deleteFiberRef(ZQuery.currentCache)
+      fiber.deleteFiberRef(ZQuery.currentScope)
+      scope.close(exit) *> exit
+    }
+
     asExitOrElse(null) match {
       case null =>
-        ZIO.acquireReleaseExitWith {
-          Scope.make
-        } { (scope: Scope.Closeable, exit: Exit[E, A]) =>
-          scope.close(exit)
-        } { scope =>
-          ZQuery.currentScope.locally(scope)(ZQuery.currentCache.locally(cache)(runToZIO))
+        ZIO.uninterruptibleMask { restore =>
+          Scope.make.flatMap { scope =>
+            ZIO.withFiberRuntime[R, E, A] { (state, _) =>
+              state.setFiberRef(ZQuery.currentCache, cache)
+              state.setFiberRef(ZQuery.currentScope, scope)
+              restore(runToZIO).exitWith(cleanup(state, scope))
+            }
+          }
         }
       case exit => exit
     }
+  }
 
   /**
    * Returns an effect that models executing this query, returning the query

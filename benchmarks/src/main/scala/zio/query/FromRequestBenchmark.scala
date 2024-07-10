@@ -69,5 +69,5 @@ class FromRequestBenchmark {
   }
 
   private case class Req(i: Int) extends Request[Nothing, Int]
-  private val ds = DataSource.fromFunctionBatchedZIO("Datasource") { reqs: Chunk[Req] => ZIO.succeed(reqs.map(_.i)) }
+  private val ds = DataSource.fromFunctionBatchedZIO("Datasource") { (reqs: Chunk[Req]) => ZIO.succeed(reqs.map(_.i)) }
 }
