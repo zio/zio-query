@@ -33,7 +33,10 @@ private[query] object QueryScope {
     def closeAndExitWith[E, A](exit: Exit[E, A])(implicit trace: Trace): IO[E, A] = {
       val finalizers = ref.get
       if (finalizers.isEmpty) exit
-      else ZIO.foreachDiscard(finalizers)(_(exit)) *> exit
+      else {
+        ref.set(Nil)
+        ZIO.foreachDiscard(finalizers)(_(exit)) *> exit
+      }
     }
   }
 }
