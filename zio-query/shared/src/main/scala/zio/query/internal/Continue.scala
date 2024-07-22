@@ -104,6 +104,17 @@ private[query] sealed trait Continue[-R, +E, +A] { self =>
     }
 
   /**
+   * Effectually maps over the success type of this continuation.
+   */
+  final def mapZIO[R1 <: R, E1 >: E, B](
+    f: A => ZIO[R1, E1, B]
+  )(implicit trace: Trace): Continue[R1, E1, B] =
+    self match {
+      case Effect(query) => effect(query.mapZIO(f))
+      case Get(io)       => get(io.flatMap(f))
+    }
+
+  /**
    * Purely contramaps over the environment type of this continuation.
    */
   final def provideSomeEnvironment[R0](
@@ -111,7 +122,7 @@ private[query] sealed trait Continue[-R, +E, +A] { self =>
   )(implicit trace: Trace): Continue[R0, E, A] =
     self match {
       case Effect(query) => effect(query.provideSomeEnvironment(f))
-      case Get(io)       => get(io)
+      case Get(io)       => get(io.asInstanceOf[ZIO[R0, E, A]])
     }
 
   /**
@@ -176,9 +187,9 @@ private[query] object Continue {
    * Constructs a continuation that merely gets the result of a blocked request
    * (potentially transforming it with pure functions).
    */
-  def get[E, A](io: IO[E, A]): Continue[Any, E, A] =
+  def get[R, E, A](io: ZIO[R, E, A]): Continue[R, E, A] =
     Get(io)
 
   final case class Effect[R, E, A](query: ZQuery[R, E, A]) extends Continue[R, E, A]
-  final case class Get[E, A](io: IO[E, A])                 extends Continue[Any, E, A]
+  final case class Get[R, E, A](io: ZIO[R, E, A])          extends Continue[R, E, A]
 }

@@ -108,20 +108,32 @@ private[query] object Result {
    * Constructs a result that is blocked on the specified requests with the
    * specified continuation.
    */
-  def blocked[R, E, A](blockedRequests: BlockedRequests[R], continue: Continue[R, E, A]): Result[R, E, A] =
+  def blocked[R, E, A](blockedRequests: BlockedRequests[R], continue: Continue[R, E, A]): Blocked[R, E, A] =
     Blocked(blockedRequests, continue)
+
+  def blockedExit[R, E, A](
+    blockedRequests: BlockedRequests[R],
+    continue: Continue[R, E, A]
+  ): Exit.Success[Blocked[R, E, A]] =
+    Exit.Success(Blocked(blockedRequests, continue))
 
   /**
    * Constructs a result that is done with the specified value.
    */
-  def done[A](value: A): Result[Any, Nothing, A] =
+  def done[A](value: A): Done[A] =
     Done(value)
+
+  def doneExit[A](value: A): Exit.Success[Done[A]] =
+    Exit.Success(Done(value))
 
   /**
    * Constructs a result that is failed with the specified `Cause`.
    */
-  def fail[E](cause: Cause[E]): Result[Any, E, Nothing] =
+  def fail[E](cause: Cause[E]): Fail[E] =
     Fail(cause)
+
+  def failExit[E](cause: Cause[E]): Exit.Success[Fail[E]] =
+    Exit.Success(Fail(cause))
 
   /**
    * Lifts an `Exit` into a result.

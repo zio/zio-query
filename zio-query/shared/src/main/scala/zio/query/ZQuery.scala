@@ -237,9 +237,9 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
   def flatMap[R1 <: R, E1 >: E, B](f: A => ZQuery[R1, E1, B])(implicit trace: Trace): ZQuery[R1, E1, B] =
     ZQuery {
       step.flatMap {
-        case Result.Blocked(br, c) => Exit.succeed(Result.blocked(br, c.mapQuery(f)))
+        case Result.Blocked(br, c) => Result.blockedExit(br, c.mapQuery(f))
         case Result.Done(a)        => f(a).step
-        case Result.Fail(e)        => Exit.succeed(Result.fail(e))
+        case Result.Fail(e)        => Result.failExit(e)
       }
     }
 
@@ -278,7 +278,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
       step.foldCauseZIO(
         failure(_).step,
         {
-          case Result.Blocked(br, c) => Exit.succeed(Result.blocked(br, c.foldCauseQuery(failure, success)))
+          case Result.Blocked(br, c) => Result.blockedExit(br, c.foldCauseQuery(failure, success))
           case Result.Done(a)        => success(a).step
           case Result.Fail(e)        => failure(e).step
         }
@@ -384,7 +384,13 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * Maps the specified effectual function over the result of this query.
    */
   def mapZIO[R1 <: R, E1 >: E, B](f: A => ZIO[R1, E1, B])(implicit trace: Trace): ZQuery[R1, E1, B] =
-    flatMap(a => ZQuery.fromZIONow(f(a)))
+    ZQuery {
+      step.flatMap {
+        case Result.Blocked(br, c) => Result.blockedExit(br, c.mapZIO(f))
+        case Result.Done(a)        => f(a).foldCauseZIO(Result.failExit, Result.doneExit)
+        case f: Result.Fail[E1]    => Exit.succeed(f)
+      }
+    }
 
   /**
    * Converts this query to one that returns `Some` if data sources return
@@ -422,7 +428,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     ZQuery {
       ZIO.scoped[R0] {
         layer.value.build.exit.flatMap {
-          case Exit.Failure(e) => Exit.succeed(Result.fail(e))
+          case Exit.Failure(e) => Result.failExit(e)
           case Exit.Success(r) => self.provideEnvironment(Described(r, layer.description)).step
         }
       }
@@ -469,11 +475,11 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
           case Result.Blocked(blockedRequests, continue) =>
             continue match {
               case Continue.Effect(query) =>
-                Exit.succeed(Result.blocked(blockedRequests, Continue.effect(race(query, fiber))))
+                Result.blockedExit(blockedRequests, Continue.effect(race(query, fiber)))
               case Continue.Get(io) =>
-                Exit.succeed(Result.blocked(blockedRequests, Continue.effect(race(ZQuery.fromZIONow(io), fiber))))
+                Result.blockedExit(blockedRequests, Continue.effect(race(ZQuery.fromZIONow(io), fiber)))
             }
-          case Result.Done(value) => fiber.interrupt *> Exit.succeed(Result.done(value))
+          case Result.Done(value) => fiber.interrupt *> Result.doneExit(value)
           case Result.Fail(cause) => fiber.join.map(_.mapErrorCause(_ && cause))
         }
       )
@@ -877,7 +883,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     ZQuery {
       self.step.flatMap {
         case Result.Blocked(br, Continue.Effect(c)) =>
-          Exit.succeed(Result.blocked(br, Continue.effect(c.zipWith(that)(f))))
+          Result.blockedExit(br, Continue.effect(c.zipWith(that)(f)))
         case Result.Blocked(br1, c1) =>
           that.step.map {
             case Result.Blocked(br2, c2) =>
@@ -892,7 +898,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
             case Result.Done(b)        => Result.done(f(a, b))
             case Result.Fail(e)        => Result.fail(e)
           }
-        case Result.Fail(e) => Exit.succeed(Result.fail(e))
+        case e: Result.Fail[E1] => Exit.succeed(e)
       }
     }
 
@@ -1142,7 +1148,7 @@ object ZQuery {
    * Eagerly constructs a query that fails with the specified cause.
    */
   def failCauseNow[E](cause: Cause[E]): ZQuery[Any, E, Nothing] =
-    ZQuery(Exit.succeed(Result.fail(cause)))
+    ZQuery(Result.failExit(cause))
 
   /**
    * Performs a query for each element in a collection, collecting the results
@@ -1326,12 +1332,12 @@ object ZQuery {
 
     var blockedRequests: BlockedRequests[R]          = BlockedRequests.empty
     val doneBuilder: ChunkBuilder[B]                 = ChunkBuilder.make[B]()
-    val doneIndicesBuilder: ChunkBuilder[Int]        = new ChunkBuilder.Int
+    val doneIndicesBuilder                           = new ChunkBuilder.Int
     val effectBuilder: ChunkBuilder[ZQuery[R, E, B]] = ChunkBuilder.make[ZQuery[R, E, B]]()
-    val effectIndicesBuilder: ChunkBuilder[Int]      = new ChunkBuilder.Int
+    val effectIndicesBuilder                         = new ChunkBuilder.Int
     val failBuilder: ChunkBuilder[Cause[E]]          = ChunkBuilder.make[Cause[E]]()
-    val getBuilder: ChunkBuilder[IO[E, B]]           = ChunkBuilder.make[IO[E, B]]()
-    val getIndicesBuilder: ChunkBuilder[Int]         = new ChunkBuilder.Int
+    val getBuilder                                   = ChunkBuilder.make[ZIO[R, E, B]]()
+    val getIndicesBuilder                            = new ChunkBuilder.Int
     var index: Int                                   = 0
     val iter                                         = results.iterator
 
@@ -1586,9 +1592,9 @@ object ZQuery {
   private def uncachedResult[R, E, A, B](dataSource: DataSource[R, A], request: A)(implicit
     ev: A <:< Request[E, B],
     trace: Trace
-  ): UIO[Result[R, E, B]] = Exit.succeed {
+  ): UIO[Result[R, E, B]] = {
     val promise = Promise.unsafe.make[E, B](FiberId.None)(Unsafe.unsafe)
-    Result.blocked(
+    Result.blockedExit(
       BlockedRequests.single(dataSource, BlockedRequest(request, promise)),
       Continue(promise)
     )
@@ -1611,7 +1617,7 @@ object ZQuery {
    * users should use [[fromZIO]] instead.
    */
   def fromZIONow[R, E, A](effect: ZIO[R, E, A])(implicit trace: Trace): ZQuery[R, E, A] =
-    ZQuery(effect.foldCauseZIO(c => Exit.succeed(Result.fail(c)), v => Exit.succeed(Result.done(v))))
+    ZQuery(effect.foldCauseZIO(c => Result.failExit(c), v => Result.doneExit(v)))
 
   /**
    * Constructs a query that never completes.
@@ -1695,7 +1701,7 @@ object ZQuery {
    * Eagerly constructs a query that succeeds with the specified value.
    */
   def succeedNow[A](value: A): ZQuery[Any, Nothing, A] =
-    ZQuery(Exit.succeed(Result.done(value)))
+    ZQuery(Result.doneExit(value))
 
   /**
    * Returns a lazily constructed query.
@@ -1744,7 +1750,7 @@ object ZQuery {
 
   final class EnvironmentWithPartiallyApplied[R](private val dummy: Boolean = true) extends AnyVal {
     def apply[A](f: ZEnvironment[R] => A)(implicit trace: Trace): ZQuery[R, Nothing, A] =
-      environment[R].map(f)
+      ZQuery(ZIO.environmentWith[R](e => Result.done(f(e))))
   }
 
   final class EnvironmentWithQueryPartiallyApplied[R](private val dummy: Boolean = true) extends AnyVal {
@@ -1754,7 +1760,14 @@ object ZQuery {
 
   final class EnvironmentWithZIOPartiallyApplied[R](private val dummy: Boolean = true) extends AnyVal {
     def apply[E, A](f: ZEnvironment[R] => ZIO[R, E, A])(implicit trace: Trace): ZQuery[R, E, A] =
-      environment[R].mapZIO(f)
+      ZQuery(
+        ZIO.environmentWithZIO[R](
+          f(_).foldCauseZIO(
+            c => Result.failExit(c),
+            v => Result.doneExit(v)
+          )
+        )
+      )
   }
 
   final class ProvideSomeLayer[R0, -R, +E, +A](private val self: ZQuery[R, E, A]) extends AnyVal {
@@ -1779,14 +1792,16 @@ object ZQuery {
           query.step.raceWith[R, Nothing, Nothing, B1, Result[R, E, B1]](fiber.join)(
             (leftExit, rightFiber) =>
               leftExit.foldExitZIO(
-                cause => rightFiber.interrupt *> Exit.succeed(Result.fail(cause)),
+                cause => rightFiber.interrupt *> Result.failExit(cause),
                 {
                   case Result.Blocked(blockedRequests, Continue.Effect(query)) =>
-                    Exit.succeed(Result.blocked(blockedRequests, Continue.effect(race(query, fiber))))
+                    Result.blockedExit(blockedRequests, Continue.effect(race(query, fiber)))
                   case Result.Blocked(blockedRequests, Continue.Get(io)) =>
-                    Exit.succeed(Result.blocked(blockedRequests, Continue.effect(race(ZQuery.fromZIONow(io), fiber))))
-                  case Result.Done(value) => rightFiber.interrupt *> Exit.succeed(Result.done(value))
-                  case Result.Fail(cause) => rightFiber.interrupt *> Exit.succeed(Result.fail(cause))
+                    Result.blockedExit(blockedRequests, Continue.effect(race(ZQuery.fromZIONow(io), fiber)))
+                  case Result.Done(value) =>
+                    rightFiber.interrupt *> Result.doneExit(value)
+                  case Result.Fail(cause) =>
+                    rightFiber.interrupt *> Result.failExit(cause)
                 }
               ),
             (rightExit, leftFiber) => leftFiber.interrupt *> Exit.succeed(Result.fromExit(rightExit))
@@ -1801,7 +1816,7 @@ object ZQuery {
     def apply[A](
       f: R => A
     )(implicit tag: Tag[R], trace: Trace): ZQuery[R, Nothing, A] =
-      service[R].map(f)
+      ZQuery(ZIO.serviceWith[R](s => Result.done(f(s))))
   }
 
   final class ServiceWithQueryPartiallyApplied[Service](private val dummy: Boolean = true) extends AnyVal {
@@ -1815,7 +1830,14 @@ object ZQuery {
     def apply[R <: Service, E, A](
       f: Service => ZIO[R, E, A]
     )(implicit tag: Tag[Service], trace: Trace): ZQuery[R with Service, E, A] =
-      service[Service].mapZIO(f)
+      ZQuery(
+        ZIO.serviceWithZIO[Service](
+          f(_).foldCauseZIO(
+            c => Result.failExit(c),
+            v => Result.doneExit(v)
+          )
+        )
+      )
   }
 
   /**
