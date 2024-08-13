@@ -1865,10 +1865,9 @@ object ZQuery {
   @inline private def collectArrayZIO[R, E, A: ClassTag](
     in: Array[ZIO[R, E, A]]
   )(implicit trace: Trace): ZIO[R, E, Array[A]] = {
-    val iterator = in.iterator
-    val out      = Array.ofDim[A](in.length)
-    val size     = in.length
-    var i        = 0
+    val size = in.length
+    val out  = Array.ofDim[A](size)
+    var i    = 0
 
     ZIO.whileLoop(i < size)(in(i)) { v => out(i) = v; i += 1 }.as(out)
   }
@@ -1890,9 +1889,8 @@ object ZQuery {
       }
     }
 
-    var i                             = 0
-    val size                          = results.length
-    var doneSize, effectSize, getSize = 0
+    val size                             = results.length
+    var i, doneSize, effectSize, getSize = 0
 
     // 2-pass to pre-size arrays. Benchmarks show that this is faster than a single-pass using unsized builders
     while (i < size) {
