@@ -108,38 +108,41 @@ private[query] object Result {
    * Constructs a result that is blocked on the specified requests with the
    * specified continuation.
    */
-  def blocked[R, E, A](blockedRequests: BlockedRequests[R], continue: Continue[R, E, A]): Blocked[R, E, A] =
+  def blocked[R, E, A](blockedRequests: BlockedRequests[R], continue: Continue[R, E, A]): Result[R, E, A] =
     Blocked(blockedRequests, continue)
 
   def blockedExit[R, E, A](
     blockedRequests: BlockedRequests[R],
     continue: Continue[R, E, A]
-  ): Exit.Success[Blocked[R, E, A]] =
+  ): Exit[Nothing, Result[R, E, A]] =
     Exit.Success(Blocked(blockedRequests, continue))
 
   /**
    * Constructs a result that is done with the specified value.
    */
-  def done[A](value: A): Done[A] =
+  def done[A](value: A): Result[Any, Nothing, A] =
     Done(value)
 
-  def doneExit[A](value: A): Exit.Success[Done[A]] =
+  def doneExit[A](value: A): Exit[Nothing, Result[Any, Nothing, A]] =
     Exit.Success(Done(value))
 
   /**
    * Constructs a result that is failed with the specified `Cause`.
    */
-  def fail[E](cause: Cause[E]): Fail[E] =
+  def fail[E](cause: Cause[E]): Result[Any, E, Nothing] =
     Fail(cause)
 
-  def failExit[E](cause: Cause[E]): Exit.Success[Fail[E]] =
+  def failExit[E](cause: Cause[E]): Exit[Nothing, Result[Any, E, Nothing]] =
     Exit.Success(Fail(cause))
 
   /**
    * Lifts an `Exit` into a result.
    */
   def fromExit[E, A](exit: Exit[E, A]): Result[Any, E, A] =
-    exit.foldExit(Result.fail, Result.done)
+    exit match {
+      case Exit.Success(a) => Done(a)
+      case Exit.Failure(e) => Fail(e)
+    }
 
   val unit: Result[Any, Nothing, Unit] = done(())
 
