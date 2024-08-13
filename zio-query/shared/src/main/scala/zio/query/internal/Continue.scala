@@ -122,7 +122,7 @@ private[query] sealed trait Continue[-R, +E, +A] { self =>
   )(implicit trace: Trace): Continue[R0, E, A] =
     self match {
       case Effect(query) => effect(query.provideSomeEnvironment(f))
-      case Get(io)       => get(io.asInstanceOf[ZIO[R0, E, A]])
+      case Get(io)       => get(io.provideSomeEnvironment(f.value))
     }
 
   /**
