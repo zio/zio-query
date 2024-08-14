@@ -62,6 +62,7 @@ lazy val root = project
   .aggregate(
     zioQueryJVM,
     zioQueryJS,
+    zioQueryNative,
     docs
   )
 
