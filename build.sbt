@@ -83,7 +83,7 @@ lazy val zioQuery = crossProject(JSPlatform, JVMPlatform, NativePlatform)
   .settings(scalacOptions += "-Wconf:msg=[zio.stacktracer.TracingImplicits.disableAutoTrace]:silent")
   .settings(
     libraryDependencies ++= Seq(
-      "org.scala-lang.modules" %% "scala-collection-compat" % "2.12.0"
+      "org.scala-lang.modules" %%% "scala-collection-compat" % "2.12.0"
     ),
     scalacOptions ++=
       (if (scalaBinaryVersion.value == "3")
