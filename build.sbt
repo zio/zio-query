@@ -33,8 +33,9 @@ inThisBuild(
     ciTargetJavaVersions := List("11", "21"),
     ciTargetScalaVersions :=
       Map(
-        (zioQueryJVM / thisProject).value.id -> allScalas,
-        (zioQueryJS / thisProject).value.id  -> allScalas
+        (zioQueryJVM / thisProject).value.id    -> allScalas,
+        (zioQueryJS / thisProject).value.id     -> List("2.13", "3.3"),
+        (zioQueryNative / thisProject).value.id -> List("2.13", "3.3")
       ),
     ciReleaseJobs :=
       ciReleaseJobs.value.map { job =>
@@ -64,7 +65,7 @@ lazy val root = project
     docs
   )
 
-lazy val zioQuery = crossProject(JSPlatform, JVMPlatform)
+lazy val zioQuery = crossProject(JSPlatform, JVMPlatform, NativePlatform)
   .enablePlugins(BuildInfoPlugin)
   .in(file("zio-query"))
   .settings(
@@ -87,7 +88,6 @@ lazy val zioQuery = crossProject(JSPlatform, JVMPlatform)
       (if (scalaBinaryVersion.value == "3")
          Seq()
        else {
-
          Seq(
            "-opt:l:method",
            "-opt:l:inline",
@@ -108,6 +108,12 @@ lazy val zioQueryJS = zioQuery.js
       else
         Seq.empty
     }
+  )
+
+lazy val zioQueryNative = zioQuery.native
+  .settings(
+    scala3Settings,
+    nativeConfig ~= { _.withMultithreading(false) }
   )
 
 lazy val zioQueryJVM = zioQuery.jvm.settings(enableMimaSettingsJVM)

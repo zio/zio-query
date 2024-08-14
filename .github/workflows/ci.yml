@@ -85,9 +85,10 @@ jobs:
         - ++2.12 zioQueryJVM
         - ++2.13 zioQueryJVM
         - ++3.3 zioQueryJVM
-        - ++2.12 zioQueryJS
         - ++2.13 zioQueryJS
         - ++3.3 zioQueryJS
+        - ++2.13 zioQueryNative
+        - ++3.3 zioQueryNative
     steps:
     - name: Install libuv
       run: sudo apt-get update && sudo apt-get install -y libuv1-dev
