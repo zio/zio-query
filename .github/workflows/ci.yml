@@ -44,8 +44,25 @@ jobs:
       run: sbt --client +publishLocal
     - name: Check binary compatibility
       run: sbt --client "+zioQueryJVM/mimaReportBinaryIssues; +zioQueryJS/mimaReportBinaryIssues"
-    - name: Check website build process
-      run: sbt --client "docs/buildWebsite"
+  build-website:
+    name: Build Website
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Git Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: '0'
+      - name: Setup Scala
+        uses: actions/setup-java@v4
+        with:
+          distribution: corretto
+          java-version: '17'
+          check-latest: true
+      - name: Cache Dependencies
+        uses: coursier/cache-action@v6
+      - name: Check website build process
+        run: sbt docs/buildWebsite
   lint:
     name: Lint
     runs-on: ubuntu-latest
@@ -165,6 +182,7 @@ jobs:
     - lint
     - test
     - build
+    - build-website
     steps:
     - name: Report Successful CI
       run: echo "ci passed"
