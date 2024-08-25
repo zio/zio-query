@@ -383,6 +383,16 @@ object ZQuerySpec extends ZIOBaseSpec {
 
           q.run.map { case (c1, c2) => assertTrue(c1.isDefined, c1 == c2) }
         },
+        test("disabling caching is reentrant safe") {
+          val q =
+            for {
+              c1 <- ZQuery.fromZIO(ZQuery.currentCache.get)
+              c2 <- ZQuery.fromZIO(ZQuery.fromZIO(ZQuery.currentCache.get).cached.run).uncached
+              c3 <- ZQuery.fromZIO(ZQuery.currentCache.get)
+            } yield (c1, c2, c3)
+
+          q.run.map { case (c1, c2, c3) => assertTrue(c1.isDefined, c2.isDefined, c1 == c3, c1 != c2) }
+        },
         test("scope is reentrant safe") {
           val q =
             for {

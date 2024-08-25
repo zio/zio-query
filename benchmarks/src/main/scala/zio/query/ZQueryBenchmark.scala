@@ -25,7 +25,15 @@ class ZQueryBenchmark {
     unsafeRunZIO(ZIO.collectAllDiscard(qs1))
 
   @Benchmark
+  def zQuerySingleRunSucceedNowBenchmark() =
+    unsafeRunZIO(qs1.head)
+
+  @Benchmark
   @OperationsPerInvocation(1000)
   def zQueryRunSucceedBenchmark() =
     unsafeRunZIO(ZIO.collectAllDiscard(qs2))
+
+  @Benchmark
+  def zQuerySingleRunSucceedBenchmark() =
+    unsafeRunZIO(qs2.head)
 }
