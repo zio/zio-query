@@ -1,11 +1,10 @@
 import com.typesafe.tools.mima.core.*
 import explicitdeps.ExplicitDepsPlugin.autoImport.moduleFilterRemoveValue
 import sbtcrossproject.CrossPlugin.autoImport.crossProject
-import zio.sbt.githubactions.*
 
-import scala.collection.immutable.TreeMap
+import scala.scalanative.build.Mode
 
-enablePlugins(ZioSbtEcosystemPlugin, ZioSbtCiPlugin)
+enablePlugins(ZioSbtEcosystemPlugin)
 
 crossScalaVersions := Seq.empty
 
@@ -19,7 +18,7 @@ lazy val allScalas = List("2.12", "2.13", "3.3")
 inThisBuild(
   List(
     name         := "ZIO Query",
-    zioVersion   := "2.1.7",
+    zioVersion   := "2.1.8",
     scalaVersion := scalaV,
     developers := List(
       Developer(
@@ -29,26 +28,6 @@ inThisBuild(
         url("https://github.com/kyri-petrou")
       )
     ),
-    ciEnabledBranches    := Seq("series/2.x"),
-    ciTargetJavaVersions := List("11", "21"),
-    ciTargetScalaVersions :=
-      Map(
-        (zioQueryJVM / thisProject).value.id    -> allScalas,
-        (zioQueryJS / thisProject).value.id     -> List("2.13", "3.3"),
-        (zioQueryNative / thisProject).value.id -> List("2.13", "3.3")
-      ),
-    ciReleaseJobs :=
-      ciReleaseJobs.value.map { job =>
-        def mapStep(step: Step): Step = step match {
-          case Step.StepSequence(steps) => Step.StepSequence(steps.map(mapStep))
-          case s: Step.SingleStep if s.name.equalsIgnoreCase("Release") =>
-            val newMap = TreeMap.empty[String, String] ++ s.env.updated(ciReleaseModeKey, "1")
-            s.copy(env = newMap)
-          case s => s
-        }
-        val steps = job.steps.map(mapStep)
-        job.copy(steps = steps)
-      },
     versionScheme := Some("early-semver")
   )
 )
@@ -114,7 +93,12 @@ lazy val zioQueryJS = zioQuery.js
 lazy val zioQueryNative = zioQuery.native
   .settings(
     scala3Settings,
-    nativeConfig ~= { _.withMultithreading(false) }
+    nativeConfig ~= { cfg =>
+      val os = System.getProperty("os.name").toLowerCase
+      // See https://github.com/zio/zio/releases/tag/v2.1.8
+      if (os.contains("mac")) cfg.withMode(Mode.releaseFast)
+      else cfg
+    }
   )
 
 lazy val zioQueryJVM = zioQuery.jvm.settings(enableMimaSettingsJVM)
@@ -159,13 +143,6 @@ lazy val enableMimaSettingsJS =
     mimaFailOnProblem     := enforceMimaCompatibility,
     mimaPreviousArtifacts := previousStableVersion.value.map(organization.value %%% moduleName.value % _).toSet,
     mimaBinaryIssueFilters ++= Seq()
-  )
-
-ThisBuild / ciCheckArtifactsBuildSteps +=
-  Step.SingleStep(
-    "Check binary compatibility",
-    env = Map(ciReleaseModeKey -> "1"),
-    run = Some("sbt \"+zioQueryJVM/mimaReportBinaryIssues; +zioQueryJS/mimaReportBinaryIssues\"")
   )
 
 lazy val ciReleaseModeKey = "CI_RELEASE_MODE"
