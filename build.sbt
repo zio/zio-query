@@ -71,7 +71,8 @@ lazy val zioQuery = crossProject(JSPlatform, JVMPlatform, NativePlatform)
          Seq(
            "-opt:l:method",
            "-opt:l:inline",
-           "-opt-inline-from:scala.**"
+           "-opt-inline-from:scala.**",
+           "-opt-inline-from:zio.query.**"
          ) ++ (if (isRelease) Seq("-Xelide-below", "2001") else Seq())
        })
   )
