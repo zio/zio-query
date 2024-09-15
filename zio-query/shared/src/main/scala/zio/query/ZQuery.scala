@@ -215,6 +215,22 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     self.foldCauseQuery[R1, E2, A1](h, ZQuery.succeedNow)
 
   /**
+   * Recovers from all errors and maps the provided Cause to a ZIO effect
+   */
+  def catchAllCauseZIO[R1 <: R, E2, A1 >: A](h: Cause[E] => ZIO[R1, E2, A1])(implicit
+    trace: Trace
+  ): ZQuery[R1, E2, A1] =
+    foldCauseZIO(h, Exit.succeed)
+
+  /**
+   * Catches all errors and maps them to a ZIO effect
+   */
+  def catchAllZIO[R1 <: R, E2, A1 >: A](
+    h: E => ZIO[R1, E2, A1]
+  )(implicit ev: CanFail[E], trace: Trace): ZQuery[R1, E2, A1] =
+    catchAllCauseZIO(_.failureOrCause.fold(h, Exit.failCause))
+
+  /**
    * Returns a query whose failure and success have been lifted into an
    * `Either`. The resulting query cannot fail, because the failure case has
    * been exposed as part of the `Either` success case.
@@ -267,7 +283,13 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     ev: CanFail[E],
     trace: Trace
   ): ZQuery[R, Nothing, B] =
-    foldQuery(e => ZQuery.succeedNow(failure(e)), a => ZQuery.succeedNow(success(a)))
+    ZQuery {
+      step.flatMap {
+        case Result.Blocked(br, c) => Result.blockedExit(br, c.fold(failure, success))
+        case Result.Done(a)        => Result.doneExit(success(a))
+        case Result.Fail(e)        => e.failureOrCause.fold(e => Result.doneExit(failure(e)), Exit.failCause)
+      }
+    }
 
   /**
    * A more powerful version of `foldQuery` that allows recovering from any type
@@ -289,6 +311,25 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     }
 
   /**
+   * A more powerful version of `foldZIO` that allows recovering from any type
+   * of failure except interruptions.
+   */
+  def foldCauseZIO[R1 <: R, E1, B](
+    failure: Cause[E] => ZIO[R1, E1, B],
+    success: A => ZIO[R1, E1, B]
+  )(implicit trace: Trace): ZQuery[R1, E1, B] =
+    ZQuery {
+      step.foldCauseZIO(
+        failure(_).foldCauseZIO(Result.failExit, Result.doneExit),
+        {
+          case Result.Blocked(br, c) => Result.blockedExit(br, c.foldCauseZIO(failure, success))
+          case Result.Done(a)        => success(a).foldCauseZIO(Result.failExit, Result.doneExit)
+          case Result.Fail(e)        => failure(e).foldCauseZIO(Result.failExit, Result.doneExit)
+        }
+      )
+    }
+
+  /**
    * Recovers from errors by accepting one query to execute for the case of an
    * error, and one query to execute for the case of success.
    */
@@ -297,6 +338,16 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     trace: Trace
   ): ZQuery[R1, E1, B] =
     foldCauseQuery(_.failureOrCause.fold(failure, ZQuery.failCause(_)), success)
+
+  /**
+   * Recovers from errors by accepting one ZIO effect to execute for the case of
+   * an error, and one ZIO effect to execute for the case of success.
+   */
+  def foldZIO[R1 <: R, E1, B](
+    failure: E => ZIO[R1, E1, B],
+    success: A => ZIO[R1, E1, B]
+  )(implicit trace: Trace): ZQuery[R1, E1, B] =
+    foldCauseZIO(_.failureOrCause.fold(failure, Exit.failCause), success)
 
   /**
    * "Zooms in" on the value in the `Left` side of an `Either`, moving the
@@ -351,7 +402,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * specified pair of functions, `f` and `g`.
    */
   def mapBoth[E1, B](f: E => E1, g: A => B)(implicit ev: CanFail[E], trace: Trace): ZQuery[R, E1, B] =
-    foldQuery(e => ZQuery.failNow(f(e)), a => ZQuery.succeedNow(g(a)))
+    mapBothCause(_.failureOrCause.fold(c => Cause.fail(f(c)), ZIO.identityFn), g)
 
   /**
    * Returns a query whose failure cause and success channels have been mapped
@@ -361,7 +412,16 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     ev: CanFail[E],
     trace: Trace
   ): ZQuery[R, E1, B] =
-    foldCauseQuery(e => ZQuery.failCauseNow(f(e)), a => ZQuery.succeedNow(g(a)))
+    ZQuery {
+      step.foldCauseZIO(
+        e => Result.failExit(f(e)),
+        {
+          case Result.Blocked(br, c) => Result.blockedExit(br, c.mapBothCause(f, g))
+          case Result.Done(a)        => Result.doneExit(g(a))
+          case Result.Fail(e)        => Result.failExit(f(e))
+        }
+      )
+    }
 
   /**
    * Transforms all data sources with the specified data source aspect.
@@ -381,7 +441,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * original structure of `Cause`.
    */
   def mapErrorCause[E2](h: Cause[E] => Cause[E2])(implicit trace: Trace): ZQuery[R, E2, A] =
-    self.foldCauseQuery(c => ZQuery.failCause(h(c)), ZQuery.succeedNow)
+    mapBothCause(h, ZIO.identityFn)
 
   /**
    * Maps the specified effectual function over the result of this query.
@@ -1532,7 +1592,7 @@ object ZQuery {
    * users should use [[fromZIO]] instead.
    */
   def fromZIONow[R, E, A](effect: ZIO[R, E, A])(implicit trace: Trace): ZQuery[R, E, A] =
-    ZQuery(effect.foldCauseZIO(c => Result.failExit(c), v => Result.doneExit(v)))
+    ZQuery(effect.foldCauseZIO(Result.failExit, Result.doneExit))
 
   /**
    * Constructs a query that never completes.
@@ -1886,13 +1946,15 @@ object ZQuery {
 
   @inline private def collectArrayZIO[R, E, A: ClassTag](
     in: Array[ZIO[R, E, A]]
-  )(implicit trace: Trace): ZIO[R, E, Array[A]] = {
-    val size = in.length
-    val out  = Array.ofDim[A](size)
-    var i    = 0
-
-    ZIO.whileLoop(i < size)(in(i)) { v => out(i) = v; i += 1 }.as(out)
-  }
+  )(implicit trace: Trace): ZIO[R, E, Array[A]] =
+    (in.length: @switch) match {
+      case 0 => Exit.succeed(Array.empty)
+      case 1 => in(0).flatMap(v => Exit.succeed(Array(v)))
+      case n =>
+        val out = Array.ofDim[A](n)
+        var i   = 0
+        ZIO.whileLoop(i < n)(in(i)) { v => out(i) = v; i += 1 }.as(out)
+    }
 
   private def collectResults[R, E, A, B, F[_]](
     results: Array[Result[R, E, B]],
@@ -1978,11 +2040,11 @@ object ZQuery {
     else if (fails.isEmpty) {
       val continue =
         if (effects.isEmpty) {
-          val io = collectArrayZIO(gets).map { gets =>
+          val io = collectArrayZIO(gets).flatMap { gets =>
             val array = Array.ofDim[B](size)
             addToArray(array)(getIndices, gets)
             addToArray(array)(doneIndices, dones)
-            mapOut(array)
+            Exit.succeed(mapOut(array))
           }
           Continue.get(io)
         } else {
@@ -1992,12 +2054,12 @@ object ZQuery {
             case Mode.Batched    => ZQuery.collectAllBatched[R, E, B](effects)
           }
           val query = collect.mapZIO { effects =>
-            collectArrayZIO(gets).map { gets =>
+            collectArrayZIO(gets).flatMap { gets =>
               val array = Array.ofDim[B](size)
               addToArray(array)(effectIndices, effects)
               addToArray(array)(getIndices, gets)
               addToArray(array)(doneIndices, dones)
-              mapOut(array)
+              Exit.succeed(mapOut(array))
             }
           }
           Continue.effect(query)

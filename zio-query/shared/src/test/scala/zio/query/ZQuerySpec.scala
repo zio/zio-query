@@ -403,6 +403,91 @@ object ZQuerySpec extends ZIOBaseSpec {
 
           q.run.map { case (c1, c2) => assertTrue(c1 != QueryScope.NoOp, c1 == c2) }
         }
+      ),
+      suite("catchAllZIO")(
+        test("doesn't affect successful value") {
+          val query = (ZQuery.succeed(1): TaskQuery[Int]).catchAllZIO(_ => Exit.succeed(100))
+          for {
+            res <- query.run
+          } yield assertTrue(res == 1)
+        },
+        test("catches failure") {
+          val q: ZQuery[Any, Int, Int] = ZQuery.fail(1)
+          val query                    = q.catchAllZIO(i => Exit.succeed(i + 1))
+          for {
+            res <- query.run
+          } yield assertTrue(res == 2)
+        },
+        test("doesn't catch defects") {
+          val query = (dieQuery: TaskQuery[Int]).catchAllZIO(_ => ZIO.succeed(1))
+          for {
+            res <- query.run.cause
+          } yield assertTrue(res.isDie)
+        }
+      ),
+      suite("catchAllCauseZIO")(
+        test("doesn't affect successful value") {
+          val query = (ZQuery.succeed(1): TaskQuery[Int]).catchAllCauseZIO(_ => Exit.succeed(100))
+          for {
+            res <- query.run
+          } yield assertTrue(res == 1)
+        },
+        test("catches failure") {
+          val q: ZQuery[Any, Int, Int] = ZQuery.fail(1)
+          val query                    = q.catchAllCauseZIO(_.failureOrCause.fold(i => Exit.succeed(i + 1), Exit.failCause))
+          for {
+            res <- query.run
+          } yield assertTrue(res == 2)
+        },
+        test("catches defects") {
+          val query = (dieQuery: TaskQuery[Int]).catchAllCauseZIO(_ => ZIO.succeed(1))
+          for {
+            res <- query.run
+          } yield assertTrue(res == 1)
+        }
+      ),
+      suite("foldZIO")(
+        test("maps success value") {
+          val query = ZQuery.succeed(1).foldZIO(_ => Exit.succeed(1), i => Exit.succeed(i + 10))
+          for {
+            res <- query.run
+          } yield assertTrue(res == 11)
+        },
+        test("catches failure") {
+          val q: ZQuery[Any, Int, Int] = ZQuery.fail(1)
+          val query                    = q.foldZIO(i => Exit.succeed(i + 1), i => Exit.succeed(i + 10))
+          for {
+            res <- query.run
+          } yield assertTrue(res == 2)
+        },
+        test("doesn't catch defects") {
+          val query = dieQuery.foldZIO(_ => Exit.succeed(1), _ => Exit.succeed(2))
+          for {
+            res <- query.run.cause
+          } yield assertTrue(res.isDie)
+        }
+      ),
+      suite("foldCauseZIO")(
+        test("maps success value") {
+          val query = ZQuery.succeed(1).foldCauseZIO(_ => Exit.succeed(1), i => Exit.succeed(i + 10))
+          for {
+            res <- query.run
+          } yield assertTrue(res == 11)
+        },
+        test("catches failure") {
+          val q: ZQuery[Any, Int, Int] = ZQuery.fail(1)
+          val query =
+            q.foldCauseZIO(i => Exit.succeed(i.failureOrCause.left.toOption.get + 1), i => Exit.succeed(i + 10))
+          for {
+            res <- query.run
+          } yield assertTrue(res == 2)
+        },
+        test("catches defect") {
+          val query = dieQuery.foldCauseZIO(_ => Exit.succeed(1), _ => Exit.succeed(2))
+          for {
+            res <- query.run
+          } yield assertTrue(res == 1)
+        }
       )
     ) @@ silent
 
