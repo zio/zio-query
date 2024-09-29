@@ -92,6 +92,8 @@ trait DataSource[-R, -A] { self =>
    */
   final def contramapZIO[R1 <: R, B](f: Described[B => ZIO[R1, Nothing, A]]): DataSource[R1, B] =
     new DataSource[R1, B] {
+      import scala.collection.compat.BuildFrom._ // Required for Scala 3
+
       val identifier = s"${self.identifier}.contramapZIO(${f.description})"
       def runAll(requests: Chunk[Chunk[B]])(implicit trace: Trace): ZIO[R1, Nothing, CompletedRequestMap] =
         ZIO.foreach(requests)(ZIO.foreachPar(_)(f.value)).flatMap(self.runAll)
