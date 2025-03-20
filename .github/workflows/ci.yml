@@ -36,6 +36,8 @@ jobs:
         distribution: corretto
         java-version: '17'
         check-latest: true
+    - name: Setup sbt
+      uses: sbt/setup-sbt@v1
     - name: Cache Dependencies
       uses: coursier/cache-action@v6
     - name: Check all code compiles
@@ -59,6 +61,8 @@ jobs:
           distribution: corretto
           java-version: '17'
           check-latest: true
+      - name: Setup sbt
+        uses: sbt/setup-sbt@v1
       - name: Cache Dependencies
         uses: coursier/cache-action@v6
       - name: Check website build process
@@ -78,6 +82,8 @@ jobs:
         distribution: corretto
         java-version: '17'
         check-latest: true
+    - name: Setup sbt
+      uses: sbt/setup-sbt@v1
     - name: Cache Dependencies
       uses: coursier/cache-action@v6
     - name: Lint
@@ -107,6 +113,8 @@ jobs:
         distribution: corretto
         java-version: ${{ matrix.java }}
         check-latest: true
+    - name: Setup sbt
+      uses: sbt/setup-sbt@v1
     - name: Cache Dependencies
       uses: coursier/cache-action@v6
     - name: Git Checkout
@@ -131,6 +139,8 @@ jobs:
         distribution: corretto
         java-version: '17'
         check-latest: true
+    - name: Setup sbt
+      uses: sbt/setup-sbt@v1
     - name: Cache Dependencies
       uses: coursier/cache-action@v6
     - name: Generate Readme
@@ -204,6 +214,8 @@ jobs:
         distribution: corretto
         java-version: '17'
         check-latest: true
+    - name: Setup sbt
+      uses: sbt/setup-sbt@v1
     - name: Cache Dependencies
       uses: coursier/cache-action@v6
     - name: Release
@@ -232,6 +244,8 @@ jobs:
         distribution: corretto
         java-version: '17'
         check-latest: true
+    - name: Setup sbt
+      uses: sbt/setup-sbt@v1
     - name: Cache Dependencies
       uses: coursier/cache-action@v6
     - name: Setup NodeJs

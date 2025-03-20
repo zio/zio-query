@@ -9,8 +9,8 @@ enablePlugins(ZioSbtEcosystemPlugin)
 crossScalaVersions := Seq.empty
 
 lazy val scala212 = "2.12.20"
-lazy val scala213 = "2.13.15"
-lazy val scala3   = "3.3.4"
+lazy val scala213 = "2.13.16"
+lazy val scala3   = "3.3.5"
 
 lazy val scalaV    = scala213
 lazy val allScalas = List("2.12", "2.13", "3.3")
@@ -18,7 +18,7 @@ lazy val allScalas = List("2.12", "2.13", "3.3")
 inThisBuild(
   List(
     name         := "ZIO Query",
-    zioVersion   := "2.1.9",
+    zioVersion   := "2.1.16",
     scalaVersion := scalaV,
     developers := List(
       Developer(
@@ -62,7 +62,7 @@ lazy val zioQuery = crossProject(JSPlatform, JVMPlatform, NativePlatform)
   .settings(scalacOptions += "-Wconf:msg=[zio.stacktracer.TracingImplicits.disableAutoTrace]:silent")
   .settings(
     libraryDependencies ++= Seq(
-      "org.scala-lang.modules" %%% "scala-collection-compat" % "2.12.0"
+      "org.scala-lang.modules" %%% "scala-collection-compat" % "2.13.0"
     ),
     scalacOptions ++=
       (if (scalaBinaryVersion.value == "3")
