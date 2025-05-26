@@ -402,6 +402,18 @@ object ZQuerySpec extends ZIOBaseSpec {
             } yield (c1, c2)
 
           q.run.map { case (c1, c2) => assertTrue(c1 != QueryScope.NoOp, c1 == c2) }
+        },
+        test("propagates FiberRef changes") {
+          val ref = FiberRef.unsafe.make("a")(Unsafe)
+          for {
+            _    <- ZQuery.fromZIO(ref.update(_ + "b")).run
+            res1 <- ref.get
+            _    <- ZQuery.fromZIO(ref.update(_ + "c")).run
+            res2 <- ref.get
+            _    <- ref.set("d")
+            _    <- ZQuery.fromZIO(ref.update(_ + "e")).run
+            res3 <- ref.get
+          } yield assertTrue(res1 == "ab", res2 == "abc", res3 == "de")
         }
       ),
       suite("catchAllZIO")(

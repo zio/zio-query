@@ -639,17 +639,16 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
             }
             state.setFiberRefs(newRefs)
             restore(runToZIO).exitWith { exit =>
-              val curRefs = state.getFiberRefs(false)
+              var curRefs = state.getFiberRefs(false)
               if (curRefs eq newRefs) {
                 // Cheap and common: FiberRefs were not modified during the execution so we just replace them with the old ones
                 state.setFiberRefs(oldRefs)
               } else {
-                // FiberRefs were mdified so we need to manually revert each one
-                var revertedRefs = oldRefs
-                revertedRefs = resetRef(fid, oldRefs, revertedRefs)(currentCache)
-                revertedRefs = resetRef(fid, oldRefs, revertedRefs)(currentScope)
-                revertedRefs = resetRef(fid, oldRefs, revertedRefs)(disabledCache)
-                state.setFiberRefs(revertedRefs)
+                // FiberRefs were modified so we need to manually revert each one
+                curRefs = resetRef(fid, oldRefs, curRefs)(currentCache)
+                curRefs = resetRef(fid, oldRefs, curRefs)(currentScope)
+                curRefs = resetRef(fid, oldRefs, curRefs)(disabledCache)
+                state.setFiberRefs(curRefs)
               }
               scope.closeAndExitWith(exit)
             }
