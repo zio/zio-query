@@ -16,7 +16,7 @@
 
 package zio.query
 
-import zio._
+import zio.*
 
 /**
  * A `QueryAspect` is an aspect that can be weaved into queries. You can think

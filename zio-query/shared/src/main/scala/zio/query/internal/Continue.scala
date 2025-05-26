@@ -16,9 +16,9 @@
 
 package zio.query.internal
 
-import zio._
-import zio.query._
-import zio.query.internal.Continue._
+import zio.*
+import zio.query.*
+import zio.query.internal.Continue.*
 import zio.stacktracer.TracingImplicits.disableAutoTrace
 
 /**

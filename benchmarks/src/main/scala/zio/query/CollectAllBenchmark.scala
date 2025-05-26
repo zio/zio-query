@@ -1,7 +1,7 @@
 package zio.query
 
-import org.openjdk.jmh.annotations.{Scope => JScope, _}
-import zio.query.BenchmarkUtil._
+import org.openjdk.jmh.annotations.{Scope as JScope, *}
+import zio.query.BenchmarkUtil.*
 
 import java.util.concurrent.TimeUnit
 

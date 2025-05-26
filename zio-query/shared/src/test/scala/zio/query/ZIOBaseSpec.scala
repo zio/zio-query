@@ -1,7 +1,7 @@
 package zio.query
 
-import zio._
-import zio.test._
+import zio.*
+import zio.test.*
 
 trait ZIOBaseSpec extends ZIOSpecDefault {
   override def aspects: Chunk[TestAspectPoly] =

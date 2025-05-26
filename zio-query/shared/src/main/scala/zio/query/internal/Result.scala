@@ -16,8 +16,8 @@
 
 package zio.query.internal
 
-import zio._
-import zio.query.internal.Result._
+import zio.*
+import zio.query.internal.Result.*
 import zio.query.{DataSourceAspect, Described}
 import zio.stacktracer.TracingImplicits.disableAutoTrace
 

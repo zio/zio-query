@@ -1,6 +1,6 @@
 package zio.query.internal
 
-import zio._
+import zio.*
 import zio.stacktracer.TracingImplicits.disableAutoTrace
 
 import java.util.concurrent.atomic.AtomicReference

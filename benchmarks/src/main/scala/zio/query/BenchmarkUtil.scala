@@ -1,6 +1,6 @@
 package zio.query
 
-import zio._
+import zio.*
 
 object BenchmarkUtil extends Runtime[Any] { self =>
   val environment = Runtime.default.environment

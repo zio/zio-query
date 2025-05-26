@@ -16,7 +16,7 @@
 
 package zio.query
 
-import zio._
+import zio.*
 import zio.stacktracer.TracingImplicits.disableAutoTrace
 
 import java.util.concurrent.ConcurrentHashMap

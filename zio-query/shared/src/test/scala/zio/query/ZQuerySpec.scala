@@ -1,11 +1,11 @@
 package zio.query
 
-import zio._
-import zio.query.QueryAspect._
+import zio.*
+import zio.query.QueryAspect.*
 import zio.query.internal.QueryScope
-import zio.test.Assertion._
+import zio.test.Assertion.*
 import zio.test.TestAspect.{after, nonFlaky, silent}
-import zio.test.{TestClock, TestConsole, TestEnvironment, _}
+import zio.test.{TestClock, TestConsole, TestEnvironment, *}
 
 object ZQuerySpec extends ZIOBaseSpec {
 
@@ -305,10 +305,10 @@ object ZQuerySpec extends ZIOBaseSpec {
         }
       ) @@ nonFlaky,
       test("service methods works with multiple services") {
-        def getFoo: ZQuery[Int with String, Nothing, Unit] =
+        def getFoo: ZQuery[Int & String, Nothing, Unit] =
           ZQuery.serviceWithQuery[Int](_ => ZQuery.service[String].as(()))
 
-        def getBar: ZQuery[Int with String, Nothing, Unit] =
+        def getBar: ZQuery[Int & String, Nothing, Unit] =
           ZQuery.serviceWithZIO[String](_ => ZIO.service[String].unit)
 
         assertCompletes

@@ -16,14 +16,14 @@
 
 package zio.query
 
-import zio._
+import zio.*
 import zio.query.ZQuery.disabledCache
-import zio.query.internal._
+import zio.query.internal.*
 import zio.stacktracer.TracingImplicits.disableAutoTrace
 
 import java.util.concurrent.atomic.AtomicBoolean
 import scala.annotation.switch
-import scala.collection.compat.{BuildFrom => _, _}
+import scala.collection.compat.{BuildFrom as _, *}
 import scala.collection.mutable.ArrayBuilder
 import scala.reflect.ClassTag
 
@@ -1936,7 +1936,9 @@ object ZQuery {
             val arr = Array.ofDim[Result[R, E, B]](n)
 
             ZIO
-              .whileLoop(i < n)(f(as(i)).step) { v => arr(i) = v; i += 1 }
+              .whileLoop(i < n)(f(as(i)).step) { v =>
+                arr(i) = v; i += 1
+              }
               .as(collectResults(arr, mode, mapOut))
           }
         }
@@ -1952,7 +1954,11 @@ object ZQuery {
       case n =>
         val out = Array.ofDim[A](n)
         var i   = 0
-        ZIO.whileLoop(i < n)(in(i)) { v => out(i) = v; i += 1 }.as(out)
+        ZIO
+          .whileLoop(i < n)(in(i)) { v =>
+            out(i) = v; i += 1
+          }
+          .as(out)
     }
 
   private def collectResults[R, E, A, B, F[_]](

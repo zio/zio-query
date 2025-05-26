@@ -19,7 +19,7 @@ package zio.query
 import zio.stacktracer.TracingImplicits.disableAutoTrace
 import zio.{Cause, Chunk, Exit}
 
-import scala.collection.compat._
+import scala.collection.compat.*
 import scala.collection.{immutable, mutable}
 
 /**
@@ -255,7 +255,7 @@ object CompletedRequestMap {
   final private[query] class Mutable private (
     override protected val map: mutable.HashMap[Any, Exit[Any, Any]]
   ) extends CompletedRequestMap { self =>
-    import UtilsVersionSpecific._
+    import UtilsVersionSpecific.*
 
     def addAll(that: CompletedRequestMap): Unit =
       if (!that.isEmpty) self.map.addAll(that.map)

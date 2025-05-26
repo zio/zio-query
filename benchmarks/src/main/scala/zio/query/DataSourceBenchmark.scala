@@ -1,11 +1,11 @@
 package zio.query
 
 import cats.effect.IO
-import cats.effect.unsafe.implicits._
-import cats.syntax.all._
-import fetch.{Fetch, fetchM}
-import org.openjdk.jmh.annotations.{Scope => JScope, _}
-import zio.query.BenchmarkUtil._
+import cats.effect.unsafe.implicits.*
+import cats.syntax.all.*
+import fetch.Fetch
+import org.openjdk.jmh.annotations.{Scope as JScope, *}
+import zio.query.BenchmarkUtil.*
 import zio.{Chunk, ZIO}
 
 import java.util.concurrent.TimeUnit
@@ -36,7 +36,7 @@ class DataSourceBenchmark {
 
   @Benchmark
   def zquerySumDuplicatedBenchmark(): Long = {
-    import ZQueryImpl._
+    import ZQueryImpl.*
 
     val reqs  = (0 until count).toList.map(i => ZQuery.fromRequest(Req(1))(ds))
     val query = ZQuery.collectAllBatched(reqs).map(_.sum.toLong)
@@ -45,7 +45,7 @@ class DataSourceBenchmark {
 
   @Benchmark
   def zquerySumUniqueBenchmark(): Long = {
-    import ZQueryImpl._
+    import ZQueryImpl.*
 
     val reqs  = (0 until count).toList.map(i => ZQuery.fromRequest(Req(i))(ds))
     val query = ZQuery.collectAllBatched(reqs).map(_.sum.toLong)
@@ -54,7 +54,7 @@ class DataSourceBenchmark {
 
   @Benchmark
   def fetchSumDuplicatedBenchmark(): Long = {
-    import FetchImpl._
+    import FetchImpl.*
     import fetch.fetchM
     type FIO[A] = Fetch[IO, A]
 
@@ -65,8 +65,8 @@ class DataSourceBenchmark {
 
   @Benchmark
   def fetchSumUniqueBenchmark(): Long = {
+    import FetchImpl.*
     import fetch.fetchM
-    import FetchImpl._
     type FIO[A] = Fetch[IO, A]
 
     val reqs  = (0 until count).toList.map(i => fetchPlusOne(i))
@@ -81,8 +81,8 @@ class DataSourceBenchmark {
 
   object FetchImpl {
     import cats.data.NonEmptyList
-    import cats.effect._
-    import fetch._
+    import cats.effect.*
+    import fetch.*
 
     object PlusOne extends Data[Int, Int] {
       def name = "PlusOne"
