@@ -284,28 +284,38 @@ private[query] object BlockedRequests {
   private def completePromises(
     dataSource: DataSource[_, Any],
     sequential: Chunk[Chunk[BlockedRequest[Any]]]
-  )(get: Request[?, ?] => Option[Exit[Any, Any]]): Unit =
-    sequential.foreach {
-      _.foreach { br =>
-        val req = br.request
-        val res = get(req) match {
-          case Some(exit) => exit.asInstanceOf[Exit[br.Failure, br.Success]]
-          case None       => Exit.die(QueryFailure(dataSource, req))
-        }
+  )(get: Request[?, ?] => Option[Exit[Any, Any]]): Unit = {
+
+    def loopInner(c: Chunk[BlockedRequest[Any]]): Unit = {
+      val it = c.iterator
+      while (it.hasNext) {
+        val br   = it.next()
+        val req  = br.request
+        val exit = get(req)
+        val res =
+          if (exit.isEmpty) Exit.die(QueryFailure(dataSource, req))
+          else exit.get.asInstanceOf[Exit[br.Failure, br.Success]]
         br.result.unsafe.done(res)(Unsafe.unsafe)
       }
     }
+
+    val it0 = sequential.iterator
+    while (it0.hasNext) {
+      val next = it0.next()
+      loopInner(next)
+    }
+  }
 
   private def cacheLeftovers(
     cache: Cache,
     map: mutable.HashMap[Request[_, _], Exit[Any, Any]]
   )(implicit trace: Trace): UIO[Unit] =
     cache match {
-      case cache: Cache.Default =>
+      case cache: Cache.InMemoryCache =>
         ZIO.succeedUnsafe { implicit unsafe =>
           map.foreach { case (request: Request[Any, Any], exit) =>
             cache
-              .lookupUnsafe(request)
+              .lookupNow(request)
               .merge
               .unsafe
               .done(exit)
