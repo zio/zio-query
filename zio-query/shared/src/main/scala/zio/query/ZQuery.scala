@@ -1681,7 +1681,7 @@ object ZQuery {
    * Returns a lazily constructed query.
    */
   def suspend[R, E, A](query: => ZQuery[R, E, A])(implicit trace: Trace): ZQuery[R, E, A] =
-    ZQuery.unit.flatMap(_ => query)
+    new ZQuery(ZIO.suspendSucceed(query.step))
 
   /**
    * The query that succeeds with the unit value.
