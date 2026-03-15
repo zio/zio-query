@@ -18,7 +18,6 @@ package zio.query.internal
 
 import zio._
 import zio.query._
-import zio.query.internal.Continue._
 import zio.stacktracer.TracingImplicits.disableAutoTrace
 
 /**
@@ -30,166 +29,122 @@ import zio.stacktracer.TracingImplicits.disableAutoTrace
  * internally to determine whether it is safe to pipeline two requests that must
  * be executed sequentially.
  */
-private[query] sealed trait Continue[-R, +E, +A] { self =>
+private[query] abstract class Continue[-R, +E, +A] { self =>
+
+  /**
+   * Recovers from all errors.
+   */
+  def catchAll[R1 <: R, E1, A1 >: A](
+    failure: E => ZQuery[R1, E1, A1]
+  )(implicit trace: Trace): Continue[R1, E1, A1]
+
+  /**
+   * Recovers from all errors with the provided Cause.
+   */
+  def catchAllCause[R1 <: R, E1, A1 >: A](
+    failure: Cause[E] => ZQuery[R1, E1, A1]
+  )(implicit trace: Trace): Continue[R1, E1, A1]
 
   /**
    * Purely folds over the failure and success types of this continuation.
    */
-  final def fold[B](failure: E => B, success: A => B)(implicit
+  def fold[B](failure: E => B, success: A => B)(implicit
     ev: CanFail[E],
     trace: Trace
-  ): Continue[R, Nothing, B] =
-    self match {
-      case Effect(query) => Effect(query.fold(failure, success))
-      case Get(io)       => Get(io.foldZIO(e => Exit.succeed(failure(e)), a => Exit.succeed(success(a))))
-    }
+  ): Continue[R, Nothing, B]
 
   /**
    * Effectually folds over the failure and success types of this continuation.
    */
-  final def foldCauseQuery[R1 <: R, E1, B](
+  def foldCauseQuery[R1 <: R, E1, B](
     failure: Cause[E] => ZQuery[R1, E1, B],
     success: A => ZQuery[R1, E1, B]
-  )(implicit trace: Trace): Continue[R1, E1, B] =
-    self match {
-      case Effect(query) => Effect(query.foldCauseQuery(failure, success))
-      case Get(io)       => Effect(ZQuery.fromZIONow(io).foldCauseQuery(failure, success))
-    }
+  )(implicit trace: Trace): Continue[R1, E1, B]
 
-  final def foldCauseZIO[R1 <: R, E1, B](
+  def foldCauseZIO[R1 <: R, E1, B](
     failure: Cause[E] => ZIO[R1, E1, B],
     success: A => ZIO[R1, E1, B]
-  )(implicit trace: Trace): Continue[R1, E1, B] =
-    self match {
-      case Effect(query) => Effect(query.foldCauseZIO(failure, success))
-      case Get(io)       => Get(io.foldCauseZIO(failure, success))
-    }
+  )(implicit trace: Trace): Continue[R1, E1, B]
 
-  final def foldZIO[R1 <: R, E1, B](
+  def foldQuery[R1 <: R, E1, B](
+    failure: E => ZQuery[R1, E1, B],
+    success: A => ZQuery[R1, E1, B]
+  )(implicit trace: Trace): Continue[R1, E1, B]
+
+  def foldZIO[R1 <: R, E1, B](
     failure: E => ZIO[R1, E1, B],
     success: A => ZIO[R1, E1, B]
-  )(implicit trace: Trace): Continue[R1, E1, B] =
-    foldCauseZIO(_.failureOrCause.fold(failure, Exit.failCause), success)
+  )(implicit trace: Trace): Continue[R1, E1, B]
 
   /**
    * Purely maps over the success type of this continuation.
    */
-  final def map[B](f: A => B)(implicit trace: Trace): Continue[R, E, B] =
-    self match {
-      case Effect(query) => Effect(query.map(f))
-      case Get(io)       => Get(io.map(f))
-    }
+  def map[B](f: A => B)(implicit trace: Trace): Continue[R, E, B]
 
-  final def mapBothCause[E1, B](failure: Cause[E] => Cause[E1], success: A => B)(implicit
+  def mapBothCause[E1, B](failure: Cause[E] => Cause[E1], success: A => B)(implicit
     ev: CanFail[E],
     trace: Trace
-  ): Continue[R, E1, B] =
-    self match {
-      case Effect(query) => Effect(query.mapBothCause(failure, success))
-      case Get(io)       => Get(io.foldCauseZIO(e => Exit.failCause(failure(e)), a => Exit.succeed(success(a))))
-    }
+  ): Continue[R, E1, B]
 
   /**
    * Transforms all data sources with the specified data source aspect.
    */
-  final def mapDataSources[R1 <: R](f: DataSourceAspect[R1])(implicit trace: Trace): Continue[R1, E, A] =
-    self match {
-      case Effect(query) => Effect(query.mapDataSources(f))
-      case Get(io)       => Get(io)
-    }
+  def mapDataSources[R1 <: R](f: DataSourceAspect[R1])(implicit trace: Trace): Continue[R1, E, A]
 
   /**
    * Purely maps over the failure type of this continuation.
    */
-  final def mapError[E1](f: E => E1)(implicit ev: CanFail[E], trace: Trace): Continue[R, E1, A] =
-    self match {
-      case Effect(query) => Effect(query.mapError(f))
-      case Get(io)       => Get(io.mapError(f))
-    }
+  def mapError[E1](f: E => E1)(implicit ev: CanFail[E], trace: Trace): Continue[R, E1, A]
 
   /**
    * Purely maps over the failure cause of this continuation.
    */
-  final def mapErrorCause[E1](f: Cause[E] => Cause[E1])(implicit trace: Trace): Continue[R, E1, A] =
-    self match {
-      case Effect(query) => Effect(query.mapErrorCause(f))
-      case Get(io)       => Get(io.mapErrorCause(f))
-    }
+  def mapErrorCause[E1](f: Cause[E] => Cause[E1])(implicit trace: Trace): Continue[R, E1, A]
 
   /**
    * Effectually maps over the success type of this continuation.
    */
-  final def mapQuery[R1 <: R, E1 >: E, B](
+  def mapQuery[R1 <: R, E1 >: E, B](
     f: A => ZQuery[R1, E1, B]
-  )(implicit trace: Trace): Continue[R1, E1, B] =
-    self match {
-      case Effect(query) => Effect(query.flatMap(f))
-      case Get(io)       => Effect(ZQuery.fromZIONow(io).flatMap(f))
-    }
+  )(implicit trace: Trace): Continue[R1, E1, B]
 
   /**
    * Effectually maps over the success type of this continuation.
    */
-  final def mapZIO[R1 <: R, E1 >: E, B](
+  def mapZIO[R1 <: R, E1 >: E, B](
     f: A => ZIO[R1, E1, B]
-  )(implicit trace: Trace): Continue[R1, E1, B] =
-    self match {
-      case Effect(query) => Effect(query.mapZIO(f))
-      case Get(io)       => Get(io.flatMap(f))
-    }
+  )(implicit trace: Trace): Continue[R1, E1, B]
 
   /**
    * Purely contramaps over the environment type of this continuation.
    */
-  final def provideSomeEnvironment[R0](
+  def provideSomeEnvironment[R0](
     f: Described[ZEnvironment[R0] => ZEnvironment[R]]
-  )(implicit trace: Trace): Continue[R0, E, A] =
-    self match {
-      case Effect(query) => Effect(query.provideSomeEnvironment(f))
-      case Get(io)       => Get(io.provideSomeEnvironment(f.value))
-    }
+  )(implicit trace: Trace): Continue[R0, E, A]
 
   /**
    * Combines this continuation with that continuation using the specified
    * function, in sequence.
    */
-  final def zipWith[R1 <: R, E1 >: E, B, C](
+  def zipWith[R1 <: R, E1 >: E, B, C](
     that: Continue[R1, E1, B]
-  )(f: (A, B) => C)(implicit trace: Trace): Continue[R1, E1, C] =
-    (self, that) match {
-      case (Effect(l), Effect(r)) => Effect(l.zipWith(r)(f))
-      case (Effect(l), Get(r))    => Effect(l.zipWith(ZQuery.fromZIONow(r))(f))
-      case (Get(l), Effect(r))    => Effect(ZQuery.fromZIONow(l).zipWith(r)(f))
-      case (Get(l), Get(r))       => Get(l.zipWith(r)(f))
-    }
+  )(f: (A, B) => C)(implicit trace: Trace): Continue[R1, E1, C]
 
   /**
    * Combines this continuation with that continuation using the specified
    * function, in parallel.
    */
-  final def zipWithPar[R1 <: R, E1 >: E, B, C](
+  def zipWithPar[R1 <: R, E1 >: E, B, C](
     that: Continue[R1, E1, B]
-  )(f: (A, B) => C)(implicit trace: Trace): Continue[R1, E1, C] =
-    (self, that) match {
-      case (Effect(l), Effect(r)) => Effect(l.zipWithPar(r)(f))
-      case (Effect(l), Get(r))    => Effect(l.zipWith(ZQuery.fromZIONow(r))(f))
-      case (Get(l), Effect(r))    => Effect(ZQuery.fromZIONow(l).zipWith(r)(f))
-      case (Get(l), Get(r))       => Get(l.zipWith(r)(f))
-    }
+  )(f: (A, B) => C)(implicit trace: Trace): Continue[R1, E1, C]
 
   /**
    * Combines this continuation with that continuation using the specified
    * function, batching requests to data sources.
    */
-  final def zipWithBatched[R1 <: R, E1 >: E, B, C](
+  def zipWithBatched[R1 <: R, E1 >: E, B, C](
     that: Continue[R1, E1, B]
-  )(f: (A, B) => C)(implicit trace: Trace): Continue[R1, E1, C] =
-    (self, that) match {
-      case (Effect(l), Effect(r)) => Effect(l.zipWithBatched(r)(f))
-      case (Effect(l), Get(r))    => Effect(l.zipWith(ZQuery.fromZIONow(r))(f))
-      case (Get(l), Effect(r))    => Effect(ZQuery.fromZIONow(l).zipWith(r)(f))
-      case (Get(l), Get(r))       => Get(l.zipWith(r)(f))
-    }
+  )(f: (A, B) => C)(implicit trace: Trace): Continue[R1, E1, C]
 }
 
 private[query] object Continue {
@@ -214,6 +169,201 @@ private[query] object Continue {
   def get[R, E, A](io: ZIO[R, E, A]): Continue[R, E, A] =
     Get(io)
 
-  final case class Effect[R, E, A](query: ZQuery[R, E, A]) extends Continue[R, E, A]
-  final case class Get[R, E, A](io: ZIO[R, E, A])          extends Continue[R, E, A]
+  final case class Effect[R, E, A](query: ZQuery[R, E, A]) extends Continue[R, E, A] {
+    override def catchAll[R1 <: R, E1, A1 >: A](
+      failure: E => ZQuery[R1, E1, A1]
+    )(implicit trace: Trace): Continue[R1, E1, A1] =
+      Effect(query.catchAll(failure))
+
+    override def catchAllCause[R1 <: R, E1, A1 >: A](
+      failure: Cause[E] => ZQuery[R1, E1, A1]
+    )(implicit trace: Trace): Continue[R1, E1, A1] =
+      Effect(query.catchAllCause(failure))
+
+    override def fold[B](failure: E => B, success: A => B)(implicit
+      ev: CanFail[E],
+      trace: Trace
+    ): Continue[R, Nothing, B] =
+      Effect(query.fold(failure, success))
+
+    override def foldCauseQuery[R1 <: R, E1, B](
+      failure: Cause[E] => ZQuery[R1, E1, B],
+      success: A => ZQuery[R1, E1, B]
+    )(implicit trace: Trace): Continue[R1, E1, B] =
+      Effect(query.foldCauseQuery(failure, success))
+
+    override def foldCauseZIO[R1 <: R, E1, B](
+      failure: Cause[E] => ZIO[R1, E1, B],
+      success: A => ZIO[R1, E1, B]
+    )(implicit trace: Trace): Continue[R1, E1, B] =
+      Effect(query.foldCauseZIO(failure, success))
+
+    override def foldQuery[R1 <: R, E1, B](
+      failure: E => ZQuery[R1, E1, B],
+      success: A => ZQuery[R1, E1, B]
+    )(implicit trace: Trace): Continue[R1, E1, B] =
+      Effect(query.foldQuery(failure, success))
+
+    override def foldZIO[R1 <: R, E1, B](
+      failure: E => ZIO[R1, E1, B],
+      success: A => ZIO[R1, E1, B]
+    )(implicit trace: Trace): Continue[R1, E1, B] =
+      Effect(query.foldZIO(failure, success))
+
+    override def map[B](f: A => B)(implicit trace: Trace): Continue[R, E, B] =
+      Effect(query.map(f))
+
+    override def mapBothCause[E1, B](failure: Cause[E] => Cause[E1], success: A => B)(implicit
+      ev: CanFail[E],
+      trace: Trace
+    ): Continue[R, E1, B] =
+      Effect(query.mapBothCause(failure, success))
+
+    override def mapDataSources[R1 <: R](f: DataSourceAspect[R1])(implicit trace: Trace): Continue[R1, E, A] =
+      Effect(query.mapDataSources(f))
+
+    override def mapError[E1](f: E => E1)(implicit ev: CanFail[E], trace: Trace): Continue[R, E1, A] =
+      Effect(query.mapError(f))
+
+    override def mapErrorCause[E1](f: Cause[E] => Cause[E1])(implicit trace: Trace): Continue[R, E1, A] =
+      Effect(query.mapErrorCause(f))
+
+    override def mapQuery[R1 <: R, E1 >: E, B](
+      f: A => ZQuery[R1, E1, B]
+    )(implicit trace: Trace): Continue[R1, E1, B] =
+      Effect(query.flatMap(f))
+
+    override def mapZIO[R1 <: R, E1 >: E, B](
+      f: A => ZIO[R1, E1, B]
+    )(implicit trace: Trace): Continue[R1, E1, B] =
+      Effect(query.mapZIO(f))
+
+    override def provideSomeEnvironment[R0](
+      f: Described[ZEnvironment[R0] => ZEnvironment[R]]
+    )(implicit trace: Trace): Continue[R0, E, A] =
+      Effect(query.provideSomeEnvironment(f))
+
+    override def zipWith[R1 <: R, E1 >: E, B, C](
+      that: Continue[R1, E1, B]
+    )(f: (A, B) => C)(implicit trace: Trace): Continue[R1, E1, C] =
+      that match {
+        case Effect(r) => Effect(query.zipWith(r)(f))
+        case Get(r)    => Effect(query.zipWith(ZQuery.fromZIONow(r))(f))
+      }
+
+    override def zipWithPar[R1 <: R, E1 >: E, B, C](
+      that: Continue[R1, E1, B]
+    )(f: (A, B) => C)(implicit trace: Trace): Continue[R1, E1, C] =
+      that match {
+        case Effect(r) => Effect(query.zipWithPar(r)(f))
+        case Get(r)    => Effect(query.zipWith(ZQuery.fromZIONow(r))(f))
+      }
+
+    override def zipWithBatched[R1 <: R, E1 >: E, B, C](
+      that: Continue[R1, E1, B]
+    )(f: (A, B) => C)(implicit trace: Trace): Continue[R1, E1, C] =
+      that match {
+        case Effect(r) => Effect(query.zipWithBatched(r)(f))
+        case Get(r)    => Effect(query.zipWith(ZQuery.fromZIONow(r))(f))
+      }
+  }
+
+  final case class Get[R, E, A](io: ZIO[R, E, A]) extends Continue[R, E, A] {
+    override def catchAll[R1 <: R, E1, A1 >: A](
+      failure: E => ZQuery[R1, E1, A1]
+    )(implicit trace: Trace): Continue[R1, E1, A1] =
+      Effect(ZQuery.fromZIONow(io).catchAll(failure))
+
+    override def catchAllCause[R1 <: R, E1, A1 >: A](
+      failure: Cause[E] => ZQuery[R1, E1, A1]
+    )(implicit trace: Trace): Continue[R1, E1, A1] =
+      Effect(ZQuery.fromZIONow(io).catchAllCause(failure))
+
+    override def fold[B](failure: E => B, success: A => B)(implicit
+      ev: CanFail[E],
+      trace: Trace
+    ): Continue[R, Nothing, B] =
+      Get(io.fold(failure, success))
+
+    override def foldCauseQuery[R1 <: R, E1, B](
+      failure: Cause[E] => ZQuery[R1, E1, B],
+      success: A => ZQuery[R1, E1, B]
+    )(implicit trace: Trace): Continue[R1, E1, B] =
+      Effect(ZQuery.fromZIONow(io).foldCauseQuery(failure, success))
+
+    override def foldCauseZIO[R1 <: R, E1, B](
+      failure: Cause[E] => ZIO[R1, E1, B],
+      success: A => ZIO[R1, E1, B]
+    )(implicit trace: Trace): Continue[R1, E1, B] =
+      Get(io.foldCauseZIO(failure, success))
+
+    override def foldQuery[R1 <: R, E1, B](
+      failure: E => ZQuery[R1, E1, B],
+      success: A => ZQuery[R1, E1, B]
+    )(implicit trace: Trace): Continue[R1, E1, B] =
+      Effect(ZQuery.fromZIONow(io).foldQuery(failure, success))
+
+    override def foldZIO[R1 <: R, E1, B](
+      failure: E => ZIO[R1, E1, B],
+      success: A => ZIO[R1, E1, B]
+    )(implicit trace: Trace): Continue[R1, E1, B] =
+      Get(io.foldZIO(failure, success))
+
+    override def map[B](f: A => B)(implicit trace: Trace): Continue[R, E, B] =
+      Get(io.map(f))
+
+    override def mapBothCause[E1, B](failure: Cause[E] => Cause[E1], success: A => B)(implicit
+      ev: CanFail[E],
+      trace: Trace
+    ): Continue[R, E1, B] =
+      Get(io.foldCauseZIO(e => Exit.failCause(failure(e)), a => Exit.succeed(success(a))))
+
+    override def mapDataSources[R1 <: R](f: DataSourceAspect[R1])(implicit trace: Trace): Continue[R1, E, A] =
+      this
+
+    override def mapError[E1](f: E => E1)(implicit ev: CanFail[E], trace: Trace): Continue[R, E1, A] =
+      Get(io.mapError(f))
+
+    override def mapErrorCause[E1](f: Cause[E] => Cause[E1])(implicit trace: Trace): Continue[R, E1, A] =
+      Get(io.mapErrorCause(f))
+
+    override def mapQuery[R1 <: R, E1 >: E, B](
+      f: A => ZQuery[R1, E1, B]
+    )(implicit trace: Trace): Continue[R1, E1, B] =
+      Effect(ZQuery.fromZIONow(io).flatMap(f))
+
+    override def mapZIO[R1 <: R, E1 >: E, B](
+      f: A => ZIO[R1, E1, B]
+    )(implicit trace: Trace): Continue[R1, E1, B] =
+      Get(io.flatMap(f))
+
+    override def provideSomeEnvironment[R0](
+      f: Described[ZEnvironment[R0] => ZEnvironment[R]]
+    )(implicit trace: Trace): Continue[R0, E, A] =
+      Get(io.provideSomeEnvironment(f.value))
+
+    override def zipWith[R1 <: R, E1 >: E, B, C](
+      that: Continue[R1, E1, B]
+    )(f: (A, B) => C)(implicit trace: Trace): Continue[R1, E1, C] =
+      that match {
+        case Effect(r) => Effect(ZQuery.fromZIONow(io).zipWith(r)(f))
+        case Get(r)    => Get(io.zipWith(r)(f))
+      }
+
+    override def zipWithPar[R1 <: R, E1 >: E, B, C](
+      that: Continue[R1, E1, B]
+    )(f: (A, B) => C)(implicit trace: Trace): Continue[R1, E1, C] =
+      that match {
+        case Effect(r) => Effect(ZQuery.fromZIONow(io).zipWith(r)(f))
+        case Get(r)    => Get(io.zipWith(r)(f))
+      }
+
+    override def zipWithBatched[R1 <: R, E1 >: E, B, C](
+      that: Continue[R1, E1, B]
+    )(f: (A, B) => C)(implicit trace: Trace): Continue[R1, E1, C] =
+      that match {
+        case Effect(r) => Effect(ZQuery.fromZIONow(io).zipWith(r)(f))
+        case Get(r)    => Get(io.zipWith(r)(f))
+      }
+  }
 }
