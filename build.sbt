@@ -137,7 +137,8 @@ lazy val enableMimaSettingsJVM =
     mimaPreviousArtifacts := previousStableVersion.value.map(organization.value %% moduleName.value % _).toSet,
     mimaBinaryIssueFilters ++= Seq(
       ProblemFilters.exclude[Problem]("zio.query.internal.Continue*"),
-      ProblemFilters.exclude[Problem]("zio.query.internal.Result*")
+      ProblemFilters.exclude[Problem]("zio.query.internal.Result*"),
+      ProblemFilters.exclude[Problem]("zio.query.internal.BlockedRequests*")
     )
   )
 
