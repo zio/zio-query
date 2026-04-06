@@ -131,22 +131,24 @@ Global / onChangedBuildSource := ReloadOnSourceChanges
 
 lazy val enforceMimaCompatibility = true // Enable / disable failing CI on binary incompatibilities
 
+lazy val mimaIssueFilters = Seq(
+  ProblemFilters.exclude[Problem]("zio.query.internal.Continue*"),
+  ProblemFilters.exclude[Problem]("zio.query.internal.Result*"),
+  ProblemFilters.exclude[Problem]("zio.query.internal.BlockedRequests*")
+)
+
 lazy val enableMimaSettingsJVM =
   Def.settings(
     mimaFailOnProblem     := enforceMimaCompatibility,
     mimaPreviousArtifacts := previousStableVersion.value.map(organization.value %% moduleName.value % _).toSet,
-    mimaBinaryIssueFilters ++= Seq(
-      ProblemFilters.exclude[Problem]("zio.query.internal.Continue*"),
-      ProblemFilters.exclude[Problem]("zio.query.internal.Result*"),
-      ProblemFilters.exclude[Problem]("zio.query.internal.BlockedRequests*")
-    )
+    mimaBinaryIssueFilters ++= mimaIssueFilters
   )
 
 lazy val enableMimaSettingsJS =
   Def.settings(
     mimaFailOnProblem     := enforceMimaCompatibility,
     mimaPreviousArtifacts := previousStableVersion.value.map(organization.value %%% moduleName.value % _).toSet,
-    mimaBinaryIssueFilters ++= Seq()
+    mimaBinaryIssueFilters ++= mimaIssueFilters
   )
 
 lazy val ciReleaseModeKey = "CI_RELEASE_MODE"
