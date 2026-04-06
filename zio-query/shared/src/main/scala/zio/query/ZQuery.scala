@@ -22,7 +22,7 @@ import zio.query.internal._
 
 import java.util.concurrent.atomic.AtomicBoolean
 import scala.annotation.switch
-import scala.collection.compat.{BuildFrom => _}
+import scala.collection.compat.{BuildFrom => _, _}
 import scala.collection.mutable.ArrayBuilder
 import scala.reflect.ClassTag
 
