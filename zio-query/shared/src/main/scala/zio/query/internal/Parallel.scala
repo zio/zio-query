@@ -59,6 +59,8 @@ private[query] final class Parallel[-R](
     }
     new Sequential(builder.result())
   }
+
+  def clear(): Unit = map.clear()
 }
 
 private[query] object Parallel {

@@ -26,20 +26,7 @@ import zio.stacktracer.TracingImplicits.disableAutoTrace
  * may either by done with a value `A`, blocked on a set of requests to data
  * sources that require an environment `R`, or failed with an `E`.
  */
-private[query] sealed trait Result[-R, +E, +A] { self =>
-
-  /**
-   * Folds over the successful or failed result.
-   */
-  final def fold[B](failure: E => B, success: A => B)(implicit
-    ev: CanFail[E],
-    trace: Trace
-  ): Result[R, Nothing, B] =
-    self match {
-      case Blocked(br, c) => blocked(br, c.fold(failure, success))
-      case Done(a)        => done(success(a))
-      case Fail(e)        => e.failureOrCause.fold(e => done(failure(e)), c => fail(c))
-    }
+private[query] sealed abstract class Result[-R, +E, +A] { self =>
 
   /**
    * Maps the specified function over the successful value of this result.
@@ -48,46 +35,27 @@ private[query] sealed trait Result[-R, +E, +A] { self =>
     self match {
       case Blocked(br, c) => blocked(br, c.map(f))
       case Done(a)        => done(f(a))
-      case Fail(e)        => fail(e)
+      case e              => e.widen
     }
 
   /**
    * Transforms all data sources with the specified data source aspect.
    */
-  def mapDataSources[R1 <: R](f: DataSourceAspect[R1])(implicit trace: Trace): Result[R1, E, A] =
+  final def mapDataSources[R1 <: R](f: DataSourceAspect[R1])(implicit trace: Trace): Result[R1, E, A] =
     self match {
       case Blocked(br, c) => Result.blocked(br.mapDataSources(f), c.mapDataSources(f))
-      case Done(a)        => Result.done(a)
-      case Fail(e)        => Result.fail(e)
-    }
-
-  /**
-   * Maps the specified function over the failed value of this result.
-   */
-  final def mapError[E1](f: E => E1)(implicit ev: CanFail[E], trace: Trace): Result[R, E1, A] =
-    self match {
-      case Blocked(br, c) => blocked(br, c.mapError(f))
-      case Done(a)        => done(a)
-      case Fail(e)        => fail(e.map(f))
+      case doneOrFail     => doneOrFail.widen
     }
 
   /**
    * Maps the specified function over the failure cause of this result.
    */
-  def mapErrorCause[E1](f: Cause[E] => Cause[E1])(implicit trace: Trace): Result[R, E1, A] =
+  final def mapErrorCause[E1](f: Cause[E] => Cause[E1])(implicit trace: Trace): Result[R, E1, A] =
     self match {
       case Blocked(br, c) => blocked(br, c.mapErrorCause(f))
-      case Done(a)        => done(a)
-      case Fail(e)        => fail(f(e))
+      case Fail(e)        => Fail(f(e))
+      case done           => done.widen
     }
-
-  /**
-   * Provides this result with its required environment.
-   */
-  final def provideEnvironment(
-    r: Described[ZEnvironment[R]]
-  )(implicit trace: Trace): Result[Any, E, A] =
-    provideSomeEnvironment(Described(_ => r.value, s"_ => ${r.description}"))
 
   /**
    * Provides this result with part of its required environment.
@@ -97,9 +65,12 @@ private[query] sealed trait Result[-R, +E, +A] { self =>
   )(implicit trace: Trace): Result[R0, E, A] =
     self match {
       case Blocked(br, c) => blocked(br.provideSomeEnvironment(f), c.provideSomeEnvironment(f))
-      case Done(a)        => done(a)
-      case Fail(e)        => fail(e)
+      case doneOrFail     => doneOrFail.widen
     }
+
+  @inline
+  final def widen[R1, E1, A1]: Result[R1, E1, A1] =
+    self.asInstanceOf[Result[R1, E1, A1]]
 }
 
 private[query] object Result {
@@ -133,7 +104,8 @@ private[query] object Result {
     Fail(cause)
 
   def failExit[E](cause: Cause[E]): Exit[Nothing, Result[Any, E, Nothing]] =
-    Exit.Success(Fail(cause))
+    if (cause.isFailure) Exit.Success(Fail(cause))
+    else Exit.Failure(cause.asInstanceOf[Cause[Nothing]])
 
   /**
    * Lifts an `Exit` into a result.

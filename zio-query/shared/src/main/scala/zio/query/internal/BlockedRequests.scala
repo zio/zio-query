@@ -33,7 +33,7 @@ import scala.collection.mutable.ListBuffer
  * parallel, allowing for maximum possible batching and pipelining while
  * preserving ordering guarantees.
  */
-private[query] sealed trait BlockedRequests[-R] { self =>
+private[query] abstract class BlockedRequests[-R] { self =>
 
   /**
    * Combines this collection of blocked requests with the specified collection
@@ -54,10 +54,6 @@ private[query] sealed trait BlockedRequests[-R] { self =>
    * specified functions.
    */
   final def fold[Z](folder: Folder[R, Z]): Z = {
-    sealed trait BlockedRequestsCase
-
-    case object BothCase extends BlockedRequestsCase
-    case object ThenCase extends BlockedRequestsCase
 
     @tailrec
     def loop(in: List[BlockedRequests[R]], out: List[Either[BlockedRequestsCase, Z]]): List[Z] =
@@ -70,7 +66,7 @@ private[query] sealed trait BlockedRequests[-R] { self =>
           loop(left :: right :: blockedRequests, Left(ThenCase) :: out)
         case Empty :: blockedRequests =>
           loop(blockedRequests, Right(folder.emptyCase) :: out)
-        case Nil =>
+        case _ /* Nil */ =>
           out.foldLeft[List[Z]](List.empty) {
             case (acc, Right(blockedRequests)) =>
               blockedRequests :: acc
@@ -105,8 +101,10 @@ private[query] sealed trait BlockedRequests[-R] { self =>
   /**
    * Executes all requests, submitting requests to each data source in parallel.
    */
-  def run(implicit trace: Trace): ZIO[R, Nothing, Unit] = {
-    val flattened = BlockedRequests.flatten(self)
+  final def run(implicit trace: Trace): ZIO[R, Nothing, Unit] = {
+    if (self eq Empty) return Exit.unit
+
+    val flattened = self.flatten
     ZIO.foreachDiscard(flattened) { requestsByDataSource =>
       ZIO.foreachParDiscard(requestsByDataSource.toIterable) { case (dataSource, sequential) =>
         val requests = sequential.map(_.map(_.request))
@@ -140,6 +138,32 @@ private[query] sealed trait BlockedRequests[-R] { self =>
       }
     }
   }
+
+  /**
+   * Flattens a collection of blocked requests into a collection of pipelined
+   * and batched requests that can be submitted for execution.
+   */
+  private def flatten: List[Sequential[R]] = {
+    @tailrec
+    def loop(
+      blockedRequests: List[BlockedRequests[R]],
+      flattened: List[Sequential[R]],
+      sequential: ListBuffer[BlockedRequests[R]],
+      parallel: Parallel[R]
+    ): List[Sequential[R]] = {
+      blockedRequests.foreach(step(parallel, sequential))
+      val updated = merge(flattened, parallel)
+      if (sequential.isEmpty) updated.reverse
+      else {
+        val reqs = sequential.result()
+        sequential.clear()
+        parallel.clear()
+        loop(reqs, updated, sequential, parallel)
+      }
+    }
+
+    loop(List(self), List.empty, ListBuffer.empty[BlockedRequests[R]], Parallel.empty[R])
+  }
 }
 
 private[query] object BlockedRequests {
@@ -159,9 +183,7 @@ private[query] object BlockedRequests {
 
   final case class Both[-R](left: BlockedRequests[R], right: BlockedRequests[R]) extends BlockedRequests[R]
 
-  case object Empty extends BlockedRequests[Any] {
-    override def run(implicit trace: Trace): ZIO[Any, Nothing, Unit] = Exit.unit
-  }
+  case object Empty extends BlockedRequests[Any]
 
   final case class Single[-R, A](dataSource: DataSource[R, A], blockedRequest: BlockedRequest[A])
       extends BlockedRequests[R]
@@ -201,29 +223,9 @@ private[query] object BlockedRequests {
     }
   }
 
-  /**
-   * Flattens a collection of blocked requests into a collection of pipelined
-   * and batched requests that can be submitted for execution.
-   */
-  private def flatten[R](
-    blockedRequests: BlockedRequests[R]
-  ): List[Sequential[R]] = {
-
-    @tailrec
-    def loop(
-      blockedRequests: List[BlockedRequests[R]],
-      flattened: List[Sequential[R]]
-    ): List[Sequential[R]] = {
-      val parallel   = Parallel.empty
-      val sequential = ListBuffer.empty[BlockedRequests[R]]
-      blockedRequests.foreach(step(parallel, sequential))
-      val updated = merge(flattened, parallel)
-      if (sequential.isEmpty) updated.reverse
-      else loop(sequential.result(), updated)
-    }
-
-    loop(List(blockedRequests), List.empty)
-  }
+  private sealed trait BlockedRequestsCase
+  private case object BothCase extends BlockedRequestsCase
+  private case object ThenCase extends BlockedRequestsCase
 
   /**
    * Takes one step in evaluating a collection of blocked requests, returning a

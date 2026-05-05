@@ -19,7 +19,6 @@ package zio.query
 import zio._
 import zio.query.ZQuery.disabledCache
 import zio.query.internal._
-import zio.stacktracer.TracingImplicits.disableAutoTrace
 
 import java.util.concurrent.atomic.AtomicBoolean
 import scala.annotation.switch
@@ -204,7 +203,13 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
   def catchAll[R1 <: R, E2, A1 >: A](
     h: E => ZQuery[R1, E2, A1]
   )(implicit ev: CanFail[E], trace: Trace): ZQuery[R1, E2, A1] =
-    self.foldQuery[R1, E2, A1](h, ZQuery.succeedNow)
+    ZQuery {
+      step.flatMap {
+        case Result.Blocked(br, c) => Result.blockedExit(br, c.catchAll(h))
+        case Result.Fail(e)        => e.failureOrCause.fold(h, ZQuery.FailCauseNone).step
+        case done                  => Exit.succeed(done.widen)
+      }
+    }
 
   /**
    * Recovers from all errors with provided Cause.
@@ -212,7 +217,16 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
   def catchAllCause[R1 <: R, E2, A1 >: A](h: Cause[E] => ZQuery[R1, E2, A1])(implicit
     trace: Trace
   ): ZQuery[R1, E2, A1] =
-    self.foldCauseQuery[R1, E2, A1](h, ZQuery.succeedNow)
+    ZQuery {
+      step.foldCauseZIO(
+        h(_).step,
+        {
+          case Result.Blocked(br, c) => Result.blockedExit(br, c.catchAllCause(h))
+          case Result.Fail(e)        => h(e).step
+          case done                  => Exit.succeed(done.widen)
+        }
+      )
+    }
 
   /**
    * Recovers from all errors and maps the provided Cause to a ZIO effect
@@ -220,7 +234,16 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
   def catchAllCauseZIO[R1 <: R, E2, A1 >: A](h: Cause[E] => ZIO[R1, E2, A1])(implicit
     trace: Trace
   ): ZQuery[R1, E2, A1] =
-    foldCauseZIO(h, Exit.succeed)
+    ZQuery {
+      step.foldCauseZIO(
+        h(_).foldCauseZIO(Result.failExit, Result.doneExit),
+        {
+          case Result.Blocked(br, c) => Result.blockedExit(br, c.foldCauseZIO(h, Exit.succeed))
+          case Result.Fail(e)        => h(e).foldCauseZIO(Result.failExit, Result.doneExit)
+          case done                  => Exit.succeed(done.widen)
+        }
+      )
+    }
 
   /**
    * Catches all errors and maps them to a ZIO effect
@@ -258,7 +281,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
       step.flatMap {
         case Result.Blocked(br, c) => Result.blockedExit(br, c.mapQuery(f))
         case Result.Done(a)        => f(a).step
-        case Result.Fail(e)        => Result.failExit(e)
+        case e                     => Exit.succeed(e.widen)
       }
     }
 
@@ -337,7 +360,13 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     ev: CanFail[E],
     trace: Trace
   ): ZQuery[R1, E1, B] =
-    foldCauseQuery(_.failureOrCause.fold(failure, ZQuery.failCause(_)), success)
+    ZQuery {
+      step.flatMap {
+        case Result.Blocked(br, c) => Result.blockedExit(br, c.foldQuery(failure, success))
+        case Result.Done(a)        => success(a).step
+        case Result.Fail(e)        => e.failureOrCause.fold(failure, ZQuery.FailCauseNone).step
+      }
+    }
 
   /**
    * Recovers from errors by accepting one ZIO effect to execute for the case of
@@ -347,7 +376,14 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     failure: E => ZIO[R1, E1, B],
     success: A => ZIO[R1, E1, B]
   )(implicit trace: Trace): ZQuery[R1, E1, B] =
-    foldCauseZIO(_.failureOrCause.fold(failure, Exit.failCause), success)
+    ZQuery {
+      step.flatMap {
+        case Result.Blocked(br, c) => Result.blockedExit(br, c.foldZIO(failure, success))
+        case Result.Done(a)        => success(a).foldCauseZIO(Result.failExit, Result.doneExit)
+        case Result.Fail(e) =>
+          e.failureOrCause.fold(failure(_).foldCauseZIO(Result.failExit, Result.doneExit), Exit.failCause)
+      }
+    }
 
   /**
    * "Zooms in" on the value in the `Left` side of an `Either`, moving the
@@ -389,7 +425,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * }}}
    */
   def memoize(implicit trace: Trace): UIO[ZQuery[R, E, A]] =
-    ZIO.succeed(ZQuery.unsafe.memoize(self)(Unsafe.unsafe, trace))
+    ZIO.succeed(ZQuery.unsafe.memoize(self)(Unsafe, trace))
 
   /**
    * Maps the specified function over the successful result of this query.
@@ -433,7 +469,13 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * Maps the specified function over the failed result of this query.
    */
   def mapError[E1](f: E => E1)(implicit ev: CanFail[E], trace: Trace): ZQuery[R, E1, A] =
-    mapBoth(f, identity)
+    ZQuery {
+      step.flatMap {
+        case Result.Blocked(br, c) => Result.blockedExit(br, c.mapError(f))
+        case Result.Fail(e)        => e.failureOrCause.fold(e => Result.failExit(Cause.fail(f(e))), Exit.failCause)
+        case done                  => Exit.succeed(done.widen)
+      }
+    }
 
   /**
    * Returns a query with its full cause of failure mapped using the specified
@@ -441,7 +483,16 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * original structure of `Cause`.
    */
   def mapErrorCause[E2](h: Cause[E] => Cause[E2])(implicit trace: Trace): ZQuery[R, E2, A] =
-    mapBothCause(h, ZIO.identityFn)
+    ZQuery {
+      step.foldCauseZIO(
+        e => Result.failExit(h(e)),
+        {
+          case Result.Blocked(br, c) => Result.blockedExit(br, c.mapErrorCause(h))
+          case Result.Fail(e)        => Result.failExit(h(e))
+          case done                  => Exit.succeed(done.widen)
+        }
+      )
+    }
 
   /**
    * Maps the specified effectual function over the result of this query.
@@ -451,7 +502,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
       step.flatMap {
         case Result.Blocked(br, c) => Result.blockedExit(br, c.mapZIO(f))
         case Result.Done(a)        => f(a).foldCauseZIO(Result.failExit, Result.doneExit)
-        case f: Result.Fail[E1]    => Exit.succeed(f)
+        case f                     => Exit.succeed(f.widen)
       }
     }
 
@@ -480,7 +531,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * specified function to map the error to a `Throwable`.
    */
   def orDieWith(f: E => Throwable)(implicit ev: CanFail[E], trace: Trace): ZQuery[R, Nothing, A] =
-    foldQuery(e => ZQuery.die(f(e)), a => ZQuery.succeedNow(a))
+    catchAll(e => ZQuery.die(f(e)))
 
   /**
    * Provides a layer to this query, which translates it to another level.
@@ -518,7 +569,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
   def provideSomeEnvironment[R0](
     f: => Described[ZEnvironment[R0] => ZEnvironment[R]]
   )(implicit trace: Trace): ZQuery[R0, E, A] =
-    ZQuery(step.map(_.provideSomeEnvironment(f)).provideSomeEnvironment((r => (f.value(r)))))
+    ZQuery(step.map(_.provideSomeEnvironment(f)).provideSomeEnvironment(f.value))
 
   /**
    * Races this query with the specified query, returning the result of the
@@ -542,8 +593,8 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
               case Continue.Get(io) =>
                 Result.blockedExit(blockedRequests, Continue.effect(race(ZQuery.fromZIONow(io), fiber)))
             }
-          case Result.Done(value) => fiber.interrupt *> Result.doneExit(value)
           case Result.Fail(cause) => fiber.join.map(_.mapErrorCause(_ && cause))
+          case done               => fiber.interrupt.as(done)
         }
       )
 
@@ -672,7 +723,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * Expose the full cause of failure of this query
    */
   def sandbox(implicit trace: Trace): ZQuery[R, Cause[E], A] =
-    foldCauseQuery(ZQuery.failNow, ZQuery.succeedNow)
+    catchAllCause(ZQuery.failNow)
 
   /**
    * Companion helper to `sandbox`. Allows recovery, and partial recovery, from
@@ -694,7 +745,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
       e => ZQuery.failNow(Some(e)),
       ev(_) match {
         case Some(b) => ZQuery.succeedNow(b)
-        case None    => ZQuery.failNow(None)
+        case _       => ZQuery.failNow(None)
       }
     )
 
@@ -712,7 +763,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
   )(implicit ev: A <:< Option[B], trace: Trace): ZQuery[R1, E1, B] =
     self.flatMap(ev(_) match {
       case Some(value) => ZQuery.succeedNow(value)
-      case None        => default
+      case _           => default
     })
 
   /**
@@ -724,7 +775,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     self.flatMap { a =>
       ev(a) match {
         case Some(b) => ZQuery.succeedNow(b)
-        case None    => ZQuery.failNow(e)
+        case _       => ZQuery.failNow(e)
       }
     }
 
@@ -735,14 +786,12 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    */
   def summarized[R1 <: R, E1 >: E, B, C](
     summary0: ZIO[R1, E1, B]
-  )(f: (B, B) => C)(implicit trace: Trace): ZQuery[R1, E1, (C, A)] = {
-    val summary = summary0
+  )(f: (B, B) => C)(implicit trace: Trace): ZQuery[R1, E1, (C, A)] =
     for {
-      start <- ZQuery.fromZIONow(summary)
+      start <- ZQuery.fromZIONow(summary0)
       value <- self
-      end   <- ZQuery.fromZIONow(summary)
+      end   <- ZQuery.fromZIONow(summary0)
     } yield (f(start, end), value)
-  }
 
   /**
    * Returns a new query that executes this one and times the execution.
@@ -821,7 +870,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * Takes some fiber failures and converts them into errors.
    */
   def unrefine[E1 >: E](pf: PartialFunction[Throwable, E1])(implicit trace: Trace): ZQuery[R, E1, A] =
-    unrefineWith(pf)(identity)
+    unrefineWith(pf)(ZIO.identityFn)
 
   /**
    * Takes some fiber failures and converts them into errors.
@@ -973,15 +1022,15 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
               val br = if (br1.isEmpty) br2 else if (br2.isEmpty) br1 else br1 ++ br2
               Result.blocked(br, c1.zipWith(c2)(f))
             case Result.Done(b) => Result.blocked(br1, c1.map(a => f(a, b)))
-            case Result.Fail(e) => Result.fail(e)
+            case e              => e.widen
           }
         case Result.Done(a) =>
           that.step.map {
             case Result.Blocked(br, c) => Result.blocked(br, c.map(b => f(a, b)))
             case Result.Done(b)        => Result.done(f(a, b))
-            case Result.Fail(e)        => Result.fail(e)
+            case e                     => e.widen
           }
-        case e: Result.Fail[E1] => Exit.succeed(e)
+        case e => Exit.succeed(e.widen)
       }
     }
 
@@ -1001,8 +1050,8 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
         case (Result.Done(a), Result.Blocked(br, c)) => Result.blocked(br, c.map(b => f(a, b)))
         case (Result.Done(a), Result.Done(b))        => Result.done(f(a, b))
         case (Result.Fail(e1), Result.Fail(e2))      => Result.fail(Cause.Both(e1, e2))
-        case (Result.Fail(e), _)                     => Result.fail(e)
-        case (_, Result.Fail(e))                     => Result.fail(e)
+        case (e: Result.Fail[E1], _)                 => e
+        case (_, e: Result.Fail[E1])                 => e
       }
     }
 
@@ -1024,8 +1073,8 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
         case (Result.Done(a), Result.Blocked(br, c)) => Result.blocked(br, c.map(b => f(a, b)))
         case (Result.Done(a), Result.Done(b))        => Result.done(f(a, b))
         case (Result.Fail(e1), Result.Fail(e2))      => Result.fail(Cause.Both(e1, e2))
-        case (Result.Fail(e), _)                     => Result.fail(e)
-        case (_, Result.Fail(e))                     => Result.fail(e)
+        case (e: Result.Fail[E1], _)                 => e
+        case (_, e: Result.Fail[E1])                 => e
       }
     }
 
@@ -1066,7 +1115,7 @@ object ZQuery {
     bf: BuildFrom[Collection[ZQuery[R, E, A]], A, Collection[A]],
     trace: Trace
   ): ZQuery[R, E, Collection[A]] =
-    foreach(as)(identity)
+    foreach(as)(ZIO.identityFn)
 
   /**
    * Collects a collection of queries into a query returning a collection of
@@ -1074,7 +1123,7 @@ object ZQuery {
    * pipelined.
    */
   def collectAll[R, E, A](as: Set[ZQuery[R, E, A]])(implicit trace: Trace): ZQuery[R, E, Set[A]] =
-    foreach(as)(identity)
+    foreach(as)(ZIO.identityFn)
 
   /**
    * Collects a collection of queries into a query returning a collection of
@@ -1082,7 +1131,7 @@ object ZQuery {
    * pipelined.
    */
   def collectAll[R, E, A: ClassTag](as: Array[ZQuery[R, E, A]])(implicit trace: Trace): ZQuery[R, E, Array[A]] =
-    foreach(as)(identity)
+    foreach(as)(ZIO.identityFn)
 
   /**
    * Collects a collection of queries into a query returning a collection of
@@ -1090,7 +1139,7 @@ object ZQuery {
    * pipelined.
    */
   def collectAll[R, E, A](as: Option[ZQuery[R, E, A]])(implicit trace: Trace): ZQuery[R, E, Option[A]] =
-    foreach(as)(identity)
+    foreach(as)(ZIO.identityFn)
 
   /**
    * Collects a collection of queries into a query returning a collection of
@@ -1100,7 +1149,7 @@ object ZQuery {
   def collectAll[R, E, A](as: NonEmptyChunk[ZQuery[R, E, A]])(implicit
     trace: Trace
   ): ZQuery[R, E, NonEmptyChunk[A]] =
-    foreach(as)(identity)
+    foreach(as)(ZIO.identityFn)
 
   /**
    * Collects a collection of queries into a query returning a collection of
@@ -1112,14 +1161,14 @@ object ZQuery {
     bf: BuildFrom[Collection[ZQuery[R, E, A]], A, Collection[A]],
     trace: Trace
   ): ZQuery[R, E, Collection[A]] =
-    foreachBatched(as)(identity)
+    foreachBatched(as)(ZIO.identityFn)
 
   /**
    * Collects a collection of queries into a query returning a collection of
    * their results, batching requests to data sources.
    */
   def collectAllBatched[R, E, A](as: Set[ZQuery[R, E, A]])(implicit trace: Trace): ZQuery[R, E, Set[A]] =
-    foreachBatched(as)(identity)
+    foreachBatched(as)(ZIO.identityFn)
 
   /**
    * Collects a collection of queries into a query returning a collection of
@@ -1128,7 +1177,7 @@ object ZQuery {
   def collectAllBatched[R, E, A: ClassTag](as: Array[ZQuery[R, E, A]])(implicit
     trace: Trace
   ): ZQuery[R, E, Array[A]] =
-    foreachBatched(as)(identity)
+    foreachBatched(as)(ZIO.identityFn)
 
   /**
    * Collects a collection of queries into a query returning a collection of
@@ -1137,7 +1186,7 @@ object ZQuery {
   def collectAllBatched[R, E, A](as: NonEmptyChunk[ZQuery[R, E, A]])(implicit
     trace: Trace
   ): ZQuery[R, E, NonEmptyChunk[A]] =
-    foreachBatched(as)(identity)
+    foreachBatched(as)(ZIO.identityFn)
 
   /**
    * Collects a collection of queries into a query returning a collection of
@@ -1149,14 +1198,14 @@ object ZQuery {
     bf: BuildFrom[Collection[ZQuery[R, E, A]], A, Collection[A]],
     trace: Trace
   ): ZQuery[R, E, Collection[A]] =
-    foreachPar(as)(identity)
+    foreachPar(as)(ZIO.identityFn)
 
   /**
    * Collects a collection of queries into a query returning a collection of
    * their results. Requests will be executed in parallel and will be batched.
    */
   def collectAllPar[R, E, A](as: Set[ZQuery[R, E, A]])(implicit trace: Trace): ZQuery[R, E, Set[A]] =
-    foreachPar(as)(identity)
+    foreachPar(as)(ZIO.identityFn)
 
   /**
    * Collects a collection of queries into a query returning a collection of
@@ -1165,7 +1214,7 @@ object ZQuery {
   def collectAllPar[R, E, A: ClassTag](as: Array[ZQuery[R, E, A]])(implicit
     trace: Trace
   ): ZQuery[R, E, Array[A]] =
-    foreachPar(as)(identity)
+    foreachPar(as)(ZIO.identityFn)
 
   /**
    * Collects a collection of queries into a query returning a collection of
@@ -1174,7 +1223,7 @@ object ZQuery {
   def collectAllPar[R, E, A](as: NonEmptyChunk[ZQuery[R, E, A]])(implicit
     trace: Trace
   ): ZQuery[R, E, NonEmptyChunk[A]] =
-    foreachPar(as)(identity)
+    foreachPar(as)(ZIO.identityFn)
 
   /**
    * Constructs a query that dies with the specified error.
@@ -1243,8 +1292,8 @@ object ZQuery {
   )(
     f: A => ZQuery[R, E, B]
   )(implicit bf: BuildFrom[Collection[A], B, Collection[B]], trace: Trace): ZQuery[R, E, Collection[B]] = {
-    implicit val ct1: ClassTag[A] = anyRefClassTag
-    implicit val c2: ClassTag[B]  = anyRefClassTag
+    implicit def ct1: ClassTag[A] = anyRefClassTag
+    implicit def ct2: ClassTag[B] = anyRefClassTag
     foreachSequentialOuter[R, E, A, B, Collection](as.toArray, mode = Mode.Sequential, bf.fromSpecific(as)(_))(f)
   }
 
@@ -1315,8 +1364,8 @@ object ZQuery {
   )(
     f: A => ZQuery[R, E, B]
   )(implicit bf: BuildFrom[Collection[A], B, Collection[B]], trace: Trace): ZQuery[R, E, Collection[B]] = {
-    implicit val ct1: ClassTag[A] = anyRefClassTag
-    implicit val ct2: ClassTag[B] = anyRefClassTag
+    implicit def ct1: ClassTag[A] = anyRefClassTag
+    implicit def ct2: ClassTag[B] = anyRefClassTag
     foreachSequentialOuter[R, E, A, B, Collection](as.toArray, mode = Mode.Batched, bf.fromSpecific(as)(_))(f)
   }
 
@@ -1375,7 +1424,7 @@ object ZQuery {
       case -1 => ZQuery.succeedNow(bf.fromSpecific(as)(Nil))
       case 0  => f(as.head).map(v => (bf.newBuilder(as) += v).result())
       case _ =>
-        implicit val ct: ClassTag[A] = anyRefClassTag
+        implicit def ct: ClassTag[A] = anyRefClassTag
         ZQuery {
           ZIO
             .foreachPar(as.toArray)(f(_).step)
@@ -1550,15 +1599,15 @@ object ZQuery {
             )
           )
         case Right(promise) =>
-          promise.unsafe.poll(Unsafe.unsafe) match {
-            case None                 => CachedResult.Pure(Result.blocked(BlockedRequests.empty, Continue(promise)))
+          promise.unsafe.poll(Unsafe) match {
             case Some(io: Exit[E, B]) => CachedResult.Pure(Result.fromExit(io))
             case Some(io)             => CachedResult.Effectful(io.exit.map(Result.fromExit))
+            case _                    => CachedResult.Pure(Result.blocked(BlockedRequests.empty, Continue(promise)))
           }
       }
 
     cache match {
-      case cache: Cache.Default => foldPromise(cache.lookupUnsafe(request)(Unsafe.unsafe))
+      case cache: Cache.Default => foldPromise(cache.lookupUnsafe(request)(Unsafe))
       case cache                => CachedResult.Effectful(cache.lookup(request).flatMap(foldPromise(_).toZIO))
     }
   }
@@ -1567,7 +1616,7 @@ object ZQuery {
     ev: A <:< Request[E, B],
     trace: Trace
   ): UIO[Result[R, E, B]] = {
-    val promise = Promise.unsafe.make[E, B](FiberId.None)(Unsafe.unsafe)
+    val promise = Promise.unsafe.make[E, B](FiberId.None)(Unsafe)
     Result.blockedExit(
       BlockedRequests.single(dataSource, BlockedRequest(request, promise)),
       Continue(promise)
@@ -1615,7 +1664,7 @@ object ZQuery {
   )(
     f: A => ZQuery[R, E, B]
   )(implicit ev: CanFail[E], trace: Trace): ZQuery[R, Nothing, (Iterable[E], Iterable[B])] =
-    ZQuery.foreach(as)(f(_).either).map(partitionMap(_)(identity))
+    ZQuery.foreach(as)(f(_).either).map(partitionMap(_)(ZIO.identityFn))
 
   /**
    * Performs a query for each element in a collection, collecting the results
@@ -1627,7 +1676,7 @@ object ZQuery {
   )(
     f: A => ZQuery[R, E, B]
   )(implicit ev: CanFail[E], trace: Trace): ZQuery[R, Nothing, (Iterable[E], Iterable[B])] =
-    ZQuery.foreachPar(as)(f(_).either).map(partitionMap(_)(identity))
+    ZQuery.foreachPar(as)(f(_).either).map(partitionMap(_)(ZIO.identityFn))
 
   /**
    * Accesses the whole environment of the query.
@@ -1837,16 +1886,16 @@ object ZQuery {
 
   @deprecated("No longer used, kept for binary compatibility only", "0.7.4")
   val cachingEnabled: FiberRef[Boolean] =
-    FiberRef.unsafe.make(true)(Unsafe.unsafe)
+    FiberRef.unsafe.make(true)(Unsafe)
 
   val currentCache: FiberRef[Option[Cache]] =
-    FiberRef.unsafe.make(Option.empty[Cache])(Unsafe.unsafe)
+    FiberRef.unsafe.make(Option.empty[Cache])(Unsafe)
 
   private val disabledCache: FiberRef[Option[Cache]] =
-    FiberRef.unsafe.make(Option.empty[Cache])(Unsafe.unsafe)
+    FiberRef.unsafe.make(Option.empty[Cache])(Unsafe)
 
   val currentScope: FiberRef[QueryScope] =
-    FiberRef.unsafe.make[QueryScope](QueryScope.NoOp)(Unsafe.unsafe)
+    FiberRef.unsafe.make[QueryScope](QueryScope.NoOp)(Unsafe)
 
   final class Acquire[-R, +E, +A](private val acquire: () => ZIO[R, E, A]) extends AnyVal {
     def apply[R1](release: A => URIO[R1, Any]): Release[R with R1, E, A] =
@@ -1882,28 +1931,23 @@ object ZQuery {
                       .provideEnvironment(environment)
                       .when(ref.getAndSet(false))
                   case Exit.Success(_) =>
-                    ZIO.unit
+                    Exit.unit
                 }
               }
             }.map { a =>
-              ZQuery
-                .suspend(use(a))
-                .foldCauseQuery(
+              use(a)
+                .foldCauseZIO(
                   cause =>
-                    ZQuery.fromZIONow {
-                      ZIO
-                        .suspendSucceed(release(a, Exit.failCause(cause)))
-                        .when(ref.getAndSet(false))
-                        .mapErrorCause(cause ++ _) *>
-                        ZIO.refailCause(cause)
-                    },
+                    ZIO
+                      .suspendSucceed(release(a, Exit.failCause(cause)))
+                      .when(ref.getAndSet(false))
+                      .mapErrorCause(cause ++ _) *>
+                      ZIO.refailCause(cause),
                   b =>
-                    ZQuery.fromZIONow {
-                      ZIO
-                        .suspendSucceed(release(a, Exit.succeed(b)))
-                        .when(ref.getAndSet(false))
-                        .as(b)
-                    }
+                    ZIO
+                      .suspendSucceed(release(a, Exit.succeed(b)))
+                      .when(ref.getAndSet(false))
+                      .as(b)
                 )
             }
           }
@@ -1913,6 +1957,9 @@ object ZQuery {
 
   @inline private def anyRefClassTag[A]: ClassTag[A] =
     ClassTag.AnyRef.asInstanceOf[ClassTag[A]]
+
+  private val FailCauseNone: Cause[Nothing] => ZQuery[Any, Nothing, Nothing] =
+    cause => ZQuery(Exit.failCause(cause))
 
   /**
    * `foreach` base implementation for sequential and batched modes
@@ -1960,7 +2007,7 @@ object ZQuery {
     mode: Mode,
     mapOut: Array[B] => F[B]
   )(implicit trace: Trace): Result[R, E, F[B]] = {
-    implicit val classTag: ClassTag[B] = anyRefClassTag
+    implicit def ct: ClassTag[B] = anyRefClassTag
 
     @inline def addToArray(array: Array[B])(idxs: Array[Int], values: Array[B]): Unit = {
       var i = 0
