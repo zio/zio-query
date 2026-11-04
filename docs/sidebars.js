@@ -9,6 +9,7 @@ const sidebars = {
         "index",
         "creating-data-sources",
         "data-source-reference",
+        "completed-request-map",
         "creating-queries",
         "how-batching-works",
         "running-queries",
