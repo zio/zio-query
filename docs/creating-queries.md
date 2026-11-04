@@ -14,3 +14,5 @@ If you have a `ZQuery`, you can use:
 - `map` and `mapError` to modify the result or error type
 - `flatMap`, `zipWith`, or `zipWithPar` to combine it with other queries
 - `provide` and `provideSome` to eliminate some or all of its environmental requirements
+
+To execute a query, see [Running Queries and Caching](./running_queries.md).
