@@ -18,3 +18,5 @@ If you have a `ZQuery`, you can use:
 - `provide` and `provideSome` to eliminate some or all of its environmental requirements
 
 To execute a query, see [Running Queries and Caching](./running_queries.md).
+
+To recover from failures, convert errors to defects, or limit how long a query may run, see [Error Handling](./error-handling.md).
