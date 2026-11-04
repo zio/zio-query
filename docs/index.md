@@ -12,8 +12,8 @@ sidebar_label: "ZIO Query"
 
 Some key features of ZIO Query:
 
-- **Batching** — ZIO Query detects parts of composite queries that can be executed in parallel without changing the semantics of the query.
-- **Pipelining** — ZIO Query detects parts of composite queries that can be combined together for fewer individual requests to the data source.
+- **Batching** — ZIO Query detects parts of composite queries that can be executed in parallel and combines their requests into a single batch for fewer individual requests to the data source, without changing the semantics of the query.
+- **Pipelining** — ZIO Query detects parts of composite queries that must be executed sequentially and passes their requests to the data source together, so that the data source can optimize across them.
 - **Caching** — ZIO Query can transparently cache read queries to minimize the cost of fetching the same item repeatedly in the scope of a query.
 
 Compared with Fetch, ZIO Query supports response types that depend on request types, does not require higher-kinded types and implicits, supports ZIO environment and statically typed errors, and has no dependencies except for ZIO.
