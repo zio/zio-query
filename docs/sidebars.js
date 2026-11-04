@@ -8,6 +8,7 @@ const sidebars = {
       items: [
         "index",
         "creating-data-sources",
+        "data-source-reference",
         "creating-queries",
         "how-batching-works",
         "running-queries"

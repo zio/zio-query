@@ -65,3 +65,5 @@ def getUserNameById(id: Int): ZQuery[Any, Throwable, String] =
 ```
 
 To run a `ZQuery`, simply use `ZQuery#run` which will return a `ZIO[R, E, A]`.
+
+For the other ways to build a data source from a function, and for the combinators that transform one, see the [DataSource Reference](./data-source-reference.md).
