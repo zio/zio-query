@@ -11,7 +11,8 @@ const sidebars = {
         "creating-queries",
         "how-batching-works",
         "aspects",
-        "running-queries"
+        "running-queries",
+        "error-handling"
       ]
     }
   ]
