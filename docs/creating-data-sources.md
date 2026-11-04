@@ -8,7 +8,7 @@ To construct a `ZQuery` that executes a request, you first need to create a `Dat
 - an `identifier` that uniquely identifies the data source
 - an effectual function `runAll` from a `Chunk[Chunk[A]]` of requests to a `CompletedRequestMap` of requests and results
 
-The outer `Chunk` represents batches of requests that must be performed sequentially. The inner `Chunk` represents a batch of requests that can be performed in parallel. This allows data sources to introspect on all the requests being executed and optimize the query.
+The outer `Chunk` represents batches of requests that must be performed sequentially. The inner `Chunk` represents a batch of requests that can be performed in parallel. This allows data sources to introspect on all the requests being executed and optimize the query. [How Batching, Pipelining, and Parallelism Work](./how-batching-works.md) shows which queries produce which batches.
 
 ```scala mdoc:invisible
 import zio._

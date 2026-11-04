@@ -9,6 +9,8 @@ There are several ways to create a `ZQuery`. We've seen `ZQuery.fromRequest`, bu
 - create a query from an effect with `ZQuery.fromZIO`
 - combine multiple queries with `ZQuery.collectAllPar` and `ZQuery.foreachPar` and their sequential equivalents `ZQuery.collectAll` and `ZQuery.foreach`
 
+The choice between the parallel and the sequential combinators changes how requests are sent to data sources. See [How Batching, Pipelining, and Parallelism Work](./how-batching-works.md) for details.
+
 If you have a `ZQuery`, you can use:
 
 - `map` and `mapError` to modify the result or error type
