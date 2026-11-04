@@ -12,6 +12,7 @@ const sidebars = {
         "completed-request-map",
         "creating-queries",
         "how-batching-works",
+        "aspects",
         "running-queries",
         "error-handling"
       ]

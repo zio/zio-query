@@ -109,7 +109,7 @@ show(ZQuery.collectAllPar(List(userName(1).zip(userName(2)), userName(3).zip(use
 
 The data source receives all four requests in one batch, even though each pair was written as a separate query.
 
-When a batch is too large for the data source, `DataSource#batchN` (or the `QueryAspect.maxBatchSize` aspect) limits how many requests run in parallel.
+When a batch is too large for the data source, `DataSource#batchN` (or the `QueryAspect.maxBatchSize` aspect) limits how many requests run in parallel. See [Aspects](./aspects.md#limiting-the-batch-size).
 
 ## Pipelining
 
