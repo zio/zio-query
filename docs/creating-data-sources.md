@@ -64,6 +64,6 @@ def getUserNameById(id: Int): ZQuery[Any, Throwable, String] =
   ZQuery.fromRequest(GetUserName(id))(UserDataSource)
 ```
 
-To run a `ZQuery`, simply use `ZQuery#run` which will return a `ZIO[R, E, A]`.
+To run a `ZQuery`, use `ZQuery#run`, which returns a `ZIO[R, E, A]`. [Running Queries and Caching](./running_queries.md) explains how results are cached and how to share a cache between runs.
 
 For the other ways to build a data source from a function, and for the combinators that transform one, see the [DataSource Reference](./data-source-reference.md).
