@@ -162,7 +162,7 @@ Pick the `With` variants when the backend returns rows keyed by id rather than i
 
 ### Building a Batched Data Source by Hand
 
-`DataSource.Batched` is a trait for data sources that process each batch of parallel requests in one call, and `DataSource.Batched.make` builds one from a function. Your function returns a `CompletedRequestMap`, so it controls the result of every request, including failures and omissions. You rarely need the trait directly: prefer the `fromFunction*` constructors, and fall back to `Batched.make` when they do not fit, for example when only some requests in a batch fail:
+`DataSource.Batched` is a trait for data sources that process each batch of parallel requests in one call, and `DataSource.Batched.make` builds one from a function. Your function returns a `CompletedRequestMap` (see [CompletedRequestMap](./completed-request-map.md) for how to build one), so it controls the result of every request, including failures and omissions. You rarely need the trait directly: prefer the `fromFunction*` constructors, and fall back to `Batched.make` when they do not fit, for example when only some requests in a batch fail:
 
 ```scala
 object DataSource {
@@ -238,7 +238,7 @@ val hanging: ZQuery[Any, Nothing, String] =
 
 ## Transforming Data Sources
 
-The following methods on `DataSource` return a new data source. Each one derives the new `DataSource#identifier` from the original, so data sources built with the same combinators and the same descriptions are equal. Functions passed to `contramap`, `contramapZIO`, `eitherWith` and `provideSomeEnvironment` are wrapped in `Described`, a pair of a value and a string description that ZIO Query uses to build the identifier. Wrap a function with `Described(f, "description")`, or with `f ? "description"` after `import zio.query.Described._`. Equal functions need the same description, and different functions need different ones.
+The following methods on `DataSource` return a new data source. Each one derives the new `DataSource#identifier` from the original, so data sources built with the same combinators and the same descriptions are equal. Functions passed to `contramap`, `contramapZIO`, `eitherWith` and `provideSomeEnvironment` are wrapped in `Described`, a pair of a value and a string description that ZIO Query uses to build the identifier (see [Aspects](./aspects.md#describing-values-with-described)). Wrap a function with `Described(f, "description")`, or with `f ? "description"` after `import zio.query.Described._`. Equal functions need the same description, and different functions need different ones.
 
 ### Limiting the Batch Size
 
