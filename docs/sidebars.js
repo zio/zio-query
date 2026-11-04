@@ -9,7 +9,8 @@ const sidebars = {
         "index",
         "creating-data-sources",
         "creating-queries",
-        "running-queries"
+        "running-queries",
+        "error-handling"
       ]
     }
   ]
