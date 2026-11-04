@@ -10,6 +10,7 @@ const sidebars = {
         "creating-data-sources",
         "creating-queries",
         "how-batching-works",
+        "aspects",
         "running-queries"
       ]
     }
