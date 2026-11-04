@@ -20,7 +20,7 @@ Compared with Fetch, ZIO Query supports response types that depend on request ty
 
 A `ZQuery[R, E, A]` is a purely functional description of an effectual query that may contain requests from one or more data sources, requires an environment `R`, and may fail with an `E` or succeed with an `A`.
 
-Requests that can be performed in parallel, as expressed by `zipWithPar` and combinators derived from it, will automatically be batched. Requests that must be performed sequentially, as expressed by `zipWith` and combinators derived from it, will automatically be pipelined. This allows for aggressive data source specific optimizations. Requests can also be deduplicated and cached.
+Requests that can be performed in parallel, as expressed by `zipWithPar` and combinators derived from it, will automatically be batched. Requests that must be performed sequentially, as expressed by `zipWith` and combinators derived from it, will automatically be pipelined. This allows for aggressive data source specific optimizations. Requests can also be deduplicated and cached. To learn how each combinator affects the calls a data source receives, see [How Batching, Pipelining, and Parallelism Work](./how-batching-works.md).
 
 ```scala mdoc:invisible
 import zio._
