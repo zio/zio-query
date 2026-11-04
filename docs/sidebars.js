@@ -11,7 +11,8 @@ const sidebars = {
         "data-source-reference",
         "creating-queries",
         "how-batching-works",
-        "running-queries"
+        "running-queries",
+        "error-handling"
       ]
     }
   ]
