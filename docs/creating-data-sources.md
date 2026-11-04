@@ -66,4 +66,4 @@ def getUserNameById(id: Int): ZQuery[Any, Throwable, String] =
 
 To run a `ZQuery`, simply use `ZQuery#run` which will return a `ZIO[R, E, A]`.
 
-To run code around every call to a data source, or to limit its batch size, without changing its implementation, use [aspects](./aspects.md). The same page explains `Described`, which `DataSource#contramap`, `DataSource#eitherWith` and `DataSource#provideEnvironment` require.
+To run code around every call to a data source, or to limit its batch size, without changing its implementation, use [aspects](./aspects.md). The same page explains `Described`, which `DataSource#provideEnvironment` and other combinators require.

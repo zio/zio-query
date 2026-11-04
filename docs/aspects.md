@@ -67,14 +67,27 @@ val logAfter: Described[Unit => UIO[Unit]] =
   ((_: Unit) => log.update(_ :+ "after")) ? "log after"
 ```
 
-`Described` is also required by `DataSource#contramap`, `DataSource#contramapZIO`, `DataSource#eitherWith`, `DataSource#provideEnvironment` and `ZQuery#provideEnvironment`. For example, `contramap` creates a data source for a new request type from a function that converts the new requests into the old ones:
+`Described` is also required by `DataSource#contramap`, `DataSource#contramapZIO`, `DataSource#eitherWith`, `DataSource#provideEnvironment` and `ZQuery#provideEnvironment`. For example, `provideEnvironment` removes the environment requirement of a data source by supplying a value for it, and the description of that value becomes part of the new data source's identifier:
 
 ```scala mdoc:silent
-final case class GetUserNameByKey(key: String) extends Request[Nothing, String]
+val envDataSource: DataSource[Int, GetUserName] =
+  DataSource.make[Int, GetUserName]("EnvUserDataSource") { requests =>
+    ZIO.serviceWith[Int] { offset =>
+      CompletedRequestMap.fromIterableWith(requests.flatten)(r => r, r => Exit.succeed(s"user-${r.id + offset}"))
+    }
+  }
 
-val userByKeyDataSource: DataSource[Any, GetUserNameByKey] =
-  userDataSource.contramap(((r: GetUserNameByKey) => GetUserName(r.key.toInt)) ? "key to id")
+val providedDataSource: DataSource[Any, GetUserName] =
+  envDataSource.provideEnvironment(ZEnvironment(100) ? "offset 100")
 ```
+
+```scala mdoc
+providedDataSource.identifier
+```
+
+:::warning
+`DataSource#contramap`, `contramapZIO` and `eitherWith` pass the results of the converted requests through unchanged. The query looks up the result of the original request, so these combinators work only when the converted request is equal to the original one. Otherwise the query dies with a `QueryFailure`.
+:::
 
 ## Data Source Aspects
 
