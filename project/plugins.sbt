@@ -1,7 +1,8 @@
-val zioSbtVersion = "0.5.1"
+val zioSbtVersion = "0.8.7"
 
 addSbtPlugin("dev.zio" % "zio-sbt-ecosystem" % zioSbtVersion)
 addSbtPlugin("dev.zio" % "zio-sbt-website"   % zioSbtVersion)
+addSbtPlugin("dev.zio" % "zio-sbt-ci"        % zioSbtVersion)
 
 addSbtPlugin("org.scoverage"    % "sbt-scoverage"    % "2.4.4")
 addSbtPlugin("com.typesafe"     % "sbt-mima-plugin"  % "1.1.4")
