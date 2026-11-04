@@ -4,6 +4,8 @@ import sbtcrossproject.CrossPlugin.autoImport.crossProject
 
 import scala.scalanative.build.Mode
 
+import zio.sbt.githubactions.{Condition, Step}
+
 enablePlugins(ZioSbtEcosystemPlugin)
 
 crossScalaVersions := Seq.empty
@@ -28,7 +30,25 @@ inThisBuild(
         url("https://github.com/kyri-petrou")
       )
     ),
-    versionScheme := Some("early-semver")
+    versionScheme := Some("early-semver"),
+    // zio-sbt-ci generates .github/workflows via `sbt ciGenerateGithubWorkflow`; `ciCheckGithubWorkflow`
+    // (part of the Lint job) fails if the committed files drift from these settings.
+    ciEnabledBranches := Seq("series/2.x"),
+    // Keep the per-platform, per-Scala test matrix (the default runs a single `sbt +test`).
+    ciTargetScalaVersions := Map(
+      "zioQueryJVM"    -> allScalas,
+      "zioQueryJS"     -> List("2.13", "3.3"),
+      "zioQueryNative" -> List("2.13", "3.3")
+    ),
+    // Keep updating the README on every push, as before (the default is only on release).
+    ciUpdateReadmeCondition := Some(Condition.Expression("github.event_name == 'push'")),
+    // Keep checking binary compatibility in the Build job.
+    ciCheckArtifactsBuildSteps ++= Seq(
+      Step.SingleStep(
+        name = "Check binary compatibility",
+        run = Some("sbt --no-colors \"+zioQueryJVM/mimaReportBinaryIssues; +zioQueryJS/mimaReportBinaryIssues\"")
+      )
+    )
   )
 )
 
