@@ -65,3 +65,5 @@ def getUserNameById(id: Int): ZQuery[Any, Throwable, String] =
 ```
 
 To run a `ZQuery`, use `ZQuery#run`, which returns a `ZIO[R, E, A]`. [Running Queries and Caching](./running_queries.md) explains how results are cached and how to share a cache between runs.
+
+To run code around every call to a data source, or to limit its batch size, without changing its implementation, use [aspects](./aspects.md). The same page explains `Described`, which `DataSource#provideEnvironment` and other combinators require.
