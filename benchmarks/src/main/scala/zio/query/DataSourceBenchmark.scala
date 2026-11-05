@@ -76,7 +76,7 @@ class DataSourceBenchmark {
 
   object ZQueryImpl {
     case class Req(i: Int) extends Request[Nothing, Int]
-    val ds = DataSource.fromFunctionBatchedZIO("PlusOne") { (reqs: Chunk[Req]) => ZIO.succeed(reqs.map(_.i + 1)) }
+    val ds = DataSource.fromFunctionBatchedZIO("PlusOne")((reqs: Chunk[Req]) => ZIO.succeed(reqs.map(_.i + 1)))
   }
 
   object FetchImpl {

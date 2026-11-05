@@ -21,29 +21,29 @@ class CollectAllBenchmark {
 
   @Benchmark
   def zQueryCollectAll(): Long = {
-    val queries  = (0 until count).map(_ => ZQuery.succeed(1)).toList
-    val query = ZQuery.collectAll(queries).map(_.sum.toLong)
+    val queries = (0 until count).map(_ => ZQuery.succeed(1)).toList
+    val query   = ZQuery.collectAll(queries).map(_.sum.toLong)
     unsafeRun(query)
   }
 
   @Benchmark
   def zQueryCollectAllBatched(): Long = {
-    val queries  = (0 until count).map(_ => ZQuery.succeed(1)).toList
-    val query = ZQuery.collectAllBatched(queries).map(_.sum.toLong)
+    val queries = (0 until count).map(_ => ZQuery.succeed(1)).toList
+    val query   = ZQuery.collectAllBatched(queries).map(_.sum.toLong)
     unsafeRun(query)
   }
 
   @Benchmark
   def zQueryCollectAllPar(): Long = {
-    val queries  = (0 until count).map(_ => ZQuery.succeed(1)).toList
-    val query = ZQuery.collectAllPar(queries).map(_.sum.toLong)
+    val queries = (0 until count).map(_ => ZQuery.succeed(1)).toList
+    val query   = ZQuery.collectAllPar(queries).map(_.sum.toLong)
     unsafeRun(query)
   }
 
   @Benchmark
   def zQueryCollectAllParN(): Long = {
-    val queries  = (0 until count).map(_ => ZQuery.succeed(1)).toList
-    val query = ZQuery.collectAllPar(queries).map(_.sum.toLong).withParallelism(parallelism)
+    val queries = (0 until count).map(_ => ZQuery.succeed(1)).toList
+    val query   = ZQuery.collectAllPar(queries).map(_.sum.toLong).withParallelism(parallelism)
     unsafeRun(query)
   }
 }
