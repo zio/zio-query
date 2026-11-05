@@ -12,7 +12,7 @@ crossScalaVersions := Seq.empty
 
 lazy val scala212 = "2.12.21"
 lazy val scala213 = "2.13.18"
-lazy val scala3   = "3.3.7"
+lazy val scala3   = "3.3.9"
 
 lazy val scalaV    = scala213
 lazy val allScalas = List("2.12", "2.13", "3.3")
