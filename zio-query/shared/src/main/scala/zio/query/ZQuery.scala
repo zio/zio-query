@@ -191,7 +191,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
   def cached(implicit trace: Trace): ZQuery[R, E, A] =
     ZQuery.unwrap(ZQuery.disabledCache.get.map {
       case None => self
-      case s =>
+      case s    =>
         val acq = ZQuery.disabledCache.set(None) *> ZQuery.currentCache.set(s)
         val rel = ZQuery.disabledCache.set(s) *> ZQuery.currentCache.set(None)
         ZQuery.acquireReleaseWith(acq)(_ => rel)(_ => self)
@@ -380,7 +380,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
       step.flatMap {
         case Result.Blocked(br, c) => Result.blockedExit(br, c.foldZIO(failure, success))
         case Result.Done(a)        => success(a).foldCauseZIO(Result.failExit, Result.doneExit)
-        case Result.Fail(e) =>
+        case Result.Fail(e)        =>
           e.failureOrCause.fold(failure(_).foldCauseZIO(Result.failExit, Result.doneExit), Exit.failCause)
       }
     }
@@ -838,7 +838,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
   def uncached(implicit trace: Trace): ZQuery[R, E, A] =
     ZQuery.unwrap(ZQuery.currentCache.get.map {
       case None => self
-      case s =>
+      case s    =>
         val acq = ZQuery.disabledCache.set(s) *> ZQuery.currentCache.set(None)
         val rel = ZQuery.disabledCache.set(None) *> ZQuery.currentCache.set(s)
         ZQuery.acquireReleaseWith(acq)(_ => rel)(_ => self)
@@ -1423,7 +1423,7 @@ object ZQuery {
     as.sizeCompare(1) match {
       case -1 => ZQuery.succeedNow(bf.fromSpecific(as)(Nil))
       case 0  => f(as.head).map(v => (bf.newBuilder(as) += v).result())
-      case _ =>
+      case _  =>
         implicit def ct: ClassTag[A] = anyRefClassTag
         ZQuery {
           ZIO

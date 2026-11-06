@@ -22,7 +22,7 @@ inThisBuild(
     name         := "ZIO Query",
     zioVersion   := "2.1.27",
     scalaVersion := scalaV,
-    developers := List(
+    developers   := List(
       Developer(
         "kyri-petrou",
         "Kyri Petrou",

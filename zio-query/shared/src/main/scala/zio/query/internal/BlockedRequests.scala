@@ -253,7 +253,7 @@ private[query] object BlockedRequests {
           left match {
             case Empty      => loop(right, stack)
             case Then(l, r) => loop(Then(l, Then(r, right)), stack)
-            case o =>
+            case o          =>
               if (right ne Empty) sequential.prepend(right)
               loop(o, stack)
           }

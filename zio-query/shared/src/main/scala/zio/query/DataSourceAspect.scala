@@ -60,7 +60,7 @@ object DataSourceAspect {
     new DataSourceAspect[R] {
       def apply[R1 <: R, A](dataSource: DataSource[R1, A]): DataSource[R1, A] =
         new DataSource[R1, A] {
-          val identifier = s"${dataSource.identifier} @@ around(${before.description})(${after.description})"
+          val identifier                                                                                      = s"${dataSource.identifier} @@ around(${before.description})(${after.description})"
           def runAll(requests: Chunk[Chunk[A]])(implicit trace: Trace): ZIO[R1, Nothing, CompletedRequestMap] =
             ZIO.acquireReleaseWith(before.value)(after.value)(_ => dataSource.runAll(requests))
         }
