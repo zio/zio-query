@@ -200,7 +200,7 @@ object ZQuerySpec extends ZIOBaseSpec {
         test("caching enabled") {
           for {
             cache <- zio.query.Cache.empty
-            query = for {
+            query  = for {
                       res <- ZQuery.fromRequest(Req.Get(1))(dsCompletingMoreRequests)
                     } yield res
             requestResult <- query.runCache(cache)
@@ -212,7 +212,7 @@ object ZQuerySpec extends ZIOBaseSpec {
         test("caching disabled") {
           for {
             cache <- zio.query.Cache.empty
-            query = for {
+            query  = for {
                       res <- ZQuery.fromRequestUncached(Req.Get(1))(dsCompletingMoreRequests)
                     } yield res
             requestResult <- query.runCache(cache)
@@ -225,7 +225,7 @@ object ZQuerySpec extends ZIOBaseSpec {
       test("requests can be removed from the cache") {
         for {
           cache <- zio.query.Cache.empty
-          query = for {
+          query  = for {
                     _ <- getUserNameById(1)
                     _ <- ZQuery.fromZIO(cache.remove(GetNameById(1)))
                     _ <- getUserNameById(1)
@@ -321,7 +321,7 @@ object ZQuerySpec extends ZIOBaseSpec {
           ref    <- Ref.make(0)
           acquire = ref.update(_ + 1)
           release = ref.update(_ - 1)
-          fiber <- ZQuery
+          fiber  <- ZQuery
                      .acquireReleaseWith(acquire)(_ => release)(_ => query(100))
                      .run
                      .fork
@@ -361,8 +361,8 @@ object ZQuerySpec extends ZIOBaseSpec {
         },
         test("defects are memoized") {
           for {
-            ref   <- Ref.make(0)
-            query <- ZQuery.fromZIO(ref.updateAndGet(_ + 1).flatMap(i => ZIO.die(new Exception(i.toString)))).memoize
+            ref     <- Ref.make(0)
+            query   <- ZQuery.fromZIO(ref.updateAndGet(_ + 1).flatMap(i => ZIO.die(new Exception(i.toString)))).memoize
             results <- ZQuery
                          .foreachPar((1 to 100).toList)(_ =>
                            query.foldCauseQuery(c => ZQuery.succeed(Left(c)), v => ZQuery.succeed(Right(v)))
@@ -488,7 +488,7 @@ object ZQuerySpec extends ZIOBaseSpec {
         },
         test("catches failure") {
           val q: ZQuery[Any, Int, Int] = ZQuery.fail(1)
-          val query =
+          val query                    =
             q.foldCauseZIO(i => Exit.succeed(i.failureOrCause.left.toOption.get + 1), i => Exit.succeed(i + 10))
           for {
             res <- query.run
@@ -516,7 +516,7 @@ object ZQuerySpec extends ZIOBaseSpec {
       (ZIO.when(requests.toSet.size != requests.size)(ZIO.dieMessage("Duplicate requests)")) *>
         Console.printLine(requests.toString).orDie).as {
         requests.foldLeft(CompletedRequestMap.empty) {
-          case (completedRequests, GetAllIds) => completedRequests.insert(GetAllIds, Exit.succeed(userIds))
+          case (completedRequests, GetAllIds)       => completedRequests.insert(GetAllIds, Exit.succeed(userIds))
           case (completedRequests, GetNameById(id)) =>
             userNames
               .get(id)
@@ -755,7 +755,7 @@ object ZQuerySpec extends ZIOBaseSpec {
                      case Req.Get(id) => Chunk(id)
                    })
         } yield oneByOne.foldLeft(CompletedRequestMap.empty) {
-          case (result, Req.GetAll) => result
+          case (result, Req.GetAll)        => result
           case (result, req @ Req.Get(id)) =>
             items.get(id) match {
               case Some(value) => result.insert(req, Exit.succeed(value))
