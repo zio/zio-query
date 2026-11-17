@@ -261,7 +261,7 @@ Within a single `run`, the result of a request is cached, including a failed res
 
 ## Errors and the Environment
 
-A query that requires an environment fails like any other query when providing that environment fails. `provideLayer` builds the layer when the query runs and fails the query with the error of the layer if building it fails. The layer has to be wrapped in a `Described` value, which `?` creates from a description:
+A query that requires an environment fails like any other query when providing that environment fails. `provideLayer` builds the layer when the query runs and fails the query with the error of the layer if building it fails. The layer has to be wrapped in a [`Described`](./described.md) value, which `?` creates from a description. For layers that hold resources, see the warning in [How to Use the Environment in Data Sources](./how-to-use-environment-in-data-sources.md):
 
 ```scala mdoc
 import Described._
