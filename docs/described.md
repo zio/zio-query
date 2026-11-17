@@ -19,7 +19,7 @@ A `Described[A]` is a value of type `A` together with a `String` that describes 
 final case class Described[+A](value: A, description: String)
 ```
 
-The scaladoc states the contract: the description is used to generate a hash associated with the value, so values that are equal should have the same description, and values that are not equal should have different descriptions. ZIO Query cannot check this, so keeping the description and the value in sync is the job of the caller.
+The scaladoc states the contract: the description may be used to generate a hash associated with the value, so values that are equal should have the same description, and values that are not equal should have different descriptions. ZIO Query cannot check this, so keeping the description and the value in sync is the job of the caller.
 
 ## Building a Described Value
 

@@ -154,7 +154,7 @@ show(ZQuery.foreachPar(List(1, 2, 3))(userName))
 show(ZQuery.collectAllPar(List(userName(1), userName(2))))
 ```
 
-These operators accept lists, sets, arrays, maps, options and `NonEmptyChunk`, and return the same kind of collection. [Collecting Queries](./zquery.md#collecting-queries) lists which forms exist for which collection.
+These operators accept lists, sets, arrays and `NonEmptyChunk`, and return the same kind of collection. `ZQuery.foreach` and `ZQuery.collectAll` also accept an `Option`, and the `foreach` family also accepts a `Map`. [Collecting Queries](./zquery.md#collecting-queries) lists which forms exist for which collection.
 
 ## From the Environment
 

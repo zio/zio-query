@@ -21,7 +21,7 @@ libraryDependencies += "dev.zio" %% "zio-query" % "@VERSION@"
 
 ZIO Query depends on ZIO, which sbt downloads for you.
 
-ZIO Query is published for Scala 2.12, Scala 2.13 and Scala 3, and for three platforms: the JVM, Scala.js and Scala Native. On Scala.js and Scala Native, use `%%%` instead of `%%` so that sbt picks the artifact for that platform:
+ZIO Query is built for Scala 2.12, Scala 2.13 and Scala 3 on the JVM, and for Scala 2.13 and Scala 3 on Scala.js and Scala Native. On Scala.js and Scala Native, use `%%%` instead of `%%` so that sbt picks the artifact for that platform:
 
 ```scala
 libraryDependencies += "dev.zio" %%% "zio-query" % "@VERSION@"
