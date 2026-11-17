@@ -111,7 +111,7 @@ val forgotten = ZQuery.fromRequest(GetUser(99))(forgetfulDataSource)
 describe(forgotten)
 ```
 
-A `QueryFailure` is a defect, not a typed error, so it does not appear in the error type of the query and `catchAll` does not recover from it. It signals a bug in the data source, not a condition that a caller is expected to handle.
+A `QueryFailure` is a defect, not a typed error, so it does not appear in the error type of the query and `catchAll` does not recover from it. It signals a bug in the data source, not a condition that a caller is expected to handle. The [QueryFailure](./query-failure.md) reference page lists what causes it and how to detect it.
 
 The only operator that is aware of `QueryFailure` is `optional`. It converts a query to one that returns `Some` if the data sources returned results for all requests and `None` otherwise. Typed errors and other defects still fail the query:
 
