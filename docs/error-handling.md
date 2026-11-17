@@ -111,7 +111,7 @@ val forgotten = ZQuery.fromRequest(GetUser(99))(forgetfulDataSource)
 describe(forgotten)
 ```
 
-A `QueryFailure` is a defect, not a typed error, so it does not appear in the error type of the query and `catchAll` does not recover from it. It signals a bug in the data source, not a condition that a caller is expected to handle.
+A `QueryFailure` is a defect, not a typed error, so it does not appear in the error type of the query and `catchAll` does not recover from it. It signals a bug in the data source, not a condition that a caller is expected to handle. The [QueryFailure](./query-failure.md) reference page lists what causes it and how to detect it.
 
 The only operator that is aware of `QueryFailure` is `optional`. It converts a query to one that returns `Some` if the data sources returned results for all requests and `None` otherwise. Typed errors and other defects still fail the query:
 
@@ -261,7 +261,7 @@ Within a single `run`, the result of a request is cached, including a failed res
 
 ## Errors and the Environment
 
-A query that requires an environment fails like any other query when providing that environment fails. `provideLayer` builds the layer when the query runs and fails the query with the error of the layer if building it fails. The layer has to be wrapped in a `Described` value, which `?` creates from a description:
+A query that requires an environment fails like any other query when providing that environment fails. `provideLayer` builds the layer when the query runs and fails the query with the error of the layer if building it fails. The layer has to be wrapped in a [`Described`](./described.md) value, which `?` creates from a description. For layers that hold resources, see the warning in [How to Use the Environment in Data Sources](./how-to-use-environment-in-data-sources.md):
 
 ```scala mdoc
 import Described._

@@ -47,6 +47,8 @@ In the output, each pair of square brackets is one batch of requests that the da
 
 ## Describing Values with `Described`
 
+See the [`Described` reference](./described.md) for the full list of APIs that take a description.
+
 Aspects and data source combinators often take a function or an effect together with a description of it. `Described[A]` pairs a value with a `String` description:
 
 ```scala
