@@ -3,8 +3,8 @@
 [//]: # (e.g. "readmeDocumentation" and "readmeSupport".)
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/zio/zio-query/series/2.x/brand/readme-banner-dark.png">
-  <img alt="ZIO Query: batching, pipelining and caching for any data source" src="https://raw.githubusercontent.com/zio/zio-query/series/2.x/brand/readme-banner-light.png">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/zio/zio-query/series/2.x/brand/zio-query-logo-dark.svg">
+  <img alt="ZIO Query" src="https://raw.githubusercontent.com/zio/zio-query/series/2.x/brand/zio-query-logo-light.svg" width="520">
 </picture>
 
 [ZIO Query](https://github.com/zio/zio-query) is a library for writing optimized queries to data sources in a high-level compositional style. It can add efficient pipelining, batching, and caching to any data source. ZIO Query helps us dramatically reduce load on data sources and improve performance.

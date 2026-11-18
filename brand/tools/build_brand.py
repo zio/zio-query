@@ -281,18 +281,17 @@ def page(defs, body):
             f'</style></head><body>{defs}{body}</body></html>')
 
 
-hero = read_board("Brand7Hero")
-light, dark = cutouts(hero, 1200, 300)[:2]
-for name, el in [("readme-banner-light.png", light), ("readme-banner-dark.png", dark)]:
-    shoot(page(defs_of(hero), flat(el)), 1200, 300, os.path.join(OUT, name), scale=2)
-
 social = read_board("Brand8Social")
 d8 = defs_of(social)
-gh, og, sl = cutouts(social, 640, 320), cutouts(social, 600, 315), cutouts(social, 640, 360)
-for name, el, w, h, scale in [("social-github-light.png", gh[0], 640, 320, 4), ("social-github-dark.png", gh[1], 640, 320, 4),
-                              ("social-og-light.png", og[0], 600, 315, 4), ("social-og-dark.png", og[1], 600, 315, 4),
-                              ("release-card.png", og[2], 600, 315, 4), ("slide-title.png", sl[0], 640, 360, 6)]:
-    shoot(page(d8, flat(el)), w, h, os.path.join(OUT, name), scale=scale)
+og, x, li, gh = cutouts(social, 1200, 630), cutouts(social, 1200, 600), cutouts(social, 1200, 627), cutouts(social, 1280, 640)
+sl = cutouts(social, 1920, 1080)
+for name, el, w, h in [("social-og-light.png", og[0], 1200, 630), ("social-og-dark.png", og[1], 1200, 630),
+                       ("release-card.png", og[2], 1200, 630),
+                       ("social-x-light.png", x[0], 1200, 600), ("social-x-dark.png", x[1], 1200, 600),
+                       ("social-linkedin-light.png", li[0], 1200, 627), ("social-linkedin-dark.png", li[1], 1200, 627),
+                       ("social-github-light.png", gh[0], 1280, 640), ("social-github-dark.png", gh[1], 1280, 640),
+                       ("slide-title.png", sl[0], 1920, 1080)]:
+    shoot(page(d8, flat(el)), w, h, os.path.join(OUT, name), scale=1 if w == 1920 else 2)
 
 
 def board_to_html(src, local_fonts=True):

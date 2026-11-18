@@ -144,13 +144,13 @@ lazy val docs = project
     projectStage                               := ProjectStage.ProductionReady,
     readmeBanner                               := {
       val brandBase = "https://raw.githubusercontent.com/zio/zio-query/series/2.x/brand"
-      // <picture> lets GitHub swap the banner per theme: the light banner's wordmark is near-black
-      // ink, which would be invisible on GitHub's dark canvas without the dark variant. The banner
-      // spells "ZIO Query", so the plugin drops its "# ZIO Query" heading after it.
+      // The README header is the logo alone. <picture> lets GitHub swap it per theme: the light
+      // logo's wordmark is near-black ink, which would be invisible on GitHub's dark canvas without
+      // the dark variant. The logo spells "ZIO Query", so the plugin drops its "# ZIO Query" heading.
       s"""|
           |<picture>
-          |  <source media="(prefers-color-scheme: dark)" srcset="$brandBase/readme-banner-dark.png">
-          |  <img alt="ZIO Query: batching, pipelining and caching for any data source" src="$brandBase/readme-banner-light.png">
+          |  <source media="(prefers-color-scheme: dark)" srcset="$brandBase/zio-query-logo-dark.svg">
+          |  <img alt="ZIO Query" src="$brandBase/zio-query-logo-light.svg" width="520">
           |</picture>
           |""".stripMargin
     },

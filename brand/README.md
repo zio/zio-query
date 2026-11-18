@@ -5,7 +5,7 @@ The mark is a tally turned on its side. Four horizontal lines are four requests;
 ## Files
 
 **Logo and mark**
-- `zio-query-logo-light.svg`, `zio-query-logo-dark.svg`: full logo, horizontal (the default). The mark at 0.82 em, "IO" in Sora 700, a word space, "Query" in Sora 400, −2% tracking. Text converted to outlines.
+- `zio-query-logo-light.svg`, `zio-query-logo-dark.svg`: full logo, horizontal (the default), and the README header. The mark at 0.82 em, "IO" in Sora 700, a word space, "Query" in Sora 400, −2% tracking. Text converted to outlines.
 - `zio-query-logo-stacked-light.svg`, `zio-query-logo-stacked-dark.svg`: "ZIO" over "Query", for square spaces and covers.
 - `zio-query-mark-light.svg`, `zio-query-mark-dark.svg`: the bare mark, for building a lockup in live type.
 - `zio-query-mark-mono.svg`: one colour (`currentColor`), for stamps, engraving and single-ink print.
@@ -20,10 +20,11 @@ The mark is a tally turned on its side. Four horizontal lines are four requests;
 - `icon-maskable.svg`, `icon-maskable-512.png`: full-bleed square, mark at 56% so it stays inside Android's safe circle.
 - `avatar-500.png`: full-bleed square for GitHub, Slack, X and Discord, which crop it to a circle or rounded square.
 
-**Cards and banners** (PNG at 2×)
-- `readme-banner-light.png`, `readme-banner-dark.png`: 1200 × 300, top of the README, switched with `<picture>`.
-- `social-github-light.png`, `social-github-dark.png`: 1280 × 640, repository Settings › Social preview.
-- `social-og-light.png`, `social-og-dark.png`: 1200 × 630, `og:image` and `twitter:image`.
+**Cards** (PNG at 2×, slide at 1×). One template shared with ZIO Config and ZIO Blocks: the logo, the tagline (38 px semibold), a supporting line (29 px), a label (25 px) over a short cobalt rule, the data sources and the address (25 px), with a faint mark bleeding off the right edge.
+- `social-og-light.png`: 1200 × 630, the `og:image` (link previews do not follow the viewer's theme, so one card is used: the light one). `social-og-dark.png` is a spare.
+- `social-x-light.png`, `social-x-dark.png`: 1200 × 600, `twitter:image`.
+- `social-linkedin-light.png`, `social-linkedin-dark.png`: 1200 × 627, LinkedIn shares.
+- `social-github-light.png`: 1280 × 640, the repository social preview. Upload it by hand in Settings › Social preview (GitHub has no API for it). `social-github-dark.png` is a spare.
 - `release-card.png`: 1200 × 630 release posts. Version and highlights are placeholders.
 - `slide-title.png`: 1920 × 1080 talk title slide. Title, speaker and event are placeholders.
 
@@ -54,21 +55,21 @@ Cobalt belongs on the strike and in one accent per layout. The ramp follows the 
 <link rel="manifest" href="/site.webmanifest">
 <meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#101521" media="(prefers-color-scheme: dark)">
-<meta property="og:image" content="/social-og-dark.png">
+<meta property="og:image" content="/social-og-light.png">
 ```
 
-## README banner
+## README header
 
-The repository README is generated from `docs/index.md` by `sbt docs/generateReadme`, so the banner is set in `build.sbt` through the `readmeBanner` key of `zio-sbt-website`. It renders as:
+The repository README is generated from `docs/index.md` by `sbt docs/generateReadme`, so the header is set in `build.sbt` through the `readmeBanner` key of `zio-sbt-website`. It is the horizontal logo alone, with no tagline or background, at 520 px wide:
 
 ```html
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/zio/zio-query/series/2.x/brand/readme-banner-dark.png">
-  <img alt="ZIO Query: batching, pipelining and caching for any data source" src="https://raw.githubusercontent.com/zio/zio-query/series/2.x/brand/readme-banner-light.png">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/zio/zio-query/series/2.x/brand/zio-query-logo-dark.svg">
+  <img alt="ZIO Query" src="https://raw.githubusercontent.com/zio/zio-query/series/2.x/brand/zio-query-logo-light.svg" width="520">
 </picture>
 ```
 
-The banner spells the name, so the plugin leaves out the `# ZIO Query` heading.
+The logo spells the name, so the plugin leaves out the `# ZIO Query` heading.
 
 ## Rebuild
 
@@ -79,6 +80,6 @@ uv run --with fonttools --with uharfbuzz python tools/build_brand.py \
   <Sora[wght].ttf> <JetBrainsMono[wght].ttf> . sheet
 ```
 
-The script writes the SVG sources (wordmark shaped with HarfBuzz, kerning on, then outlined) and `tokens.css`, rasterises the icons with Chromium, builds `favicon.ico`, cuts the banners out of board 7 and the social cards, release card and slide out of board 8 (drawn there at 50% and one third, rendered at 4× and 6×), and renders every board in `sheet/` to PNG. To rebuild from changed boards, pass the folder that holds the edited `Brand*.dc.html` files as the last argument.
+The script writes the SVG sources (wordmark shaped with HarfBuzz, kerning on, then outlined) and `tokens.css`, rasterises the icons with Chromium, builds `favicon.ico`, cuts the social cards, release card and slide out of board 8 (drawn there at full size inside scaled previews), and renders every board in `sheet/` to PNG. To rebuild from changed boards, pass the folder that holds the edited `Brand*.dc.html` files as the last argument.
 
-Every surface uses one tagline: "Batching, pipelining and caching for any data source". The social cards and release card carry the mark at poster size, bleeding off the right edge. "Many requests, one round trip" stays as a secondary line for body copy and talks. The tagline, the `zio.dev/zio-query` address and the sample copy are proposals for the maintainers to confirm.
+Every surface uses one tagline: "Batching, pipelining and caching for any data source". "Many requests, one round trip" stays as a secondary line for body copy and talks. The tagline, the `zio.dev/zio-query` address and the sample copy are proposals for the maintainers to confirm.
