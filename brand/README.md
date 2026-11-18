@@ -24,7 +24,7 @@ The mark is a tally turned on its side. Four horizontal lines are four requests;
 - `social-og-light.png`, `social-og-dark.png`: 1200 × 630, `og:image`.
 - `social-x-light.png`, `social-x-dark.png`: 1200 × 600, `twitter:image`.
 - `social-linkedin-light.png`, `social-linkedin-dark.png`: 1200 × 627, LinkedIn shares.
-- `social-github-light.png`, `social-github-dark.png`: 1280 × 640, repository Settings › Social preview.
+- `social-github-light.png`: 1280 × 640, the repository social preview. Upload it by hand in Settings › Social preview (GitHub has no API for it). `social-github-dark.png` is a spare.
 - `release-card.png`: 1200 × 630 release posts. Version and highlights are placeholders.
 - `slide-title.png`: 1920 × 1080 talk title slide. Title, speaker and event are placeholders.
 
