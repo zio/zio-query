@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ZIO Query in the browser</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#1D4ED8}a:hover{color:#1E40AF}
+</style>
+</helmet>
+<div style="width: 1480px; height: 2000px; box-sizing: border-box; padding: 64px; background: #FFFFFF; color: #101521; font-family: 'Sora', Inter, sans-serif; display: flex; flex-direction: column; gap: 56px">
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<symbol id="qm" viewBox="0 0 120 120"><path d="M18 24H102M18 48H102M18 72H102M18 96H102" fill="none" style="stroke:var(--ln)" stroke-width="10" stroke-linecap="round"/><path d="M102 24L18 96" fill="none" style="stroke:var(--st)" stroke-width="10" stroke-linecap="round"/></symbol>
+<symbol id="qs" viewBox="0 0 120 120"><path d="M18 26H102M18 94H102" fill="none" style="stroke:var(--ln)" stroke-width="15" stroke-linecap="round"/><path d="M40 60H80" fill="none" style="stroke:var(--ln)" stroke-width="13" stroke-linecap="round"/><path d="M102 26L18 94" fill="none" style="stroke:var(--st)" stroke-width="15" stroke-linecap="round"/></symbol>
+<symbol id="qt" viewBox="0 0 120 120"><rect width="120" height="120" rx="26" style="fill:var(--tile)"/><g transform="translate(60 60) scale(0.62) translate(-60 -60)"><use href="#qm" width="120" height="120"></use></g></symbol>
+<symbol id="qts" viewBox="0 0 120 120"><rect width="120" height="120" rx="26" style="fill:#2563EB"/><g transform="translate(60 60) scale(0.68) translate(-60 -60)" style="--ln:#BFDBFE; --st:#FFFFFF"><use href="#qs" width="120" height="120"></use></g></symbol>
+</defs></svg>
+
+<div style="display: flex; flex-direction: column; gap: 10px">
+<div style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #566074; letter-spacing: 0.08em; text-transform: uppercase">Brand sheet · 09 · In the browser</div>
+<h1 style="margin: 0; font-size: 64px; line-height: 1.05; font-weight: 700; letter-spacing: -0.02em">In the browser</h1>
+<div style="font-size: 20px; color: #566074; max-width: 1000px; line-height: 1.45">Where most people will meet the mark: a 16 px tab among twenty others, the docs header, a search result. The small cut does the work at tab size.</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 20px">
+<div style="display: flex; align-items: baseline; gap: 16px; border-top: 2px solid #101521; padding-top: 14px"><div style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #566074">9.1</div><div style="font-size: 28px; font-weight: 700">Tab strip, normal and crowded</div></div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px">
+<div style="display: flex; flex-direction: column; gap: 16px">
+<div style="background: #DEE1E6; border-radius: 12px; padding: 10px 10px 0; display: flex; gap: 4px"><div style="background: #FFFFFF; border-radius: 10px 10px 0 0; padding: 10px 14px; display: flex; align-items: center; gap: 10px; width: 220px"><svg width="16" height="16" viewBox="0 0 120 120" aria-hidden="true"><use href="#qts" width="120" height="120"></use></svg><span style="font-size: 13px; white-space: nowrap; overflow: hidden">ZIO Query</span></div><div style="padding: 10px 14px; display: flex; align-items: center; gap: 10px; width: 200px"><span style="width: 16px; height: 16px; border-radius: 4px; background: #9AA0A6"></span><span style="font-size: 13px; color: #5F6368">GitHub</span></div></div>
+<div style="background: #DEE1E6; border-radius: 12px; padding: 10px 10px 0; display: flex; gap: 2px"><div style="background: #FFFFFF; border-radius: 8px 8px 0 0; padding: 10px 0; width: 40px; display: flex; justify-content: center"><svg width="16" height="16" viewBox="0 0 120 120" aria-hidden="true"><use href="#qts" width="120" height="120"></use></svg></div><div style="padding: 10px 0; width: 40px; display: flex; justify-content: center"><span style="width: 16px; height: 16px; border-radius: 4px; background: #9AA0A6"></span></div><div style="padding: 10px 0; width: 40px; display: flex; justify-content: center"><span style="width: 16px; height: 16px; border-radius: 8px; background: #E8590C"></span></div><div style="padding: 10px 0; width: 40px; display: flex; justify-content: center"><span style="width: 16px; height: 16px; border-radius: 4px; background: #3DDC97"></span></div><div style="padding: 10px 0; width: 40px; display: flex; justify-content: center"><span style="width: 16px; height: 16px; border-radius: 4px; background: #6D4AE0"></span></div><div style="padding: 10px 0; width: 40px; display: flex; justify-content: center"><span style="width: 16px; height: 16px; border-radius: 4px; background: #5F6368"></span></div><div style="padding: 10px 0; width: 40px; display: flex; justify-content: center"><span style="width: 16px; height: 16px; border-radius: 4px; background: #C2185B"></span></div><div style="padding: 10px 0; width: 40px; display: flex; justify-content: center"><span style="width: 16px; height: 16px; border-radius: 8px; background: #9AA0A6"></span></div></div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 16px">
+<div style="background: #202124; border-radius: 12px; padding: 10px 10px 0; display: flex; gap: 4px"><div style="background: #35363A; border-radius: 10px 10px 0 0; padding: 10px 14px; display: flex; align-items: center; gap: 10px; width: 220px"><svg width="16" height="16" viewBox="0 0 120 120" aria-hidden="true"><use href="#qts" width="120" height="120"></use></svg><span style="font-size: 13px; color: #E8EAED; white-space: nowrap; overflow: hidden">ZIO Query</span></div><div style="padding: 10px 14px; display: flex; align-items: center; gap: 10px; width: 200px"><span style="width: 16px; height: 16px; border-radius: 4px; background: #5F6368"></span><span style="font-size: 13px; color: #9AA0A6">GitHub</span></div></div>
+<div style="background: #202124; border-radius: 12px; padding: 10px 10px 0; display: flex; gap: 2px"><div style="background: #35363A; border-radius: 8px 8px 0 0; padding: 10px 0; width: 40px; display: flex; justify-content: center"><svg width="16" height="16" viewBox="0 0 120 120" aria-hidden="true"><use href="#qts" width="120" height="120"></use></svg></div><div style="padding: 10px 0; width: 40px; display: flex; justify-content: center"><span style="width: 16px; height: 16px; border-radius: 4px; background: #5F6368"></span></div><div style="padding: 10px 0; width: 40px; display: flex; justify-content: center"><span style="width: 16px; height: 16px; border-radius: 8px; background: #E8590C"></span></div><div style="padding: 10px 0; width: 40px; display: flex; justify-content: center"><span style="width: 16px; height: 16px; border-radius: 4px; background: #3DDC97"></span></div><div style="padding: 10px 0; width: 40px; display: flex; justify-content: center"><span style="width: 16px; height: 16px; border-radius: 4px; background: #6D4AE0"></span></div><div style="padding: 10px 0; width: 40px; display: flex; justify-content: center"><span style="width: 16px; height: 16px; border-radius: 4px; background: #9AA0A6"></span></div><div style="padding: 10px 0; width: 40px; display: flex; justify-content: center"><span style="width: 16px; height: 16px; border-radius: 4px; background: #C2185B"></span></div><div style="padding: 10px 0; width: 40px; display: flex; justify-content: center"><span style="width: 16px; height: 16px; border-radius: 8px; background: #5F6368"></span></div></div>
+</div>
+</div>
+<div style="font-size: 16px; color: #566074; line-height: 1.5">In a crowded strip only the icon is left. The cobalt tile with its crossed Z stays distinct next to the sibling tabs (orange, mint, violet, raspberry) in both themes.</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 20px">
+<div style="display: flex; align-items: baseline; gap: 16px; border-top: 2px solid #101521; padding-top: 14px"><div style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #566074">9.2</div><div style="font-size: 28px; font-weight: 700">Other surfaces</div></div>
+<div style="border: 1px solid #E3E6EC; border-radius: 16px; overflow: hidden">
+<div style="display: flex; align-items: center; gap: 28px; padding: 16px 28px; border-bottom: 1px solid #E3E6EC; flex-wrap: wrap">
+<div style="font-size: 22px; line-height: 1; font-weight: 700; letter-spacing: -0.02em; white-space: nowrap"><svg viewBox="10 14 100 92" role="img" aria-label="Z" style="width: 0.82em; height: 0.78em; vertical-align: -0.02em; margin-right: 0.04em; --ln:#101521; --st:#2563EB"><use href="#qm" width="120" height="120"></use></svg>IO <span style="font-weight: 400">Query</span></div>
+<a href="https://zio.dev/zio-query" style="font-size: 15px; text-decoration: none; color: #101521">Docs</a><a href="https://zio.dev/zio-query" style="font-size: 15px; text-decoration: none; color: #566074">Reference</a><a href="https://github.com/zio/zio-query" style="font-size: 15px; text-decoration: none; color: #566074">GitHub</a>
+<div style="margin-left: auto; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #566074; border: 1px solid #E3E6EC; border-radius: 8px; padding: 8px 12px">[VERSION]</div>
+</div>
+<div style="padding: 14px 28px; font-size: 14px; color: #566074; background: #F4F5F8">Docs header: lockup at 22 px, links in ink and slate, the only cobalt is the strike.</div>
+</div>
+<div style="display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 24px">
+<div style="border: 1px solid #E3E6EC; border-radius: 16px; padding: 24px; display: flex; flex-direction: column; gap: 8px">
+<div style="display: flex; align-items: center; gap: 12px"><svg width="28" height="28" viewBox="0 0 120 120" aria-hidden="true" style="--tile:#2563EB; --ln:#BFDBFE; --st:#FFFFFF"><use href="#qt" width="120" height="120"></use></svg><div><div style="font-size: 14px">ZIO</div><div style="font-size: 12px; color: #566074">https://zio.dev › zio-query</div></div></div>
+<div style="font-size: 20px; color: #1D4ED8">Introduction to ZIO Query</div>
+<div style="font-size: 14px; color: #566074; line-height: 1.5">ZIO Query is a library for writing optimized queries to data sources in a high-level compositional style. It can add efficient pipelining, batching, and caching to any data source.</div>
+<div style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #566074; margin-top: 6px">SEARCH RESULT · 28 PX SITE ICON</div>
+</div>
+<div style="background: #101521; border-radius: 16px; padding: 24px; display: flex; gap: 22px; justify-content: center; align-items: flex-start">
+<div style="display: flex; flex-direction: column; align-items: center; gap: 8px"><svg width="64" height="64" viewBox="0 0 120 120" aria-hidden="true"><rect width="120" height="120" rx="28" fill="#2563EB"/><g transform="translate(60 60) scale(0.62) translate(-60 -60)" style="--ln:#BFDBFE; --st:#FFFFFF"><use href="#qm" width="120" height="120"></use></g></svg><span style="font-size: 12px; color: #F4F5F8">ZIO Query</span></div>
+<div style="display: flex; flex-direction: column; align-items: center; gap: 8px"><span style="width: 64px; height: 64px; border-radius: 18px; background: #2A3245"></span><span style="font-size: 12px; color: #A7AEBD">Notes</span></div>
+<div style="display: flex; flex-direction: column; align-items: center; gap: 8px"><span style="width: 64px; height: 64px; border-radius: 18px; background: #2A3245"></span><span style="font-size: 12px; color: #A7AEBD">Mail</span></div>
+</div>
+</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 20px">
+<div style="display: flex; align-items: baseline; gap: 16px; border-top: 2px solid #101521; padding-top: 14px"><div style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #566074">9.3</div><div style="font-size: 28px; font-weight: 700">Markup and test checklist</div></div>
+<div style="display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 24px">
+<div style="background: #101521; border-radius: 16px; padding: 26px; font-family: 'JetBrains Mono', monospace; font-size: 14px; line-height: 1.75; color: #D5DBE5; white-space: pre">&lt;<span style="color: #93C5FD">link</span> rel="icon" href="/favicon.svg" type="image/svg+xml"&gt;
+&lt;<span style="color: #93C5FD">link</span> rel="icon" href="/favicon.ico" sizes="32x32"&gt;
+&lt;<span style="color: #93C5FD">link</span> rel="apple-touch-icon" href="/apple-touch-icon.png"&gt;
+&lt;<span style="color: #93C5FD">link</span> rel="manifest" href="/site.webmanifest"&gt;
+&lt;<span style="color: #93C5FD">meta</span> name="theme-color" content="#FFFFFF"
+      media="(prefers-color-scheme: light)"&gt;
+&lt;<span style="color: #93C5FD">meta</span> name="theme-color" content="#101521"
+      media="(prefers-color-scheme: dark)"&gt;
+&lt;<span style="color: #93C5FD">meta</span> property="og:image" content="/social-og-dark.png"&gt;</div>
+<div style="display: flex; flex-direction: column; gap: 12px; font-size: 16px; line-height: 1.45">
+<div style="background: #F4F5F8; border-radius: 12px; padding: 14px 18px">☐ favicon.svg uses the small cut, not the full mark</div>
+<div style="background: #F4F5F8; border-radius: 12px; padding: 14px 18px">☐ Tab icon checked at 16 px on light and dark tabs</div>
+<div style="background: #F4F5F8; border-radius: 12px; padding: 14px 18px">☐ Maskable icon tested in a circle and a squircle</div>
+<div style="background: #F4F5F8; border-radius: 12px; padding: 14px 18px">☐ Social cards checked in a link-preview tester</div>
+<div style="background: #F4F5F8; border-radius: 12px; padding: 14px 18px">☐ README banner switches with the GitHub theme</div>
+</div>
+</div>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1480,"height":2000}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>
