@@ -281,11 +281,6 @@ def page(defs, body):
             f'</style></head><body>{defs}{body}</body></html>')
 
 
-hero = read_board("Brand7Hero")
-light, dark = cutouts(hero, 1200, 300)[:2]
-for name, el in [("readme-banner-light.png", light), ("readme-banner-dark.png", dark)]:
-    shoot(page(defs_of(hero), flat(el)), 1200, 300, os.path.join(OUT, name), scale=2)
-
 social = read_board("Brand8Social")
 d8 = defs_of(social)
 gh, og, sl = cutouts(social, 640, 320), cutouts(social, 600, 315), cutouts(social, 640, 360)
