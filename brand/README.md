@@ -59,12 +59,16 @@ Cobalt belongs on the strike and in one accent per layout. The ramp follows the 
 
 ## README banner
 
+The repository README is generated from `docs/index.md` by `sbt docs/generateReadme`, so the banner is set in `build.sbt` through the `readmeBanner` key of `zio-sbt-website`. It renders as:
+
 ```html
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="brand/readme-banner-dark.png">
-  <img alt="ZIO Query" src="brand/readme-banner-light.png" width="600">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/zio/zio-query/series/2.x/brand/readme-banner-dark.png">
+  <img alt="ZIO Query: batching, pipelining and caching for any data source" src="https://raw.githubusercontent.com/zio/zio-query/series/2.x/brand/readme-banner-light.png">
 </picture>
 ```
+
+The banner spells the name, so the plugin leaves out the `# ZIO Query` heading.
 
 ## Rebuild
 
