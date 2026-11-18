@@ -1,7 +1,7 @@
 ---
 id: index
 title: "Introduction to ZIO Query"
-sidebar_label: "ZIO Query"
+sidebar_label: "Introduction"
 ---
 
 [ZIO Query](https://github.com/zio/zio-query) is a library for writing optimized queries to data sources in a high-level compositional style. It can add efficient pipelining, batching, and caching to any data source. ZIO Query helps us dramatically reduce load on data sources and improve performance.
