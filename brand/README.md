@@ -21,7 +21,7 @@ The mark is a tally turned on its side. Four horizontal lines are four requests;
 - `avatar-500.png`: full-bleed square for GitHub, Slack, X and Discord, which crop it to a circle or rounded square.
 
 **Cards** (PNG at 2×, slide at 1×). One template shared with ZIO Config and ZIO Blocks: the logo, the tagline (38 px semibold), a supporting line (29 px), a label (25 px) over a short cobalt rule, the data sources and the address (25 px), with a faint mark bleeding off the right edge.
-- `social-og-light.png`, `social-og-dark.png`: 1200 × 630, `og:image`.
+- `social-og-light.png`: 1200 × 630, the `og:image` (link previews do not follow the viewer's theme, so one card is used: the light one). `social-og-dark.png` is a spare.
 - `social-x-light.png`, `social-x-dark.png`: 1200 × 600, `twitter:image`.
 - `social-linkedin-light.png`, `social-linkedin-dark.png`: 1200 × 627, LinkedIn shares.
 - `social-github-light.png`: 1280 × 640, the repository social preview. Upload it by hand in Settings › Social preview (GitHub has no API for it). `social-github-dark.png` is a spare.
@@ -55,7 +55,7 @@ Cobalt belongs on the strike and in one accent per layout. The ramp follows the 
 <link rel="manifest" href="/site.webmanifest">
 <meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#101521" media="(prefers-color-scheme: dark)">
-<meta property="og:image" content="/social-og-dark.png">
+<meta property="og:image" content="/social-og-light.png">
 ```
 
 ## README header
