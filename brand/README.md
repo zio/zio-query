@@ -20,9 +20,11 @@ The mark is a tally turned on its side. Four horizontal lines are four requests;
 - `icon-maskable.svg`, `icon-maskable-512.png`: full-bleed square, mark at 56% so it stays inside Android's safe circle.
 - `avatar-500.png`: full-bleed square for GitHub, Slack, X and Discord, which crop it to a circle or rounded square.
 
-**Cards** (PNG at 4×, slide at 6×)
+**Cards** (PNG at 2×, slide at 1×). One template shared with ZIO Config and ZIO Blocks: the logo, the tagline (38 px semibold), a supporting line (29 px), a label (25 px) over a short cobalt rule, the data sources and the address (25 px), with a faint mark bleeding off the right edge.
+- `social-og-light.png`, `social-og-dark.png`: 1200 × 630, `og:image`.
+- `social-x-light.png`, `social-x-dark.png`: 1200 × 600, `twitter:image`.
+- `social-linkedin-light.png`, `social-linkedin-dark.png`: 1200 × 627, LinkedIn shares.
 - `social-github-light.png`, `social-github-dark.png`: 1280 × 640, repository Settings › Social preview.
-- `social-og-light.png`, `social-og-dark.png`: 1200 × 630, `og:image` and `twitter:image`.
 - `release-card.png`: 1200 × 630 release posts. Version and highlights are placeholders.
 - `slide-title.png`: 1920 × 1080 talk title slide. Title, speaker and event are placeholders.
 
@@ -78,6 +80,6 @@ uv run --with fonttools --with uharfbuzz python tools/build_brand.py \
   <Sora[wght].ttf> <JetBrainsMono[wght].ttf> . sheet
 ```
 
-The script writes the SVG sources (wordmark shaped with HarfBuzz, kerning on, then outlined) and `tokens.css`, rasterises the icons with Chromium, builds `favicon.ico`, cuts the social cards, release card and slide out of board 8 (drawn there at 50% and one third, rendered at 4× and 6×), and renders every board in `sheet/` to PNG. To rebuild from changed boards, pass the folder that holds the edited `Brand*.dc.html` files as the last argument.
+The script writes the SVG sources (wordmark shaped with HarfBuzz, kerning on, then outlined) and `tokens.css`, rasterises the icons with Chromium, builds `favicon.ico`, cuts the social cards, release card and slide out of board 8 (drawn there at full size inside scaled previews), and renders every board in `sheet/` to PNG. To rebuild from changed boards, pass the folder that holds the edited `Brand*.dc.html` files as the last argument.
 
-Every surface uses one tagline: "Batching, pipelining and caching for any data source". The social cards and release card carry the mark at poster size, bleeding off the right edge. "Many requests, one round trip" stays as a secondary line for body copy and talks. The tagline, the `zio.dev/zio-query` address and the sample copy are proposals for the maintainers to confirm.
+Every surface uses one tagline: "Batching, pipelining and caching for any data source". "Many requests, one round trip" stays as a secondary line for body copy and talks. The tagline, the `zio.dev/zio-query` address and the sample copy are proposals for the maintainers to confirm.
