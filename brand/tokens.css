@@ -1,0 +1,38 @@
+/* ZIO Query brand tokens. Light by default, dark through prefers-color-scheme. */
+:root {
+  --zq-cobalt: #2563EB;        /* the strike, the tile, buttons; 5.17:1 on white */
+  --zq-cobalt-700: #1D4ED8;    /* links and small cobalt text; 6.70:1 on white */
+  --zq-cobalt-400: #60A5FA;    /* the strike on dark; 7.17:1 on ink */
+  --zq-cobalt-300: #93C5FD;    /* links and code keywords on dark; 10.12:1 on ink */
+  --zq-tint: #BFDBFE;          /* lines of the mark on the cobalt tile; shapes only */
+  --zq-ink: #101521;
+  --zq-paper: #FFFFFF;
+  --zq-snow: #F4F5F8;          /* panels, code on light */
+  --zq-bg: var(--zq-paper);
+  --zq-surface: var(--zq-snow);
+  --zq-line: #E3E6EC;          /* borders, never text */
+  --zq-text: var(--zq-ink);    /* 18.24:1 on paper */
+  --zq-text-2: #566074;        /* slate; 6.32:1 on paper */
+  --zq-accent: var(--zq-cobalt);
+  --zq-on-accent: #FFFFFF;     /* 5.17:1 on cobalt */
+  --zq-link: var(--zq-cobalt-700);
+  --zq-tile: var(--zq-cobalt);
+  --zq-code-keyword: var(--zq-cobalt-700);
+  --zq-font-sans: "Sora", system-ui, sans-serif;
+  --zq-font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --zq-radius-tile: 21.7%;     /* 26 of 120 units */
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --zq-bg: var(--zq-ink);
+    --zq-surface: #171C28;
+    --zq-line: #232833;
+    --zq-text: var(--zq-snow);  /* 16.73:1 on ink */
+    --zq-text-2: #A7AEBD;       /* 8.19:1 on ink */
+    --zq-accent: var(--zq-cobalt-400);
+    --zq-on-accent: var(--zq-ink);
+    --zq-link: var(--zq-cobalt-300);
+    --zq-code-keyword: var(--zq-cobalt-300);
+  }
+}
+/* The mark: lines use --zq-text, the strike uses --zq-accent. On the tile: tint lines, white strike. */
