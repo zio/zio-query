@@ -205,6 +205,10 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
   def asExitMaybe: Option[Exit[E, A]] =
     Option(asExitOrElse(null))
 
+  /**
+   * Like `asExitMaybe`, but returns `default` instead of `None` when the result
+   * of this query is not known without running it.
+   */
   def asExitOrElse[E1 >: E, A1 >: A](default: Exit[E1, A1]): Exit[E1, A1] =
     self.step match {
       case Exit.Success(Result.Done(a: A))        => Exit.succeed(a)
@@ -1238,8 +1242,21 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
 
 }
 
+/**
+ * Constructors for `ZQuery` values: from requests to data sources
+ * (`fromRequest` and its variants), from values and effects (`succeed`,
+ * `fromZIO`, ...), and over collections of queries (`foreach`,
+ * `foreachBatched`, `foreachPar` and their `collectAll` forms).
+ *
+ * @see
+ *   [[https://zio.dev/zio-query/creating-queries Creating Queries]]
+ */
 object ZQuery {
 
+  /**
+   * Returns a query that moves the `Left` of the `Either` that `v` succeeds
+   * with into the error channel. The inverse of `ZQuery#either`.
+   */
   def absolve[R, E, A](v: => ZQuery[R, E, Either[E, A]])(implicit trace: Trace): ZQuery[R, E, A] =
     ZQuery.suspend(v).flatMap {
       case Right(v) => ZQuery.succeedNow(v)
@@ -1575,6 +1592,11 @@ object ZQuery {
     foreachSequentialOuter[R, E, A, B, Collection](as.toArray, mode = Mode.Batched, bf.fromSpecific(as)(_))(f)
   }
 
+  /**
+   * Performs a query for each element in a Set, batching requests to data
+   * sources and collecting the results into a query returning a `Set` of their
+   * results.
+   */
   def foreachBatched[R, E, A, B](as: Set[A])(fn: A => ZQuery[R, E, B])(implicit
     trace: Trace
   ): ZQuery[R, E, Set[B]] =
@@ -2014,6 +2036,11 @@ object ZQuery {
    */
   object unsafe {
 
+    /**
+     * Returns a memoized version of `query` without suspending its creation in
+     * an effect. See `ZQuery#memoize`, including its caveat for queries that
+     * make requests.
+     */
     def memoize[R, E, A](query: ZQuery[R, E, A])(implicit unsafe: Unsafe, trace: Trace): ZQuery[R, E, A] = {
       val ref = Ref.Synchronized.unsafe.make[Option[Result[R, E, A]]](None)
       new ZQuery[R, E, A](ref.modifyZIO {
@@ -2038,17 +2065,41 @@ object ZQuery {
   def unwrap[R, E, A](zio: => ZIO[R, E, ZQuery[R, E, A]])(implicit trace: Trace): ZQuery[R, E, A] =
     ZQuery.fromZIO(zio).flatten
 
+  /**
+   * Partially applied form of `ZQuery.environmentWith`, which fixes the
+   * environment type `R`.
+   */
   final class EnvironmentWithPartiallyApplied[R](private val dummy: Boolean = true) extends AnyVal {
+
+    /**
+     * Applies `f` to the environment of the query.
+     */
     def apply[A](f: ZEnvironment[R] => A)(implicit trace: Trace): ZQuery[R, Nothing, A] =
       ZQuery(ZIO.environmentWith[R](e => Result.done(f(e))))
   }
 
+  /**
+   * Partially applied form of `ZQuery.environmentWithQuery`, which fixes the
+   * environment type `R`.
+   */
   final class EnvironmentWithQueryPartiallyApplied[R](private val dummy: Boolean = true) extends AnyVal {
+
+    /**
+     * Builds the query to run next from the environment of the query.
+     */
     def apply[E, A](f: ZEnvironment[R] => ZQuery[R, E, A])(implicit trace: Trace): ZQuery[R, E, A] =
       environment[R].flatMap(f)
   }
 
+  /**
+   * Partially applied form of `ZQuery.environmentWithZIO`, which fixes the
+   * environment type `R`.
+   */
   final class EnvironmentWithZIOPartiallyApplied[R](private val dummy: Boolean = true) extends AnyVal {
+
+    /**
+     * Builds a `ZIO` effect to run from the environment of the query.
+     */
     def apply[E, A](f: ZEnvironment[R] => ZIO[R, E, A])(implicit trace: Trace): ZQuery[R, E, A] =
       ZQuery(
         ZIO.environmentWithZIO[R](
@@ -2060,7 +2111,15 @@ object ZQuery {
       )
   }
 
+  /**
+   * Partially applied form of `ZQuery#provideSomeLayer`, which fixes the
+   * remaining environment type `R0`.
+   */
   final class ProvideSomeLayer[R0, -R, +E, +A](private val self: ZQuery[R, E, A]) extends AnyVal {
+
+    /**
+     * Provides the part `R1` of the environment with the specified layer.
+     */
     def apply[E1 >: E, R1](
       layer: => Described[ZLayer[R0, E1, R1]]
     )(implicit ev: R0 with R1 <:< R, tag: Tag[R1], trace: Trace): ZQuery[R0, E1, A] =
@@ -2069,7 +2128,16 @@ object ZQuery {
         .provideLayer(Described(ZLayer.environment[R0] ++ layer.value, layer.description))
   }
 
+  /**
+   * Partially applied form of `ZQuery#timeoutTo`, which holds the query and the
+   * default value.
+   */
   final class TimeoutTo[-R, +E, +A, +B](self: ZQuery[R, E, A], b: () => B) {
+
+    /**
+     * Applies `f` to the result of the query if it completes within `duration`,
+     * and returns the default value otherwise.
+     */
     def apply[B1 >: B](
       f: A => B1
     )(duration: => Duration)(implicit trace: Trace): ZQuery[R, E, B1] = {
@@ -2102,21 +2170,45 @@ object ZQuery {
     }
   }
 
+  /**
+   * Partially applied form of `ZQuery.serviceWith`, which fixes the service
+   * type `R`.
+   */
   final class ServiceWithPartiallyApplied[R](private val dummy: Boolean = true) extends AnyVal {
+
+    /**
+     * Applies `f` to the service of type `R`.
+     */
     def apply[A](
       f: R => A
     )(implicit tag: Tag[R], trace: Trace): ZQuery[R, Nothing, A] =
       ZQuery(ZIO.serviceWith[R](s => Result.done(f(s))))
   }
 
+  /**
+   * Partially applied form of `ZQuery.serviceWithQuery`, which fixes the
+   * service type.
+   */
   final class ServiceWithQueryPartiallyApplied[Service](private val dummy: Boolean = true) extends AnyVal {
+
+    /**
+     * Builds the query to run next from the service.
+     */
     def apply[R <: Service, E, A](
       f: Service => ZQuery[R, E, A]
     )(implicit tag: Tag[Service], trace: Trace): ZQuery[R with Service, E, A] =
       service[Service].flatMap(f)
   }
 
+  /**
+   * Partially applied form of `ZQuery.serviceWithZIO`, which fixes the service
+   * type.
+   */
   final class ServiceWithZIOPartiallyApplied[Service](private val dummy: Boolean = true) extends AnyVal {
+
+    /**
+     * Builds a `ZIO` effect to run from the service.
+     */
     def apply[R <: Service, E, A](
       f: Service => ZIO[R, E, A]
     )(implicit tag: Tag[Service], trace: Trace): ZQuery[R with Service, E, A] =
@@ -2151,38 +2243,88 @@ object ZQuery {
     (bs.result(), cs.result())
   }
 
+  /**
+   * Not read by ZIO Query: kept for binary compatibility only. Use
+   * `ZQuery#cached` and `ZQuery#uncached` to control caching.
+   */
   @deprecated("No longer used, kept for binary compatibility only", "0.7.4")
   val cachingEnabled: FiberRef[Boolean] =
     FiberRef.unsafe.make(true)(Unsafe)
 
+  /**
+   * The cache that requests use in the current fiber. `runCache` sets it to its
+   * cache for the duration of a run, and it is `None` while caching is disabled
+   * with `ZQuery#uncached` or outside a run.
+   */
   val currentCache: FiberRef[Option[Cache]] =
     FiberRef.unsafe.make(Option.empty[Cache])(Unsafe)
 
   private val disabledCache: FiberRef[Option[Cache]] =
     FiberRef.unsafe.make(Option.empty[Cache])(Unsafe)
 
+  /**
+   * The scope of the current run, which holds the finalizers that
+   * `acquireReleaseWith` and `ensuring` register. `runCache` sets a new scope
+   * for each run and closes it at the end of the run; the finalizers then run
+   * if the run ended with a failure or an interruption.
+   */
   val currentScope: FiberRef[QueryScope] =
     FiberRef.unsafe.make[QueryScope](QueryScope.NoOp)(Unsafe)
 
+  /**
+   * Partially applied form of `ZQuery.acquireReleaseWith`, which holds the
+   * acquire effect.
+   */
   final class Acquire[-R, +E, +A](private val acquire: () => ZIO[R, E, A]) extends AnyVal {
+
+    /**
+     * Sets the effect that releases the resource.
+     */
     def apply[R1](release: A => URIO[R1, Any]): Release[R with R1, E, A] =
       new Release[R with R1, E, A](acquire, release)
   }
+
+  /**
+   * Partially applied form of `ZQuery.acquireReleaseWith`, which holds the
+   * acquire and release effects.
+   */
   final class Release[-R, +E, +A](acquire: () => ZIO[R, E, A], release: A => URIO[R, Any]) {
+
+    /**
+     * Sets the query that uses the resource and returns the resulting query.
+     */
     def apply[R1 <: R, E1 >: E, B](use: A => ZQuery[R1, E1, B])(implicit trace: Trace): ZQuery[R1, E1, B] =
       acquireReleaseExitWith(acquire())((a: A, _: Exit[E1, B]) => release(a))(use)
   }
 
+  /**
+   * Partially applied form of `ZQuery.acquireReleaseExitWith`, which holds the
+   * acquire effect.
+   */
   final class AcquireExit[-R, +E, +A](private val acquire: () => ZIO[R, E, A]) extends AnyVal {
+
+    /**
+     * Sets the effect that releases the resource, given the `Exit` of the
+     * query.
+     */
     def apply[R1 <: R, E1 >: E, B](
       release: (A, Exit[E1, B]) => URIO[R1, Any]
     ): ReleaseExit[R1, E, E1, A, B] =
       new ReleaseExit(acquire, release)
   }
+
+  /**
+   * Partially applied form of `ZQuery.acquireReleaseExitWith`, which holds the
+   * acquire and release effects.
+   */
   final class ReleaseExit[-R, +E, E1, +A, B](
     acquire: () => ZIO[R, E, A],
     release: (A, Exit[E1, B]) => URIO[R, Any]
   ) {
+
+    /**
+     * Sets the query that uses the resource and returns the resulting query.
+     */
     def apply[R1 <: R, E2 >: E <: E1, B1 <: B](use: A => ZQuery[R1, E2, B1])(implicit
       trace: Trace
     ): ZQuery[R1, E2, B1] =
