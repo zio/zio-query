@@ -7,3 +7,5 @@
 - R4: two parallel Opus writers (1a ZQuery.scala, 1b the rest), no sbt in writers; controller runs sbt gates. Why: ZQuery.scala is half the code; disjoint files. Cost if wrong: one extra review.
 - 19:25 Task 1a DONE (4 commits; 154 checked, 49 changed: 13 false, 19 imprecise, 3 broken examples; 5 bugs). Task 1b DONE_WITH_CONCERNS (6 commits; 123 checked, 61 changed: 10 false, 18 imprecise; 3 bugs). Controller verified: comments-only code=0, coverage 279/279, drift 0.
 - R5: official ZIO-203 checker imports only `zio.query._` for `package zio.query` (true Scala scoping), so 14 of 16 blocks lacked `zio._`. Controller added `import zio._` as each block's first line. Why: readers need it too; matches the future zio-sbt checker. Cost if wrong: 14 extra lines.
+- 19:33 Gates at 3f439db: official snippets-scala-cli 16/16 PASS on 2.12.21, 2.13.18, 3.3.9; sbt fmt (no .scala change; it reformats build.sbt on base = pre-existing, reverted, out of scope); sbt lint PASS; ++2.12.21 and ++2.13.18 zioQueryJVM/doc 0 warn 0 error; ++3.3.9 zioQueryJVM/compile OK.
+- 19:28 Two parallel fresh Opus reviewers dispatched: A = ZQuery.scala + task-1a-issues, B = the rest + task-1b-issues.
