@@ -181,3 +181,34 @@ Each changed file was formatted with `scala-cli fmt --scalafmt-conf .scalafmt.co
    `DataSource.make` sources, and the query waits for the idle side (hangs with `DataSource.never`).
 
 DONE_WITH_CONCERNS
+
+## Fix round 1 (review B, rulings R7)
+
+Re-probes: `/tmp/claude-1000/query-scaladoc/probes-1b/fix1/` (Scala 2.12.21 and 2.13.18, same output on both)
+and `fix1-js/` (Scala.js 1.22.0 via scala-cli 1.19.0). Each reviewer replacement was checked against the source
+and the re-probe before it was applied; none needed a change, except that M-1 also gets the short, verified
+Scala.js clause the ruling allows.
+
+| Finding | Action | Evidence |
+|---|---|---|
+| I-1 deprecated `++`/`insert`/`insertOption` "each call copies every entry" | Applied the replacement in all three places: "a call can copy every entry of this map into a new map" | `immutable.HashMap.from(hm) eq hm: true` (2.12, 2.13); 20000 chained `insert`s from `empty`: 116 ms (2.12) / 136 ms (2.13); 200 `insert`s on a 20000-entry `fromIterable` map: 2011 ms / 1993 ms; `insertOption` `None` returns `self` (`CompletedRequestMap.scala:88` at base) |
+| I-2 `DataSource.never` "always loses" a race | Replaced with "it never wins: the race returns the results of the other data source, and does not complete if the other data source's `runAll` dies" | `race dying vs never (2s): None` (ZIO timeout fired); `race never vs fast: Right(fast-1)` |
+| M-1 `requests` scope | Applied: `apply` with at most one entry; `fromFunction*` output only for a non-empty batch; "on the JVM it throws a `ClassCastException`", plus "on Scala.js a development build fails while a release build returns the requests" | `apply0: Set()`; `fromFunction output 0 req: Set()`; `fromFunction output 1 req: throws java.lang.ClassCastException`; JS fastLink `UndefinedBehaviorError`, release `requests returned: Set(G(1), G(2))` |
+| M-2 `fromFunctionZIO` "fails only the query for that request" | Applied: "fails only that request: the other requests of the batch still get their results" | per request `List(Right(u-1), Left(bad 0), Right(u-2))`; plain `foreachPar` `Failure(Fail(bad 0, ...))`; base `DataSource.scala:356-357` |
+| M-3 `DataSource.Batched` (unchanged comment) "does not further optimize" | Applied the replacement (one batch after another; leaves out requests completed by an earlier batch) | base `DataSource.scala:211` (`filterNot(crm.contains)`); `batchN(1)` uncached `[1,1,2]` → `dd[1], dd[2]`; `runAll` `[1,2] [2,3] [1]` → `dd[1,2], dd[3]` |
+| M-4 `Batched.make` "called once per batch" | Applied: once per non-empty batch, after completed requests are left out | base `DataSource.scala:203`, `:211-212`; `runAll(Chunk(Chunk()))` → no call; probe above |
+| M-5 `Continue` (unchanged comments) "pure functions" | Applied in both places: "functions or ZIO effects, but not with queries" | `Get#mapZIO` = `Get(io.flatMap(f))`, `Get#foldZIO`/`foldCauseZIO` stay `Get`; `Get#mapQuery` = `Effect(...)` (`internal/Continue.scala`) |
+| M-6 bug entry 2 | Updated the Summary parenthesis and added the JVM/Scala.js sentence with the JS output, and the 2.12 message; "Expected behaviour" now says every platform | `fix1` and `fix1-js` outputs above |
+| `@see` links | All seven links in my files now end with `/` | `curl` on the five pages with a trailing slash: 200 each |
+
+Commits: `2807933` (I-1, M-1), `16a92f9` (I-2, M-2, M-3, M-4), `51d20bd` (M-5), `fe3ab20` (`@see` links), plus the
+commit that adds this section and the issues update.
+
+Checks after the round:
+- Official checker `python3 -I ~/.claude/skills/scaladoc-rollout/scripts/snippets-scala-cli.py . --version 0.7.9
+  --base 4e04bed1b`: 16 examples in 5 files, PASS on 2.12.21, 2.13.18 and 3.3.9 (it reads every changed file,
+  `ZQuery.scala` included).
+- `comments-only.py 4e04bed1b zio-query`: 16 files, 0 with code changes.
+- Each changed file was formatted with `scala-cli fmt` on its own; `.scala-build` folders were removed.
+
+Fix round 1 status: DONE.

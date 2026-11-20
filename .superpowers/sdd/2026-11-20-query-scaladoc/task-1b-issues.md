@@ -80,9 +80,14 @@ self-contained scala-cli program (`scala-cli run --server=false <dir>`) on Scala
 
 - **Found at:** 2026-11-20, 4e04bed1b (= v0.7.9).
 - **Summary:** `requests` casts `map.keySet` to `Set[Request[_, _]]`, which is `scala.collection.immutable.Set`.
-  For maps backed by a `mutable.HashMap` (every constructor except `empty`, `single`, `apply` with one entry,
-  and the deprecated `++` and `insert`), `keySet` is a `collection.Set` view, and the cast fails. Checked on
-  Scala 2.12.21, 2.13.18 and 3.3.9: same result on all three.
+  For maps backed by a `mutable.HashMap` (every constructor except `empty`, `single`, `apply` with at most one
+  entry, and the deprecated `++`, `insert` and `insertOption`, the last only when it adds an entry),
+  `keySet` is a `collection.Set` view, and the cast fails. Checked on Scala 2.12.21, 2.13.18 and 3.3.9 on the
+  JVM: same result on all three. On Scala.js a development build fails with an `UndefinedBehaviorError`, and a
+  release build does not check the cast (Scala.js 1.22.0, scala-cli 1.19.0: fastLink
+  `throws org.scalajs.linker.runtime.UndefinedBehaviorError: java.lang.ClassCastException: scala.collection.MapOps$KeySet cannot be cast to scala.collection.immutable.Set`;
+  `--js-mode release`: `requests returned: Set(G(1), G(2)) size 2 contains true`). The JVM message on 2.12 is
+  `scala.collection.mutable.HashMap$$anon$1 cannot be cast ...`.
 - **Reproducer:**
 
   ```scala
@@ -115,7 +120,7 @@ self-contained scala-cli program (`scala-cli run --server=false <dir>`) on Scala
 
   The full message on 2.13.18: `class scala.collection.MapOps$KeySet cannot be cast to class
   scala.collection.immutable.Set`.
-- **Expected behaviour:** `requests` returns the set of keys for every map, e.g.
+- **Expected behaviour:** `requests` returns the set of keys for every map on every platform, e.g.
   `Set(GetUserName(1), GetUserName(2))`.
 - **Root cause:** `zio-query/shared/src/main/scala/zio/query/CompletedRequestMap.scala:101`
   (`map.keySet.asInstanceOf[Set[Request[_, _]]]`) with `Mutable` at `:255-256` holding a
