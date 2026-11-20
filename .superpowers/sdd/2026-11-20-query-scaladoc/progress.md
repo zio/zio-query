@@ -11,3 +11,4 @@
 - 19:28 Two parallel fresh Opus reviewers dispatched: A = ZQuery.scala + task-1a-issues, B = the rest + task-1b-issues.
 - 19:47 Review A: 4 Important, 8 Minor; bugs 1a-1..5 confirmed, new sibling I4 (memoize drops die/orDie defects). R6: fix all I and M (truth rule, R10-style); @see URLs take the trailing slash (bare answers 301). Why: imprecise = false for readers. Cost if wrong: a longer fix round. Task 1a resumed for fix round 1.
 - 19:54 Review B: 2 Important, 6 Minor; bugs 1b-1..3 confirmed (entry 2 needs M-6 precision). R7: fix all, incl. unchanged comments in M-3/M-5; trailing-slash @see. Task 1b resumed for fix round 1.
+- 20:05 Fix round 1 done: 1a (8 commits; new bugs 6 memoize-defects, 7 mapError drops defect), 1b (4 commits + report). Scoped Sonnet re-reviews dispatched on `git diff 3f439db HEAD` per file group.
