@@ -24,10 +24,10 @@ import zio.stacktracer.TracingImplicits.disableAutoTrace
  * A `Continue[R, E, A]` models a continuation of a blocked request that
  * requires an environment `R` and may either fail with an `E` or succeed with
  * an `A`. A continuation may either be a `Get` that merely gets the result of a
- * blocked request (potentially transforming it with pure functions) or an
- * `Effect` that may perform arbitrary effects. This is used by the library
- * internally to determine whether it is safe to pipeline two requests that must
- * be executed sequentially.
+ * blocked request (potentially transforming it with functions or ZIO effects,
+ * but not with queries) or an `Effect` that may perform arbitrary effects. This
+ * is used by the library internally to determine whether it is safe to pipeline
+ * two requests that must be executed sequentially.
  */
 private[query] abstract class Continue[-R, +E, +A] { self =>
 
@@ -132,7 +132,8 @@ private[query] abstract class Continue[-R, +E, +A] { self =>
 
   /**
    * Combines this continuation with that continuation using the specified
-   * function, in parallel.
+   * function. Two `Effect` continuations are combined with `ZQuery#zipWithPar`;
+   * a `Get` is awaited in sequence.
    */
   def zipWithPar[R1 <: R, E1 >: E, B, C](
     that: Continue[R1, E1, B]
@@ -140,7 +141,9 @@ private[query] abstract class Continue[-R, +E, +A] { self =>
 
   /**
    * Combines this continuation with that continuation using the specified
-   * function, batching requests to data sources.
+   * function. Two `Effect` continuations are combined with
+   * `ZQuery#zipWithBatched`, batching requests to data sources; a `Get` is
+   * awaited in sequence.
    */
   def zipWithBatched[R1 <: R, E1 >: E, B, C](
     that: Continue[R1, E1, B]
@@ -150,8 +153,8 @@ private[query] abstract class Continue[-R, +E, +A] { self =>
 private[query] object Continue {
 
   /**
-   * Constructs a continuation from a request, a data source, and a `Promise`
-   * that will contain the result of the request when it is executed.
+   * Constructs a continuation from a `Promise` that will contain the result of
+   * the request when it is executed.
    */
   def apply[E, A](promise: Promise[E, A])(implicit trace: Trace): Continue[Any, E, A] =
     Get(promise.await)
@@ -164,7 +167,8 @@ private[query] object Continue {
 
   /**
    * Constructs a continuation that merely gets the result of a blocked request
-   * (potentially transforming it with pure functions).
+   * (potentially transforming it with functions or ZIO effects, but not with
+   * queries).
    */
   def get[R, E, A](io: ZIO[R, E, A]): Continue[R, E, A] =
     Get(io)

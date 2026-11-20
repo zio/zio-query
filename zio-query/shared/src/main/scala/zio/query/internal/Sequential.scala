@@ -54,7 +54,7 @@ private[query] final class Sequential[-R](
     map.size
 
   /**
-   * Converts this collection of batches requests that must be executed
+   * Converts this collection of batches of requests that must be executed
    * sequentially to an `Iterable` containing mappings from data sources to
    * batches of requests from those data sources.
    */

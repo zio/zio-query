@@ -20,9 +20,14 @@ import zio.stacktracer.TracingImplicits.disableAutoTrace
 import zio.{Chunk, Trace, ZIO}
 
 /**
- * A `DataSourceAspect` is an aspect that can be weaved into queries. You can
- * think of an aspect as a polymorphic function, capable of transforming one
- * data source into another, possibly enlarging the environment type.
+ * A `DataSourceAspect` is an aspect that can be weaved into data sources, with
+ * `DataSource#@@`, and into every data source of a query, with
+ * `ZQuery#mapDataSources` or `QueryAspect.fromDataSourceAspect`. You can think
+ * of an aspect as a polymorphic function, capable of transforming one data
+ * source into another, possibly enlarging the environment type.
+ *
+ * @see
+ *   [[https://zio.dev/zio-query/aspects/ Aspects]]
  */
 trait DataSourceAspect[-R] { self =>
 
@@ -39,7 +44,8 @@ trait DataSourceAspect[-R] { self =>
 
   /**
    * Returns a new aspect that represents the sequential composition of this
-   * aspect with the specified one.
+   * aspect with the specified one: this aspect is applied first, and the
+   * specified one to its result.
    */
   final def andThen[R1 <: R](that: DataSourceAspect[R1]): DataSourceAspect[R1] =
     new DataSourceAspect[R1] {
@@ -48,11 +54,19 @@ trait DataSourceAspect[-R] { self =>
     }
 }
 
+/**
+ * Constructors for data source aspects.
+ */
 object DataSourceAspect {
 
   /**
    * A data source aspect that executes requests between two effects, `before`
    * and `after`, where the result of `before` can be used by `after`.
+   *
+   * The effects run once per call to the data source's `runAll`, not once per
+   * request, and `after` runs even if the call is interrupted. The identifier
+   * of the new data source is the original identifier followed by
+   * `@@ around(b)(a)`, where `b` and `a` are the two descriptions.
    */
   def around[R, A](
     before: Described[ZIO[R, Nothing, A]]
@@ -67,8 +81,9 @@ object DataSourceAspect {
     }
 
   /**
-   * A data source aspect that limits data sources to executing at most `n`
-   * requests in parallel.
+   * A data source aspect that splits each batch of requests into batches of at
+   * most `n` requests, the same as `DataSource#batchN`. If `n` is less than 1,
+   * the data source dies with an `IllegalArgumentException` when it runs.
    */
   def maxBatchSize(n: Int): DataSourceAspect[Any] =
     new DataSourceAspect[Any] {

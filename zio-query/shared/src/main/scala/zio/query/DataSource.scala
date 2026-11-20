@@ -21,7 +21,10 @@ import zio.{Chunk, Exit, Trace, ZEnvironment, ZIO}
 
 /**
  * A `DataSource[R, A]` requires an environment `R` and is capable of executing
- * requests of type `A`.
+ * requests of type `A`. Queries send requests to a data source with
+ * `ZQuery.fromRequest` or `DataSource#query`. When a query runs, ZIO Query
+ * collects the requests that can be made at the same time and hands them to the
+ * data source together, so it can answer them with one call to its backend.
  *
  * Data sources must implement the method `runAll` which takes a collection of
  * requests and returns an effect with a `CompletedRequestMap` containing a
@@ -29,16 +32,47 @@ import zio.{Chunk, Exit, Trace, ZEnvironment, ZIO}
  * `Chunk[Chunk[A]]`. The outer `Chunk` represents batches of requests that must
  * be performed sequentially. The inner `Chunk` represents a batch of requests
  * that can be performed in parallel. This allows data sources to introspect on
- * all the requests being executed and optimize the query.
+ * all the requests being executed and optimize the query. Most data sources do
+ * not implement `runAll` by hand: the constructors in [[DataSource$]], such as
+ * `DataSource.fromFunctionBatched`, build one from a function.
  *
- * Data sources will typically be parameterized on a subtype of `Request[A]`,
- * though that is not strictly necessarily as long as the data source can map
- * the request type to a `Request[A]`. Data sources can then pattern match on
- * the collection of requests to determine the information requested, execute
- * the query, and place the results into the `CompletedRequestsMap` one of the
- * constructors in [[CompletedRequestMap$]]. Data sources must provide results
- * for all requests received. Failure to do so will cause a query to die with a
+ * The request type `A` is normally a subtype of `Request[E, B]`:
+ * `ZQuery.fromRequest` requires that evidence and uses it to give the query the
+ * error type `E` and the result type `B`. A data source builds its results with
+ * one of the constructors in [[CompletedRequestMap$]]. It must provide a result
+ * for every request it receives, keyed by a request equal to the one it
+ * received. A request without a result makes the query that needs it die with a
  * `QueryFailure` when run.
+ *
+ * Two data sources are equal when their identifiers are equal, and requests to
+ * equal data sources that a query makes at the same time are sent in one batch.
+ *
+ * The following data source answers a whole batch of user ids at once. Four
+ * parallel lookups, one of them a duplicate, reach it as one batch of three
+ * requests:
+ *
+ * {{{
+ * import zio._
+ *
+ * final case class GetUserName(id: Int) extends Request[Nothing, String]
+ *
+ * val userNames: DataSource[Any, GetUserName] =
+ *   DataSource.fromFunctionBatchedZIO[Any, Nothing, GetUserName, String]("UserNames") { requests =>
+ *     ZIO.debug(s"UserNames received \${requests.map(_.id).mkString("[", ", ", "]")}") *>
+ *       ZIO.succeed(requests.map(request => s"user-\${request.id}"))
+ *   }
+ *
+ * def getUserName(id: Int): ZQuery[Any, Nothing, String] =
+ *   ZQuery.fromRequest(GetUserName(id))(userNames)
+ *
+ * val names: ZIO[Any, Nothing, List[String]] =
+ *   ZQuery.foreachPar(List(1, 2, 1, 3))(getUserName).run
+ * // prints one line, such as: UserNames received [2, 1, 3]
+ * // names succeeds with List(user-1, user-2, user-1, user-3)
+ * }}}
+ *
+ * @see
+ *   [[https://zio.dev/zio-query/data-source-reference/ DataSource Reference]]
  */
 trait DataSource[-R, -A] { self =>
 
@@ -49,19 +83,29 @@ trait DataSource[-R, -A] { self =>
     aspect(self)
 
   /**
-   * The data source's identifier.
+   * The data source's identifier. `equals`, `hashCode` and `toString` use it,
+   * so two data sources with the same identifier are treated as the same data
+   * source and their requests are batched together. Give each logical data
+   * source its own identifier.
    */
   val identifier: String
 
   /**
    * Execute a collection of requests. The outer `Chunk` represents batches of
    * requests that must be performed sequentially. The inner `Chunk` represents
-   * a batch of requests that can be performed in parallel.
+   * a batch of requests that can be performed in parallel. The returned map
+   * must contain a result for every request received.
    */
   def runAll(requests: Chunk[Chunk[A]])(implicit trace: Trace): ZIO[R, Nothing, CompletedRequestMap]
 
   /**
-   * Returns a data source that executes at most `n` requests in parallel.
+   * Returns a data source that splits each batch of requests into batches of at
+   * most `n` requests, which this data source receives as consecutive batches
+   * in one call to `runAll`. A data source built with one of the
+   * `DataSource.fromFunction*` constructors runs those batches one after
+   * another. If `n` is less than 1, the data source dies with an
+   * `IllegalArgumentException` when it runs. The identifier of the new data
+   * source is this identifier followed by `.batchN(n)`.
    */
   def batchN(n: Int): DataSource[R, A] =
     new DataSource[R, A] {
@@ -77,6 +121,13 @@ trait DataSource[-R, -A] { self =>
    * Returns a new data source that executes requests of type `B` using the
    * specified function to transform `B` requests into requests that this data
    * source can execute.
+   *
+   * The new data source returns the results of this data source unchanged, so
+   * they are keyed by the transformed requests, while the query looks up the
+   * request it submitted. A query succeeds only when `f` returns a request
+   * equal to its input; for any other request it dies with a `QueryFailure`.
+   * This is a known bug. The identifier of the new data source is this
+   * identifier followed by `.contramap(description)`.
    */
   final def contramap[B](f: Described[B => A]): DataSource[R, B] =
     new DataSource[R, B] {
@@ -88,7 +139,12 @@ trait DataSource[-R, -A] { self =>
   /**
    * Returns a new data source that executes requests of type `B` using the
    * specified effectual function to transform `B` requests into requests that
-   * this data source can execute.
+   * this data source can execute. The transformations of one batch run in
+   * parallel, and batches are transformed one after another.
+   *
+   * As with `contramap`, the results are keyed by the transformed requests, so
+   * a query succeeds only when `f` returns a request equal to its input; for
+   * any other request it dies with a `QueryFailure`. This is a known bug.
    */
   final def contramapZIO[R1 <: R, B](f: Described[B => ZIO[R1, Nothing, A]]): DataSource[R1, B] =
     new DataSource[R1, B] {
@@ -103,6 +159,16 @@ trait DataSource[-R, -A] { self =>
    * Returns a new data source that executes requests of type `C` using the
    * specified function to transform `C` requests into requests that either this
    * data source or that data source can execute.
+   *
+   * For each batch, the `Left` requests go to this data source and the `Right`
+   * requests to that data source, and the two calls run in parallel.
+   *
+   * Two known bugs apply. Each side is called for every batch, even when no
+   * request goes to it, so the query also waits for that call, and a data
+   * source built with `DataSource.make` can receive an empty batch. The results
+   * are keyed by the requests that `f` returns, so a query succeeds only when
+   * `f` returns a request equal to its input, as when `A` and `B` are subtypes
+   * of `C`; for any other request it dies with a `QueryFailure`.
    */
   final def eitherWith[R1 <: R, B, C](
     that: DataSource[R1, B]
@@ -136,13 +202,16 @@ trait DataSource[-R, -A] { self =>
     identifier.hashCode
 
   /**
-   * Provides this data source with its required environment.
+   * Provides this data source with its required environment. The identifier of
+   * the new data source is this identifier followed by
+   * `.provideSomeEnvironment(_ => description)`.
    */
   final def provideEnvironment(r: Described[ZEnvironment[R]]): DataSource[Any, A] =
     provideSomeEnvironment(Described(_ => r.value, s"_ => ${r.description}"))
 
   /**
-   * Provides this data source with part of its required environment.
+   * Provides this data source with part of its required environment, by
+   * computing the environment it requires from an environment of type `R0`.
    */
   final def provideSomeEnvironment[R0](
     f: Described[ZEnvironment[R0] => ZEnvironment[R]]
@@ -154,14 +223,16 @@ trait DataSource[-R, -A] { self =>
     }
 
   /**
-   * Submits a request to this datasource and returns the result.
+   * Returns a query that submits a request to this data source and succeeds
+   * with its result. The same as `ZQuery.fromRequest(request)(dataSource)`.
    */
   final def query[E, A1 <: A, B](request: A1)(implicit ev: A1 <:< Request[E, B], trace: Trace): ZQuery[R, E, B] =
     ZQuery.fromRequest(request)(self)
 
   /**
-   * Submits a Chunk of requests to this datasource and returns the results in
-   * the same order
+   * Returns a query that submits a `Chunk` of requests to this data source and
+   * succeeds with their results in the same order. The same as
+   * `ZQuery.fromRequests(requests)(dataSource)`.
    */
   final def queryAll[E, A1 <: A, B](
     requests: Chunk[A1]
@@ -171,7 +242,9 @@ trait DataSource[-R, -A] { self =>
   /**
    * Returns a new data source that executes requests by sending them to this
    * data source and that data source, returning the results from the first data
-   * source to complete and safely interrupting the loser.
+   * source to complete and safely interrupting the loser. A data source that
+   * completes with a map of failed results still wins; a data source whose
+   * `runAll` dies loses, and the race waits for the other one.
    */
   final def race[R1 <: R, A1 <: A](that: DataSource[R1, A1]): DataSource[R1, A1] =
     new DataSource[R1, A1] {
@@ -184,17 +257,34 @@ trait DataSource[-R, -A] { self =>
     identifier
 }
 
+/**
+ * Constructors for data sources. The `fromFunction*` constructors build a data
+ * source from a function of one request or of a batch of requests, and `make`
+ * and `Batched.make` build one from a function that returns a
+ * `CompletedRequestMap`.
+ */
 object DataSource {
   import UtilsVersionSpecific._
 
   /**
    * A data source that executes requests that can be performed in parallel in
-   * batches but does not further optimize batches of requests that must be
-   * performed sequentially.
+   * batches, one batch after another. Apart from leaving out requests that an
+   * earlier batch has already completed, it does not further optimize batches
+   * of requests that must be performed sequentially.
    */
   trait Batched[-R, -A] extends DataSource[R, A] {
+
+    /**
+     * Executes one batch of requests that can be performed in parallel. The
+     * returned map must contain a result for every request received.
+     */
     def run(requests: Chunk[A])(implicit trace: Trace): ZIO[R, Nothing, CompletedRequestMap]
 
+    /**
+     * Calls `run` once for each non-empty batch, one batch after another. From
+     * the second batch on, it leaves out requests that an earlier batch has
+     * already completed, and skips a batch that has no requests left.
+     */
     final def runAll(requests: Chunk[Chunk[A]])(implicit trace: Trace): ZIO[R, Nothing, CompletedRequestMap] =
       requests.size match {
         case 0 => ZIO.succeed(CompletedRequestMap.empty)
@@ -220,11 +310,17 @@ object DataSource {
 
   }
 
+  /**
+   * Constructors for `DataSource.Batched` data sources.
+   */
   object Batched {
 
     /**
      * Constructs a data source from a function taking a collection of requests
-     * and returning a `CompletedRequestMap`.
+     * and returning a `CompletedRequestMap`. The function is called once per
+     * non-empty batch of requests that can be performed in parallel, after
+     * requests that an earlier batch has already completed are left out, and
+     * `name` becomes the identifier.
      */
     def make[R, A](name: String)(f: Chunk[A] => ZIO[R, Nothing, CompletedRequestMap]): DataSource[R, A] =
       new DataSource.Batched[R, A] {
@@ -235,7 +331,8 @@ object DataSource {
   }
 
   /**
-   * Constructs a data source from a pure function.
+   * Constructs a data source from a pure function, called once for each
+   * request.
    */
   def fromFunction[A, B](
     name: String
@@ -250,6 +347,32 @@ object DataSource {
    * Constructs a data source from a pure function that takes a list of requests
    * and returns a list of results of the same size. Each item in the result
    * list must correspond to the item at the same index in the request list.
+   *
+   * The function receives each batch of requests that can be performed in
+   * parallel in one call. Results are matched to requests by position: if the
+   * function returns fewer results than requests, the queries for the requests
+   * without a result die with a `QueryFailure`, and extra results are ignored.
+   * `name` becomes the identifier of the data source.
+   *
+   * {{{
+   * import zio._
+   *
+   * final case class GetUserName(id: Int) extends Request[Nothing, String]
+   *
+   * val userNames: DataSource[Any, GetUserName] =
+   *   DataSource.fromFunctionBatched[GetUserName, String]("UserNames") { requests =>
+   *     println(s"UserNames received \${requests.size} requests")
+   *     requests.map(request => s"user-\${request.id}")
+   *   }
+   *
+   * val names: ZIO[Any, Nothing, List[String]] =
+   *   ZQuery.foreachPar(List(1, 2, 3))(id => userNames.query(GetUserName(id))).run
+   * // prints: UserNames received 3 requests
+   * // names succeeds with List(user-1, user-2, user-3)
+   * }}}
+   *
+   * @see
+   *   [[https://zio.dev/zio-query/creating-data-sources/ Creating Data Sources]]
    */
   def fromFunctionBatched[A, B](
     name: String
@@ -260,7 +383,8 @@ object DataSource {
    * Constructs a data source from a pure function that takes a list of requests
    * and returns a list of optional results of the same size. Each item in the
    * result list must correspond to the item at the same index in the request
-   * list.
+   * list. A `None` leaves its request without a result, and the query for it
+   * dies with a `QueryFailure`.
    */
   def fromFunctionBatchedOption[A, B](
     name: String
@@ -271,7 +395,9 @@ object DataSource {
    * Constructs a data source from an effectual function that takes a list of
    * requests and returns a list of optional results of the same size. Each item
    * in the result list must correspond to the item at the same index in the
-   * request list.
+   * request list. A `None` leaves its request without a result, and the query
+   * for it dies with a `QueryFailure`. If the effect fails, every request of
+   * the batch fails with the same cause.
    */
   def fromFunctionBatchedOptionZIO[R, E, A, B](
     name: String
@@ -288,11 +414,31 @@ object DataSource {
     }
 
   /**
-   * Constructs a data source from a function that takes a list of requests and
-   * returns a list of results of the same size. Uses the specified function to
-   * associate each result with the corresponding effect, allowing the function
-   * to return the list of results in a different order than the list of
-   * requests.
+   * Constructs a data source from a function `f` that takes a list of requests
+   * and returns a list of results, and a function `g` that returns the request
+   * a result answers. Results are matched to requests through `g`, not by
+   * position, so `f` may return them in any order.
+   *
+   * The request that `g` returns must be equal to the request that the query
+   * submitted. A request that no result maps to has no result, and the query
+   * for it dies with a `QueryFailure`.
+   *
+   * {{{
+   * import zio._
+   *
+   * final case class User(id: Int, name: String)
+   * final case class GetUser(id: Int) extends Request[Nothing, User]
+   *
+   * val users: DataSource[Any, GetUser] =
+   *   DataSource.fromFunctionBatchedWith[GetUser, User]("Users")(
+   *     requests => requests.map(request => User(request.id, s"user-\${request.id}")).reverse,
+   *     user => GetUser(user.id)
+   *   )
+   *
+   * val result: ZIO[Any, Nothing, List[User]] =
+   *   ZQuery.foreachPar(List(1, 2, 3))(id => ZQuery.fromRequest(GetUser(id))(users)).run
+   * // result succeeds with List(User(1,user-1), User(2,user-2), User(3,user-3))
+   * }}}
    */
   def fromFunctionBatchedWith[A, B](
     name: String
@@ -302,11 +448,15 @@ object DataSource {
     fromFunctionBatchedWithZIO[Any, Nothing, A, B](name)(as => Exit.succeed(f(as)), g)
 
   /**
-   * Constructs a data source from an effectual function that takes a list of
-   * requests and returns a list of results of the same size. Uses the specified
-   * function to associate each result with the corresponding effect, allowing
-   * the function to return the list of results in a different order than the
-   * list of requests.
+   * Constructs a data source from an effectual function `f` that takes a list
+   * of requests and returns a list of results, and a function `g` that returns
+   * the request a result answers. Results are matched to requests through `g`,
+   * not by position, so `f` may return them in any order.
+   *
+   * The request that `g` returns must be equal to the request that the query
+   * submitted; a request that no result maps to makes its query die with a
+   * `QueryFailure`. If the effect fails, every request of the batch fails with
+   * the same cause.
    */
   def fromFunctionBatchedWithZIO[R, E, A, B](
     name: String
@@ -328,7 +478,9 @@ object DataSource {
    * Constructs a data source from an effectual function that takes a list of
    * requests and returns a list of results of the same size. Each item in the
    * result list must correspond to the item at the same index in the request
-   * list.
+   * list. If the function returns fewer results than requests, the queries for
+   * the requests without a result die with a `QueryFailure`. If the effect
+   * fails, every request of the batch fails with the same cause.
    */
   def fromFunctionBatchedZIO[R, E, A, B](
     name: String
@@ -344,7 +496,10 @@ object DataSource {
     }
 
   /**
-   * Constructs a data source from an effectual function.
+   * Constructs a data source from an effectual function, called once for each
+   * request. The calls for one batch run in parallel, and a failure of the
+   * effect for one request fails only that request: the other requests of the
+   * batch still get their results.
    */
   def fromFunctionZIO[R, E, A, B](
     name: String
@@ -359,7 +514,8 @@ object DataSource {
 
   /**
    * Constructs a data source from a pure function that may not provide results
-   * for all requests received.
+   * for all requests received. A `None` leaves its request without a result,
+   * and the query for it dies with a `QueryFailure`.
    */
   def fromFunctionOption[A, B](
     name: String
@@ -368,7 +524,9 @@ object DataSource {
 
   /**
    * Constructs a data source from an effectual function that may not provide
-   * results for all requests received.
+   * results for all requests received. The calls for one batch run in parallel.
+   * A `None` leaves its request without a result, and the query for it dies
+   * with a `QueryFailure`; a failure fails only that request.
    */
   def fromFunctionOptionZIO[R, E, A, B](
     name: String
@@ -383,7 +541,9 @@ object DataSource {
 
   /**
    * Constructs a data source from a function taking a collection of requests
-   * and returning a `CompletedRequestMap`.
+   * and returning a `CompletedRequestMap`. The function is the data source's
+   * `runAll`: it receives the batches that must be performed sequentially, as a
+   * `Chunk[Chunk[A]]`, and `name` becomes the identifier.
    */
   def make[R, A](name: String)(f: Chunk[Chunk[A]] => ZIO[R, Nothing, CompletedRequestMap]): DataSource[R, A] =
     new DataSource[R, A] {
@@ -393,7 +553,11 @@ object DataSource {
     }
 
   /**
-   * A data source that never executes requests.
+   * A data source that never executes requests: its `runAll` never completes,
+   * so a query that sends it a request does not complete either. Combined with
+   * another data source by `race`, it never wins: the race returns the results
+   * of the other data source, and does not complete if the other data source's
+   * `runAll` dies. Useful in tests.
    */
   val never: DataSource[Any, Any] =
     new DataSource[Any, Any] {

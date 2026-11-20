@@ -9,7 +9,16 @@ import java.util.concurrent.atomic.AtomicReference
  * Lightweight variant of [[zio.Scope]], optimized for usage with ZQuery
  */
 sealed trait QueryScope {
+
+  /**
+   * Adds a finalizer that receives the exit value of the query. The `NoOp`
+   * scope ignores it.
+   */
   def addFinalizerExit(f: Exit[Any, Any] => UIO[Any])(implicit trace: Trace): UIO[Unit]
+
+  /**
+   * Runs the finalizers, the most recently added first, then returns `exit`.
+   */
   def closeAndExitWith[E, A](exit: Exit[E, A])(implicit trace: Trace): IO[E, A]
 }
 

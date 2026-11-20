@@ -31,35 +31,78 @@ import scala.reflect.ClassTag
  * that may contain requests from one or more data sources, requires an
  * environment `R`, and may fail with an `E` or succeed with an `A`.
  *
- * Requests that can be performed in parallel, as expressed by `zipWithPar` and
- * combinators derived from it, will automatically be batched. Requests that
- * must be performed sequentially, as expressed by `zipWith` and combinators
- * derived from it, will automatically be pipelined. This allows for aggressive
- * data source specific optimizations. Requests can also be deduplicated and
- * cached.
+ * Building a query does not run anything: `run`, `runCache` and `runLog` turn
+ * it into a `ZIO` effect. Requests enter a query through `ZQuery.fromRequest`
+ * or one of its variants, and ZIO Query looks at how queries are combined to
+ * decide how to send those requests to their data sources:
+ *
+ *   - Requests combined with `zipWithPar`, `zipWithBatched` or combinators
+ *     derived from them (`zipPar`, `<&>`, `foreachPar`, `foreachBatched`, ...)
+ *     are batched: each data source receives them together, in one batch.
+ *   - Requests combined with `zipWith` or combinators derived from it (`zip`,
+ *     `*>`, `foreach`, ...) are pipelined when the requests of both sides go to
+ *     the same single data source: it receives them in one call to `runAll`, as
+ *     batches that must be performed one after another. A data source built
+ *     with one of the `DataSource.fromFunction` constructors, which are
+ *     `DataSource.Batched`, still calls its function once for each batch. A
+ *     `flatMap` after the requests of the left side ends the pipeline, and so
+ *     do `catchAll`, `foldQuery`, `optional`, `sandbox`, `timeout` and other
+ *     combinators that continue with a query.
+ *   - While caching is enabled, which is the default, a request equal to one
+ *     already made with caching enabled in the same run is not sent again, and
+ *     its result is reused.
  *
  * This allows for writing queries in a high level, compositional style, with
- * confidence that they will automatically be optimized. For example, consider
- * the following query from a user service.
+ * confidence that they will be optimized. For example, the following query
+ * fetches all user ids, then the name of each user:
  *
  * {{{
- * val getAllUserIds: ZQuery[Any, Nothing, List[Int]]         = ???
- * def getUserNameById(id: Int): ZQuery[Any, Nothing, String] = ???
+ * import zio._
  *
- * for {
- *   userIds   <- getAllUserIds
- *   userNames <- ZQuery.foreachPar(userIds)(getUserNameById)
- * } yield userNames
+ * case object GetAllUserIds extends Request[Nothing, List[Int]]
+ * final case class GetUserName(id: Int) extends Request[Nothing, String]
+ *
+ * val userIds: DataSource[Any, GetAllUserIds.type] =
+ *   DataSource.fromFunction("UserIds")((_: GetAllUserIds.type) => List(1, 2, 3))
+ *
+ * val userNames: DataSource[Any, GetUserName] =
+ *   DataSource.fromFunctionBatched("UserNames") { (requests: Chunk[GetUserName]) =>
+ *     requests.map(request => s"user-\${request.id}")
+ *   }
+ *
+ * val getAllUserIds: UQuery[List[Int]] =
+ *   ZQuery.fromRequest(GetAllUserIds)(userIds)
+ *
+ * def getUserName(id: Int): UQuery[String] =
+ *   ZQuery.fromRequest(GetUserName(id))(userNames)
+ *
+ * val query: UQuery[List[String]] =
+ *   for {
+ *     ids   <- getAllUserIds
+ *     names <- ZQuery.foreachPar(ids)(getUserName)
+ *   } yield names
+ * // query.run succeeds with List(user-1, user-2, user-3)
  * }}}
  *
- * This would normally require N + 1 queries, one for `getAllUserIds` and one
- * for each call to `getUserNameById`. In contrast, `ZQuery` will automatically
- * optimize this to two queries, one for `userIds` and one for `userNames`,
- * assuming an implementation of the user service that supports batching.
+ * Written with plain effects, this would take N + 1 calls: one for the ids and
+ * one for each name. Run as a query, it takes two calls: `UserIds` receives
+ * `GetAllUserIds`, then `UserNames` receives the three `GetUserName` requests
+ * in one batch. What the data source does with a batch is up to it:
+ * `DataSource.fromFunctionBatched` passes the whole batch to one function call,
+ * while `DataSource.fromFunction` calls its function once for each request.
  *
  * Based on "There is no Fork: an Abstraction for Efficient, Concurrent, and
  * Concise Data Access" by Simon Marlow, Louis Brandy, Jonathan Coens, and Jon
  * Purdy. [[http://simonmar.github.io/bib/papers/haxl-icfp14.pdf]]
+ *
+ * @see
+ *   [[https://zio.dev/zio-query/how-batching-works/ How Batching Works]]
+ * @tparam R
+ *   the environment the query requires
+ * @tparam E
+ *   the type of error the query may fail with
+ * @tparam A
+ *   the type of value the query succeeds with
  */
 final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result[R, E, A]]) { self =>
 
@@ -155,17 +198,25 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     map(_ => b)
 
   /**
-   * Extracts the value of this ZQuery as an exit if the result of the query is
-   * known, and it does not contain any side effects.
+   * Extracts the result of this query as an `Exit` without running it, if the
+   * result is already known and computing it has no side effects. Returns
+   * `None` otherwise.
    *
-   * This applies to queries that have been constructed via
-   * [[ZQuery.succeedNow]] and other xNow constructors. The only exception is
-   * [[ZQuery.fromZIONow]], which is assumed to contain side effects unless the
-   * provided effect was an [[zio.Exit]]
+   * The result is known for queries built with [[ZQuery.succeedNow]],
+   * `ZQuery.failNow`, `ZQuery.failCauseNow` with a cause that contains a typed
+   * failure, and [[ZQuery.fromZIONow]] applied to an [[zio.Exit]] that succeeds
+   * or holds a typed failure, and for `map` of such a query. It is not known
+   * for lazy constructors such as `ZQuery.succeed`, for `ZQuery.failCauseNow`
+   * or `ZQuery.fromZIONow` with a cause that holds no typed failure, or for
+   * queries that make requests.
    */
   def asExitMaybe: Option[Exit[E, A]] =
     Option(asExitOrElse(null))
 
+  /**
+   * Like `asExitMaybe`, but returns `default` instead of `None` when the result
+   * of this query is not known without running it.
+   */
   def asExitOrElse[E1 >: E, A1 >: A](default: Exit[E1, A1]): Exit[E1, A1] =
     self.step match {
       case Exit.Success(Result.Done(a: A))        => Exit.succeed(a)
@@ -198,7 +249,10 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     })
 
   /**
-   * Recovers from all errors.
+   * Recovers from all typed failures of this query with the query returned by
+   * `h`. Defects are not caught: use `catchAllCause` to recover from them. When
+   * the cause holds both a typed failure and a defect, `h` receives the typed
+   * failure and the defect is dropped, as with `ZIO#catchAll`.
    */
   def catchAll[R1 <: R, E2, A1 >: A](
     h: E => ZQuery[R1, E2, A1]
@@ -212,7 +266,8 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     }
 
   /**
-   * Recovers from all errors with provided Cause.
+   * Recovers from typed failures and defects of this query, passing the full
+   * `Cause` to `h`.
    */
   def catchAllCause[R1 <: R, E2, A1 >: A](h: Cause[E] => ZQuery[R1, E2, A1])(implicit
     trace: Trace
@@ -229,7 +284,8 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     }
 
   /**
-   * Recovers from all errors and maps the provided Cause to a ZIO effect
+   * Recovers from typed failures and defects of this query, passing the full
+   * `Cause` to `h`, which returns a `ZIO` effect.
    */
   def catchAllCauseZIO[R1 <: R, E2, A1 >: A](h: Cause[E] => ZIO[R1, E2, A1])(implicit
     trace: Trace
@@ -246,7 +302,10 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     }
 
   /**
-   * Catches all errors and maps them to a ZIO effect
+   * Recovers from all typed failures of this query with the `ZIO` effect
+   * returned by `h`. Defects are not caught. When the cause holds both a typed
+   * failure and a defect, `h` receives the typed failure and the defect is
+   * dropped.
    */
   def catchAllZIO[R1 <: R, E2, A1 >: A](
     h: E => ZIO[R1, E2, A1]
@@ -255,16 +314,22 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
 
   /**
    * Returns a query whose failure and success have been lifted into an
-   * `Either`. The resulting query cannot fail, because the failure case has
-   * been exposed as part of the `Either` success case.
+   * `Either`. The resulting query has no typed failures, because the failure
+   * case has been exposed as part of the `Either` success case. Defects still
+   * fail it, unless the cause also holds a typed failure, which then becomes
+   * the `Left` while the defect is dropped.
    */
   def either(implicit ev: CanFail[E], trace: Trace): ZQuery[R, Nothing, Either[E, A]] =
     fold(Left(_), Right(_))
 
   /**
-   * Ensures that if this query starts executing, the specified query will be
-   * executed immediately after this query completes execution, whether by
-   * success or failure.
+   * Ensures that if this query starts executing, the specified `ZIO` effect
+   * runs after this query completes, whether by success or failure.
+   *
+   * If this query is interrupted, the finalizer runs when the whole run ends
+   * with a failure or an interruption. When `timeout` or `race` interrupts this
+   * query and the run still succeeds, the finalizer does not run: this is a
+   * known bug.
    */
   def ensuring[R1 <: R](finalizer: => ZIO[R1, Nothing, Any])(implicit trace: Trace): ZQuery[R1, E, A] =
     ZQuery.acquireReleaseWith(ZIO.unit)(_ => finalizer)(_ => self)
@@ -299,8 +364,10 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
 
   /**
    * Folds over the failed or successful result of this query to yield a query
-   * that does not fail, but succeeds with the value returned by the left or
-   * right function passed to `fold`.
+   * that has no typed failures, but succeeds with the value returned by the
+   * left or right function passed to `fold`. Defects still fail it, unless the
+   * cause also holds a typed failure, which is then folded while the defect is
+   * dropped.
    */
   def fold[B](failure: E => B, success: A => B)(implicit
     ev: CanFail[E],
@@ -399,30 +466,40 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     )
 
   /**
-   * Returns an effect that, that if evaluated, will return a lazily computed
-   * version of this query
+   * Returns an effect that, when evaluated, returns a memoized version of this
+   * query: the first use of the memoized query computes its result, and later
+   * uses reuse it. The reused result can be a typed failure, or a defect raised
+   * by an effect lifted with `ZQuery.fromZIO` when no combinator that handles
+   * failures, such as `mapError`, `either` or `orDie`, is applied to it
+   * afterwards. A query that dies in other ways, for example through
+   * `ZQuery.die` or `orDie`, is not memoized and each use runs it again: this
+   * is a known bug. Creating the memoized query does not run anything.
    *
-   * This differs from query caching, as caching will only cache the output of a
-   * [[DataSource]]. `memoize` will ensure that the query (including
-   * non-DataSource backed queries) is computed at-most-once.
-   *
-   * This can beneficial for cases that a query is composed of multiple queries
-   * and it's reused multiple times, e.g.,
+   * This differs from caching, which stores the results of requests to a
+   * [[DataSource]]. `memoize` also covers work that is not a request, such as
+   * an effect lifted with `ZQuery.fromZIO`, which then runs once. It is useful
+   * when one query value is used in several places:
    *
    * {{{
-   *    case class Foo(x: UQuery[Int], y: UQuery[Int])
-   *    val query: UQuery[Int] = ???
+   * import zio._
    *
-   *    // Query will be run exactly once; might not be necessary if `x` or `y` are not used afterwards
-   *    query.map(i => Foo(ZQuery.succeed(i +1), ZQuery.succeed(i + 2)))
+   * final case class Pair(x: UQuery[Int], y: UQuery[Int])
    *
-   *    // Query will be recomputed each time x or y are used
-   *    Foo(query.map(_ + 1), query.map(_ + 2))
+   * val query: UQuery[Int] =
+   *   ZQuery.fromZIO(Console.printLine("computing").orDie.as(10))
    *
-   *    // Query will be computed / run at-most-once
-   *    query.memoize.map(q => Foo(q.map(_ + 1), q.map(_ + 2)))
+   * // prints "computing" twice when both x and y run
+   * val recomputed: Pair = Pair(query.map(_ + 1), query.map(_ + 2))
    *
+   * // prints "computing" once when both x and y run
+   * val memoized: UIO[Pair] =
+   *   query.memoize.map(q => Pair(q.map(_ + 1), q.map(_ + 2)))
    * }}}
+   *
+   * The memoized value is the first step of the query. For a query that makes
+   * requests to a data source, that step is "waiting for these requests", so
+   * each use sends the requests again, even with caching enabled, and reruns
+   * the work after them: this is a known bug.
    */
   def memoize(implicit trace: Trace): UIO[ZQuery[R, E, A]] =
     ZIO.succeed(ZQuery.unsafe.memoize(self)(Unsafe, trace))
@@ -435,7 +512,8 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
 
   /**
    * Returns a query whose failure and success channels have been mapped by the
-   * specified pair of functions, `f` and `g`.
+   * specified pair of functions, `f` and `g`. When the cause holds both a typed
+   * failure and a defect, the defect is dropped, as with `ZIO#mapBoth`.
    */
   def mapBoth[E1, B](f: E => E1, g: A => B)(implicit ev: CanFail[E], trace: Trace): ZQuery[R, E1, B] =
     mapBothCause(_.failureOrCause.fold(c => Cause.fail(f(c)), ZIO.identityFn), g)
@@ -467,6 +545,11 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
 
   /**
    * Maps the specified function over the failed result of this query.
+   *
+   * When the cause holds both a typed failure and a defect, the result fails
+   * with the mapped typed failure only, and the defect is dropped, unless the
+   * cause is the result of a request, which keeps the defect as `ZIO#mapError`
+   * does. Dropping the defect is a known bug.
    */
   def mapError[E1](f: E => E1)(implicit ev: CanFail[E], trace: Trace): ZQuery[R, E1, A] =
     ZQuery {
@@ -507,8 +590,10 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     }
 
   /**
-   * Converts this query to one that returns `Some` if data sources return
-   * results for all requests received and `None` otherwise.
+   * Converts this query to one that returns `None` when it dies only because a
+   * data source did not return a result for a request (a `QueryFailure`), and
+   * `Some` of the result when it succeeds. Typed failures and other defects
+   * still fail the query, without the `QueryFailure` defects.
    */
   def optional(implicit trace: Trace): ZQuery[R, E, Option[A]] =
     foldCauseQuery(
@@ -517,7 +602,8 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     )
 
   /**
-   * Converts this query to one that dies if a query failure occurs.
+   * Converts this query to one that dies with its error, instead of failing,
+   * when the error type is a `Throwable`.
    */
   def orDie(implicit
     ev1: E IsSubtypeOfError Throwable,
@@ -527,14 +613,20 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     orDieWith(ev1)
 
   /**
-   * Converts this query to one that dies if a query failure occurs, using the
+   * Converts this query to one that dies instead of failing, using the
    * specified function to map the error to a `Throwable`.
    */
   def orDieWith(f: E => Throwable)(implicit ev: CanFail[E], trace: Trace): ZQuery[R, Nothing, A] =
     catchAll(e => ZQuery.die(f(e)))
 
   /**
-   * Provides a layer to this query, which translates it to another level.
+   * Provides this query with its required environment, built from the specified
+   * layer, so that it then requires the layer's input `R0`.
+   *
+   * The layer is built when the query starts. Its scope closes when the first
+   * step of the query completes, which for a query that makes requests is
+   * before the data sources run: the data sources receive the services, but a
+   * scoped layer has already released them. This is a known bug.
    */
   def provideLayer[E1 >: E, R0](
     layer: => Described[ZLayer[R0, E1, R]]
@@ -558,7 +650,8 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
 
   /**
    * Splits the environment into two parts, providing one part using the
-   * specified layer and leaving the remainder `R0`.
+   * specified layer and leaving the remainder `R0`. The layer's scope closes as
+   * described for `provideLayer`.
    */
   def provideSomeLayer[R0]: ZQuery.ProvideSomeLayer[R0, R, E, A] =
     new ZQuery.ProvideSomeLayer(self)
@@ -573,7 +666,14 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
 
   /**
    * Races this query with the specified query, returning the result of the
-   * first to complete successfully and safely interrupting the other.
+   * first to succeed and interrupting the other. If one query fails, the race
+   * waits for the other; if both fail, the cause combines both failures.
+   *
+   * The race applies to the steps of the two queries, not to their requests:
+   * when one query stops to wait for data sources, its requests run to
+   * completion before the race goes on. So a slow request can win over a fast
+   * one, and a query that makes requests can win over one that does not. This
+   * is a known bug.
    */
   def race[R1 <: R, E1 >: E, A1 >: A](
     that: => ZQuery[R1, E1, A1]
@@ -651,6 +751,34 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
 
   /**
    * Returns an effect that models executing this query.
+   *
+   * Each evaluation of the effect starts with a new, empty [[Cache]]: equal
+   * requests made with caching enabled in one run are sent once, and the next
+   * run sends them again. To share results between runs, use `runCache` with
+   * the same cache.
+   *
+   * {{{
+   * import zio._
+   *
+   * final case class GetUserName(id: Int) extends Request[Nothing, String]
+   *
+   * val userNames: DataSource[Any, GetUserName] =
+   *   DataSource.fromFunctionBatched("UserNames") { (requests: Chunk[GetUserName]) =>
+   *     requests.map(request => s"user-\${request.id}")
+   *   }
+   *
+   * def getUserName(id: Int): UQuery[String] =
+   *   ZQuery.fromRequest(GetUserName(id))(userNames)
+   *
+   * val program: ZIO[Any, Nothing, (String, String)] =
+   *   (getUserName(1) <&> getUserName(1)).run
+   * // program succeeds with (user-1,user-1) after one call to UserNames, with
+   * // the single request GetUserName(1); running program again calls
+   * // UserNames again
+   * }}}
+   *
+   * @see
+   *   [[https://zio.dev/zio-query/running-queries/ Running Queries]]
    */
   def run(implicit trace: Trace): ZIO[R, E, A] =
     runCache(Cache.unsafeMake())
@@ -658,6 +786,36 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
   /**
    * Returns an effect that models executing this query with the specified
    * cache.
+   *
+   * Requests whose results are already in the cache are not sent to their data
+   * sources, and the results of new requests are added to it. Passing the same
+   * cache to several runs shares results between them.
+   *
+   * {{{
+   * import zio._
+   *
+   * final case class GetUserName(id: Int) extends Request[Nothing, String]
+   *
+   * val userNames: DataSource[Any, GetUserName] =
+   *   DataSource.fromFunctionBatched("UserNames") { (requests: Chunk[GetUserName]) =>
+   *     requests.map(request => s"user-\${request.id}")
+   *   }
+   *
+   * def getUserName(id: Int): UQuery[String] =
+   *   ZQuery.fromRequest(GetUserName(id))(userNames)
+   *
+   * val program: ZIO[Any, Nothing, (String, String)] =
+   *   for {
+   *     cache  <- Cache.empty
+   *     first  <- getUserName(1).runCache(cache)
+   *     second <- getUserName(1).runCache(cache)
+   *   } yield (first, second)
+   * // program succeeds with (user-1,user-1) after one call to UserNames: the
+   * // second run finds GetUserName(1) in the cache
+   * }}}
+   *
+   * @see
+   *   [[https://zio.dev/zio-query/running-queries/ Running Queries]]
    */
   def runCache(cache: => Cache)(implicit trace: Trace): ZIO[R, E, A] = {
     import ZQuery.{currentCache, currentScope}
@@ -710,8 +868,34 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
   }
 
   /**
-   * Returns an effect that models executing this query, returning the query
-   * result along with the cache.
+   * Returns an effect that models executing this query with a new, empty cache,
+   * returning the cache along with the query result. The cache holds the
+   * results of the requests the query made, and can be passed to `runCache` to
+   * reuse them.
+   *
+   * {{{
+   * import zio._
+   *
+   * final case class GetUserName(id: Int) extends Request[Nothing, String]
+   *
+   * val userNames: DataSource[Any, GetUserName] =
+   *   DataSource.fromFunctionBatched("UserNames") { (requests: Chunk[GetUserName]) =>
+   *     requests.map(request => s"user-\${request.id}")
+   *   }
+   *
+   * def getUserName(id: Int): UQuery[String] =
+   *   ZQuery.fromRequest(GetUserName(id))(userNames)
+   *
+   * val program: ZIO[Any, Nothing, String] =
+   *   ZQuery.foreachPar(List(1, 2))(getUserName).runLog.flatMap { case (cache, _) =>
+   *     getUserName(2).runCache(cache)
+   *   }
+   * // program succeeds with user-2 after one call to UserNames, with the batch
+   * // GetUserName(1), GetUserName(2)
+   * }}}
+   *
+   * @see
+   *   [[https://zio.dev/zio-query/running-queries/ Running Queries]]
    */
   def runLog(implicit trace: Trace): ZIO[R, E, (Cache, A)] =
     for {
@@ -726,8 +910,9 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     catchAllCause(ZQuery.failNow)
 
   /**
-   * Companion helper to `sandbox`. Allows recovery, and partial recovery, from
-   * errors and defects alike, as in:
+   * Companion helper to `sandbox`. Applies `f` to the sandboxed query and
+   * unsandboxes the result, which allows recovery, and partial recovery, from
+   * errors and defects alike.
    */
   def sandboxWith[R1 <: R, E2, B](f: ZQuery[R1, Cause[E], A] => ZQuery[R1, Cause[E2], B])(implicit
     trace: Trace
@@ -800,8 +985,17 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     summarized(Clock.nanoTime)((start, end) => Duration.fromNanos(end - start))
 
   /**
-   * Returns an effect that will timeout this query, returning `None` if the
-   * timeout elapses before the query was completed.
+   * Returns a query that times out this query, returning `None` if the timeout
+   * elapses before the query has completed, and `Some` of its result otherwise.
+   *
+   * The timeout applies to the steps of the query, such as effects lifted with
+   * `ZQuery.fromZIO`, not to the calls to data sources: a request that is
+   * already sent runs to completion, and the query can then return `Some` of
+   * its result after the timeout has elapsed. This is a known bug. A timeout
+   * that elapses during a step stops the query before it sends its later
+   * requests. A timeout that elapses during a request does not reliably do so:
+   * once that request completes, the query can go on to send its next requests
+   * and return `Some` of its result.
    */
   def timeout(duration: => Duration)(implicit trace: Trace): ZQuery[R, E, Option[A]] =
     timeoutTo(None)(Some(_))(duration)
@@ -827,7 +1021,8 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
   /**
    * Returns a query that will timeout this query, returning either the default
    * value if the timeout elapses before the query has completed or the result
-   * of applying the function `f` to the successful result of the query.
+   * of applying the function `f` to the successful result of the query. The
+   * timeout does not bound calls to data sources, as described for `timeout`.
    */
   def timeoutTo[B](b: => B): ZQuery.TimeoutTo[R, E, A, B] =
     new ZQuery.TimeoutTo(self, () => b)
@@ -912,8 +1107,8 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
     ZQuery.acquireReleaseWith(ZIO.Parallelism.getAndSet(Some(n)))(ZIO.Parallelism.set)(_ => self)
 
   /**
-   * Sets the parallelism for this query to the specified maximum number of
-   * fibers.
+   * Removes the limit on the number of fibers this query uses for parallel
+   * work.
    */
   def withParallelismUnbounded(implicit trace: Trace): ZQuery[R, E, A] =
     ZQuery.acquireReleaseWith(ZIO.Parallelism.getAndSet(None))(ZIO.Parallelism.set)(_ => self)
@@ -1006,8 +1201,15 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
   /**
    * Returns a query that models the execution of this query and the specified
    * query sequentially, combining their results with the specified function.
-   * Requests composed with `zipWith` or combinators derived from it will
-   * automatically be pipelined.
+   * Requests composed with `zipWith` or combinators derived from it are
+   * pipelined when the requests of both queries go to the same single data
+   * source: it receives them in one call to `runAll`, as batches performed one
+   * after another, and a data source built with one of the
+   * `DataSource.fromFunction` constructors then calls its function once for
+   * each batch. A `flatMap` in this query after its requests prevents this, and
+   * so do `catchAll`, `foldQuery`, `optional`, `sandbox`, `timeout` and other
+   * combinators that continue with a query; the requests of the specified query
+   * are then sent in a later call.
    */
   def zipWith[R1 <: R, E1 >: E, B, C](
     that: => ZQuery[R1, E1, B]
@@ -1080,8 +1282,21 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
 
 }
 
+/**
+ * Constructors for `ZQuery` values: from requests to data sources
+ * (`fromRequest` and its variants), from values and effects (`succeed`,
+ * `fromZIO`, ...), and over collections of queries (`foreach`,
+ * `foreachBatched`, `foreachPar` and their `collectAll` forms).
+ *
+ * @see
+ *   [[https://zio.dev/zio-query/creating-queries/ Creating Queries]]
+ */
 object ZQuery {
 
+  /**
+   * Returns a query that moves the `Left` of the `Either` that `v` succeeds
+   * with into the error channel. The inverse of `ZQuery#either`.
+   */
   def absolve[R, E, A](v: => ZQuery[R, E, Either[E, A]])(implicit trace: Trace): ZQuery[R, E, A] =
     ZQuery.suspend(v).flatMap {
       case Right(v) => ZQuery.succeedNow(v)
@@ -1091,7 +1306,15 @@ object ZQuery {
   /**
    * Acquires the specified resource before the query begins execution and
    * releases it after the query completes execution, whether by success,
-   * failure, or interruption.
+   * failure, or interruption. The release function also receives the `Exit` of
+   * the query.
+   *
+   * The acquire and release steps are `ZIO` effects, and acquiring is
+   * uninterruptible. If the query is interrupted, the release runs when the
+   * whole run ends with a failure or an interruption, and receives the run's
+   * cause with its typed failures removed (which can be empty) instead of the
+   * query's `Exit`. When `timeout` or `race` interrupts the query and the run
+   * still succeeds, the release does not run: this is a known bug.
    */
   def acquireReleaseExitWith[R, E, A](acquire: => ZIO[R, E, A]): ZQuery.AcquireExit[R, E, A] =
     new ZQuery.AcquireExit(() => acquire)
@@ -1100,6 +1323,12 @@ object ZQuery {
    * Acquires the specified resource before the query begins execution and
    * releases it after the query completes execution, whether by success,
    * failure, or interruption.
+   *
+   * The acquire and release steps are `ZIO` effects, and acquiring is
+   * uninterruptible. If the query is interrupted, the release runs when the
+   * whole run ends with a failure or an interruption. When `timeout` or `race`
+   * interrupts the query and the run still succeeds, the release does not run:
+   * this is a known bug.
    */
   def acquireReleaseWith[R, E, A](acquire: => ZIO[R, E, A]): ZQuery.Acquire[R, E, A] =
     new ZQuery.Acquire(() => acquire)
@@ -1238,22 +1467,29 @@ object ZQuery {
     ZQuery(ZIO.environmentWith[R](Result.done))
 
   /**
-   * Accesses the environment of the effect.
+   * Accesses the environment of the query and applies the specified function to
+   * it.
+   *
    * {{{
-   * val portNumber = effect.access(_.config.portNumber)
+   * final case class Config(portNumber: Int)
+   *
+   * val portNumber: ZQuery[Config, Nothing, Int] =
+   *   ZQuery.environmentWith[Config](_.get.portNumber)
    * }}}
    */
   def environmentWith[R]: EnvironmentWithPartiallyApplied[R] =
     new EnvironmentWithPartiallyApplied[R]
 
   /**
-   * Effectfully accesses the environment of the effect.
+   * Accesses the environment of the query and uses it to build the query to run
+   * next.
    */
   def environmentWithQuery[R]: EnvironmentWithQueryPartiallyApplied[R] =
     new EnvironmentWithQueryPartiallyApplied[R]
 
   /**
-   * Effectfully accesses the environment of the effect.
+   * Accesses the environment of the query and uses it to build a `ZIO` effect
+   * to run.
    */
   def environmentWithZIO[R]: EnvironmentWithZIOPartiallyApplied[R] =
     new EnvironmentWithZIOPartiallyApplied[R]
@@ -1301,8 +1537,8 @@ object ZQuery {
    * Applies the function `f` to each element of the `Set[A]` and returns the
    * results in a new `Set[B]`.
    *
-   * For a parallel version of this method, see `foreachPar`. If you do not need
-   * the results, see `foreach_` for a more efficient implementation.
+   * Requests will be executed sequentially and will be pipelined. For a version
+   * that batches requests, see `foreachPar` or `foreachBatched`.
    */
   def foreach[R, E, A, B](in: Set[A])(f: A => ZQuery[R, E, B])(implicit
     trace: Trace
@@ -1313,8 +1549,8 @@ object ZQuery {
    * Applies the function `f` to each element of the `Array[A]` and returns the
    * results in a new `Array[B]`.
    *
-   * For a parallel version of this method, see `foreachPar`. If you do not need
-   * the results, see `foreach_` for a more efficient implementation.
+   * Requests will be executed sequentially and will be pipelined. For a version
+   * that batches requests, see `foreachPar` or `foreachBatched`.
    */
   def foreach[R, E, A, B: ClassTag](in: Array[A])(f: A => ZQuery[R, E, B])(implicit
     trace: Trace
@@ -1325,8 +1561,8 @@ object ZQuery {
    * Applies the function `f` to each element of the `Map[Key, Value]` and
    * returns the results in a new `Map[Key2, Value2]`.
    *
-   * For a parallel version of this method, see `foreachPar`. If you do not need
-   * the results, see `foreach_` for a more efficient implementation.
+   * Requests will be executed sequentially and will be pipelined. For a version
+   * that batches requests, see `foreachPar` or `foreachBatched`.
    */
   def foreach[R, E, Key, Key2, Value, Value2](
     map: Map[Key, Value]
@@ -1346,8 +1582,8 @@ object ZQuery {
    * Applies the function `f` to each element of the `NonEmptyChunk[A]` and
    * returns the results in a new `NonEmptyChunk[B]`.
    *
-   * For a parallel version of this method, see `foreachPar`. If you do not need
-   * the results, see `foreach_` for a more efficient implementation.
+   * Requests will be executed sequentially and will be pipelined. For a version
+   * that batches requests, see `foreachPar` or `foreachBatched`.
    */
   def foreach[R, E, A, B](in: NonEmptyChunk[A])(f: A => ZQuery[R, E, B])(implicit
     trace: Trace
@@ -1358,6 +1594,37 @@ object ZQuery {
    * Performs a query for each element in a collection, batching requests to
    * data sources and collecting the results into a query returning a collection
    * of their results.
+   *
+   * Unlike `foreachPar`, the queries run one after another, so effects lifted
+   * with `ZQuery.fromZIO` run in order, but their requests are still batched.
+   * Use it when the order of those effects matters or when the queries should
+   * not run on parallel fibers; calls to different data sources in the same
+   * round still run in parallel, as for any query.
+   *
+   * {{{
+   * import zio._
+   *
+   * final case class GetUserName(id: Int) extends Request[Nothing, String]
+   *
+   * val userNames: DataSource[Any, GetUserName] =
+   *   DataSource.fromFunctionBatched("UserNames") { (requests: Chunk[GetUserName]) =>
+   *     requests.map(request => s"user-\${request.id}")
+   *   }
+   *
+   * def getUserName(id: Int): UQuery[String] =
+   *   ZQuery.fromRequest(GetUserName(id))(userNames)
+   *
+   * val names: UQuery[List[String]] =
+   *   ZQuery.foreachBatched(List(1, 2, 3)) { id =>
+   *     ZQuery.fromZIO(Console.printLine(s"loading \$id").orDie) *> getUserName(id)
+   *   }
+   * // names.run prints "loading 1", "loading 2" and "loading 3" in order, then
+   * // calls UserNames once with GetUserName(1), GetUserName(2), GetUserName(3),
+   * // and succeeds with List(user-1, user-2, user-3)
+   * }}}
+   *
+   * @see
+   *   [[https://zio.dev/zio-query/how-batching-works/ How Batching Works]]
    */
   def foreachBatched[R, E, A, B, Collection[+Element] <: Iterable[Element]](
     as: Collection[A]
@@ -1369,6 +1636,11 @@ object ZQuery {
     foreachSequentialOuter[R, E, A, B, Collection](as.toArray, mode = Mode.Batched, bf.fromSpecific(as)(_))(f)
   }
 
+  /**
+   * Performs a query for each element in a Set, batching requests to data
+   * sources and collecting the results into a query returning a `Set` of their
+   * results.
+   */
   def foreachBatched[R, E, A, B](as: Set[A])(fn: A => ZQuery[R, E, B])(implicit
     trace: Trace
   ): ZQuery[R, E, Set[B]] =
@@ -1379,7 +1651,7 @@ object ZQuery {
    * sources and collecting the results into a query returning a collection of
    * their results.
    *
-   * For a sequential version of this method, see `foreach`.
+   * For a version that pipelines requests instead, see `foreach`.
    */
   def foreachBatched[R, E, A, B: ClassTag](as: Array[A])(f: A => ZQuery[R, E, B])(implicit
     trace: Trace
@@ -1391,7 +1663,7 @@ object ZQuery {
    * sources and collecting the results into a query returning a collection of
    * their results.
    *
-   * For a sequential version of this method, see `foreach`.
+   * For a version that pipelines requests instead, see `foreach`.
    */
   def foreachBatched[R, E, Key, Key2, Value, Value2](
     map: Map[Key, Value]
@@ -1403,7 +1675,7 @@ object ZQuery {
    * data sources and collecting the results into a query returning a collection
    * of their results.
    *
-   * For a sequential version of this method, see `foreach`.
+   * For a version that pipelines requests instead, see `foreach`.
    */
   def foreachBatched[R, E, A, B](as: NonEmptyChunk[A])(f: A => ZQuery[R, E, B])(implicit
     trace: Trace
@@ -1414,6 +1686,34 @@ object ZQuery {
    * Performs a query for each element in a collection, collecting the results
    * into a query returning a collection of their results. Requests will be
    * executed in parallel and will be batched.
+   *
+   * This is the main way to avoid the N + 1 problem: the requests that the
+   * queries make in the same step reach each data source in one batch, and
+   * equal requests are sent once while caching is enabled. Other work, such as
+   * effects lifted with `ZQuery.fromZIO`, runs on parallel fibers; see
+   * `withParallelism` to limit them.
+   *
+   * {{{
+   * import zio._
+   *
+   * final case class GetUserName(id: Int) extends Request[Nothing, String]
+   *
+   * val userNames: DataSource[Any, GetUserName] =
+   *   DataSource.fromFunctionBatched("UserNames") { (requests: Chunk[GetUserName]) =>
+   *     requests.map(request => s"user-\${request.id}")
+   *   }
+   *
+   * def getUserName(id: Int): UQuery[String] =
+   *   ZQuery.fromRequest(GetUserName(id))(userNames)
+   *
+   * val names: UQuery[List[String]] =
+   *   ZQuery.foreachPar(List(1, 2, 2, 3))(getUserName)
+   * // names.run calls UserNames once with GetUserName(1), GetUserName(2),
+   * // GetUserName(3), and succeeds with List(user-1, user-2, user-2, user-3)
+   * }}}
+   *
+   * @see
+   *   [[https://zio.dev/zio-query/how-batching-works/ How Batching Works]]
    */
   def foreachPar[R, E, A, B, Collection[+Element] <: Iterable[Element]](
     as: Collection[A]
@@ -1496,9 +1796,37 @@ object ZQuery {
    * all requests received. Queries must be constructed with `fromRequest` or
    * one of its variants for optimizations to be applied.
    *
+   * The request is not sent when the query is built. It is sent when the query
+   * runs, together with the other requests to the same data source that the
+   * query makes at the same step. While caching is enabled, which is the
+   * default, a request equal to one already made with caching enabled in the
+   * same run is answered from the cache. The request type must extend
+   * `Request[E, B]`; define it as a case class so that equal requests compare
+   * equal.
+   *
+   * {{{
+   * import zio._
+   *
+   * final case class GetUserName(id: Int) extends Request[Nothing, String]
+   *
+   * val userNames: DataSource[Any, GetUserName] =
+   *   DataSource.fromFunctionBatched("UserNames") { (requests: Chunk[GetUserName]) =>
+   *     requests.map(request => s"user-\${request.id}")
+   *   }
+   *
+   * def getUserName(id: Int): UQuery[String] =
+   *   ZQuery.fromRequest(GetUserName(id))(userNames)
+   *
+   * val both: UQuery[(String, String)] = getUserName(1) <&> getUserName(2)
+   * // both.run calls UserNames once with GetUserName(1), GetUserName(2), and
+   * // succeeds with (user-1,user-2)
+   * }}}
+   *
    * @see
    *   `fromRequests` for variants that allow for multiple requests to be
    *   submitted at once
+   * @see
+   *   [[https://zio.dev/zio-query/creating-queries/ Creating Queries]]
    */
   def fromRequest[R, E, A, B](
     request0: => A
@@ -1520,9 +1848,10 @@ object ZQuery {
     new ZQuery(uncachedResult(dataSource, request)).uncached
 
   /**
-   * Constructs a query from a Chunk of requests and a data source. Queries will
-   * die with a QueryFailure when run the data source does not provide results
-   * for all requests received.
+   * Constructs a query from a Chunk of requests and a data source, sending the
+   * requests to the data source in one batch. Queries will die with a
+   * `QueryFailure` when run if the data source does not provide results for all
+   * requests received.
    *
    * @see
    *   [[fromRequest]] for submitting a single request to a datasource
@@ -1536,9 +1865,10 @@ object ZQuery {
     fromRequestsWith(requests, ZIO.identityFn[A])(dataSource)
 
   /**
-   * Constructs a query from a List of requests and a data source. Queries will
-   * die with a QueryFailure when run the data source does not provide results
-   * for all requests received.
+   * Constructs a query from a List of requests and a data source, sending the
+   * requests to the data source in one batch. Queries will die with a
+   * `QueryFailure` when run if the data source does not provide results for all
+   * requests received.
    *
    * @see
    *   [[fromRequest]] for submitting a single request to a datasource
@@ -1553,8 +1883,9 @@ object ZQuery {
 
   /**
    * Constructs a query from a Chunk of values, a function transforming them
-   * into requests and a data source. Queries will die with a QueryFailure when
-   * run the data source does not provide results for all requests received.
+   * into requests and a data source, sending the requests in one batch. Queries
+   * will die with a `QueryFailure` when run if the data source does not provide
+   * results for all requests received.
    */
   def fromRequestsWith[R, E, In, A, B](
     as: Chunk[In],
@@ -1569,8 +1900,9 @@ object ZQuery {
 
   /**
    * Constructs a query from a List of values, a function transforming them into
-   * requests and a data source. Queries will die with a QueryFailure when run
-   * the data source does not provide results for all requests received.
+   * requests and a data source, sending the requests in one batch. Queries will
+   * die with a `QueryFailure` when run if the data source does not provide
+   * results for all requests received.
    */
   def fromRequestsWith[R, E, In, A, B](
     as: List[In],
@@ -1635,7 +1967,7 @@ object ZQuery {
    * in some cases, but it should only be used when the creation of the effect
    * is side effect-free.
    *
-   * Note that this is method is meant mostly for internal use, but it's made
+   * Note that this method is meant mostly for internal use, but it's made
    * public so that library authors can make use of this optimization. Most
    * users should use [[fromZIO]] instead.
    */
@@ -1649,7 +1981,7 @@ object ZQuery {
     ZQuery.fromZIONow(ZIO.never)
 
   /**
-   * Constructs a query that succeds with the empty value.
+   * A query that succeeds with `None`.
    */
   val none: ZQuery[Any, Nothing, Option[Nothing]] =
     succeed(None)(Trace.empty)
@@ -1679,28 +2011,35 @@ object ZQuery {
     ZQuery.foreachPar(as)(f(_).either).map(partitionMap(_)(ZIO.identityFn))
 
   /**
-   * Accesses the whole environment of the query.
+   * Accesses the service of type `R` in the environment of the query.
    */
   def service[R: Tag](implicit trace: Trace): ZQuery[R, Nothing, R] =
     ZQuery(ZIO.serviceWith[R](Result.done))
 
   /**
-   * Accesses the environment of the effect.
+   * Accesses the service of type `R` in the environment of the query and
+   * applies the specified function to it.
+   *
    * {{{
-   * val portNumber = effect.access(_.config.portNumber)
+   * final case class Config(portNumber: Int)
+   *
+   * val portNumber: ZQuery[Config, Nothing, Int] =
+   *   ZQuery.serviceWith[Config](_.portNumber)
    * }}}
    */
   def serviceWith[R]: ServiceWithPartiallyApplied[R] =
     new ServiceWithPartiallyApplied[R]
 
   /**
-   * Effectfully accesses the environment of the effect.
+   * Accesses the service of type `R` in the environment of the query and uses
+   * it to build the query to run next.
    */
   def serviceWithQuery[R]: ServiceWithQueryPartiallyApplied[R] =
     new ServiceWithQueryPartiallyApplied[R]
 
   /**
-   * Effectfully accesses the environment of the effect.
+   * Accesses the service of type `R` in the environment of the query and uses
+   * it to build a `ZIO` effect to run.
    */
   def serviceWithZIO[R]: ServiceWithZIOPartiallyApplied[R] =
     new ServiceWithZIOPartiallyApplied[R]
@@ -1746,6 +2085,11 @@ object ZQuery {
    */
   object unsafe {
 
+    /**
+     * Returns a memoized version of `query` without suspending its creation in
+     * an effect. See `ZQuery#memoize`, including its caveat for queries that
+     * make requests.
+     */
     def memoize[R, E, A](query: ZQuery[R, E, A])(implicit unsafe: Unsafe, trace: Trace): ZQuery[R, E, A] = {
       val ref = Ref.Synchronized.unsafe.make[Option[Result[R, E, A]]](None)
       new ZQuery[R, E, A](ref.modifyZIO {
@@ -1757,10 +2101,9 @@ object ZQuery {
   }
 
   /**
-   * The inverse operation [[ZQuery.sandbox]]
-   *
-   * Terminates with exceptions on the `Left` side of the `Either` error, if it
-   * exists. Otherwise extracts the contained `IO[E, A]`
+   * The inverse operation of `ZQuery#sandbox`: flattens the `Cause[Cause[E]]`
+   * that the query fails with back into a `Cause[E]`, so that defects become
+   * defects again.
    */
   def unsandbox[R, E, A](v: => ZQuery[R, Cause[E], A])(implicit trace: Trace): ZQuery[R, E, A] =
     ZQuery.suspend(v).mapErrorCause(_.flatten)
@@ -1771,17 +2114,41 @@ object ZQuery {
   def unwrap[R, E, A](zio: => ZIO[R, E, ZQuery[R, E, A]])(implicit trace: Trace): ZQuery[R, E, A] =
     ZQuery.fromZIO(zio).flatten
 
+  /**
+   * Partially applied form of `ZQuery.environmentWith`, which fixes the
+   * environment type `R`.
+   */
   final class EnvironmentWithPartiallyApplied[R](private val dummy: Boolean = true) extends AnyVal {
+
+    /**
+     * Applies `f` to the environment of the query.
+     */
     def apply[A](f: ZEnvironment[R] => A)(implicit trace: Trace): ZQuery[R, Nothing, A] =
       ZQuery(ZIO.environmentWith[R](e => Result.done(f(e))))
   }
 
+  /**
+   * Partially applied form of `ZQuery.environmentWithQuery`, which fixes the
+   * environment type `R`.
+   */
   final class EnvironmentWithQueryPartiallyApplied[R](private val dummy: Boolean = true) extends AnyVal {
+
+    /**
+     * Builds the query to run next from the environment of the query.
+     */
     def apply[E, A](f: ZEnvironment[R] => ZQuery[R, E, A])(implicit trace: Trace): ZQuery[R, E, A] =
       environment[R].flatMap(f)
   }
 
+  /**
+   * Partially applied form of `ZQuery.environmentWithZIO`, which fixes the
+   * environment type `R`.
+   */
   final class EnvironmentWithZIOPartiallyApplied[R](private val dummy: Boolean = true) extends AnyVal {
+
+    /**
+     * Builds a `ZIO` effect to run from the environment of the query.
+     */
     def apply[E, A](f: ZEnvironment[R] => ZIO[R, E, A])(implicit trace: Trace): ZQuery[R, E, A] =
       ZQuery(
         ZIO.environmentWithZIO[R](
@@ -1793,7 +2160,15 @@ object ZQuery {
       )
   }
 
+  /**
+   * Partially applied form of `ZQuery#provideSomeLayer`, which fixes the
+   * remaining environment type `R0`.
+   */
   final class ProvideSomeLayer[R0, -R, +E, +A](private val self: ZQuery[R, E, A]) extends AnyVal {
+
+    /**
+     * Provides the part `R1` of the environment with the specified layer.
+     */
     def apply[E1 >: E, R1](
       layer: => Described[ZLayer[R0, E1, R1]]
     )(implicit ev: R0 with R1 <:< R, tag: Tag[R1], trace: Trace): ZQuery[R0, E1, A] =
@@ -1802,7 +2177,17 @@ object ZQuery {
         .provideLayer(Described(ZLayer.environment[R0] ++ layer.value, layer.description))
   }
 
+  /**
+   * Partially applied form of `ZQuery#timeoutTo`, which holds the query and the
+   * default value.
+   */
   final class TimeoutTo[-R, +E, +A, +B](self: ZQuery[R, E, A], b: () => B) {
+
+    /**
+     * Applies `f` to the result of the query, or returns the default value if
+     * `duration` elapses first. Like `ZQuery#timeout`, it does not bound calls
+     * to data sources.
+     */
     def apply[B1 >: B](
       f: A => B1
     )(duration: => Duration)(implicit trace: Trace): ZQuery[R, E, B1] = {
@@ -1835,21 +2220,45 @@ object ZQuery {
     }
   }
 
+  /**
+   * Partially applied form of `ZQuery.serviceWith`, which fixes the service
+   * type `R`.
+   */
   final class ServiceWithPartiallyApplied[R](private val dummy: Boolean = true) extends AnyVal {
+
+    /**
+     * Applies `f` to the service of type `R`.
+     */
     def apply[A](
       f: R => A
     )(implicit tag: Tag[R], trace: Trace): ZQuery[R, Nothing, A] =
       ZQuery(ZIO.serviceWith[R](s => Result.done(f(s))))
   }
 
+  /**
+   * Partially applied form of `ZQuery.serviceWithQuery`, which fixes the
+   * service type.
+   */
   final class ServiceWithQueryPartiallyApplied[Service](private val dummy: Boolean = true) extends AnyVal {
+
+    /**
+     * Builds the query to run next from the service.
+     */
     def apply[R <: Service, E, A](
       f: Service => ZQuery[R, E, A]
     )(implicit tag: Tag[Service], trace: Trace): ZQuery[R with Service, E, A] =
       service[Service].flatMap(f)
   }
 
+  /**
+   * Partially applied form of `ZQuery.serviceWithZIO`, which fixes the service
+   * type.
+   */
   final class ServiceWithZIOPartiallyApplied[Service](private val dummy: Boolean = true) extends AnyVal {
+
+    /**
+     * Builds a `ZIO` effect to run from the service.
+     */
     def apply[R <: Service, E, A](
       f: Service => ZIO[R, E, A]
     )(implicit tag: Tag[Service], trace: Trace): ZQuery[R with Service, E, A] =
@@ -1884,38 +2293,89 @@ object ZQuery {
     (bs.result(), cs.result())
   }
 
+  /**
+   * Not read by ZIO Query: kept for binary compatibility only. Use
+   * `ZQuery#cached` and `ZQuery#uncached` to control caching.
+   */
   @deprecated("No longer used, kept for binary compatibility only", "0.7.4")
   val cachingEnabled: FiberRef[Boolean] =
     FiberRef.unsafe.make(true)(Unsafe)
 
+  /**
+   * The cache that requests use in the current fiber. `runCache` sets it to its
+   * cache for the duration of a run, and it is `None` while caching is disabled
+   * with `ZQuery#uncached` or outside a run.
+   */
   val currentCache: FiberRef[Option[Cache]] =
     FiberRef.unsafe.make(Option.empty[Cache])(Unsafe)
 
   private val disabledCache: FiberRef[Option[Cache]] =
     FiberRef.unsafe.make(Option.empty[Cache])(Unsafe)
 
+  /**
+   * The scope of the current run, which holds the finalizers that
+   * `acquireReleaseWith` and `ensuring` register. `runCache` sets a new scope
+   * for each run and, at the end of the run, runs each finalizer in it with the
+   * run's `Exit`; the finalizers that `acquireReleaseWith` and `ensuring`
+   * register release only when that `Exit` is a failure or an interruption.
+   */
   val currentScope: FiberRef[QueryScope] =
     FiberRef.unsafe.make[QueryScope](QueryScope.NoOp)(Unsafe)
 
+  /**
+   * Partially applied form of `ZQuery.acquireReleaseWith`, which holds the
+   * acquire effect.
+   */
   final class Acquire[-R, +E, +A](private val acquire: () => ZIO[R, E, A]) extends AnyVal {
+
+    /**
+     * Sets the effect that releases the resource.
+     */
     def apply[R1](release: A => URIO[R1, Any]): Release[R with R1, E, A] =
       new Release[R with R1, E, A](acquire, release)
   }
+
+  /**
+   * Partially applied form of `ZQuery.acquireReleaseWith`, which holds the
+   * acquire and release effects.
+   */
   final class Release[-R, +E, +A](acquire: () => ZIO[R, E, A], release: A => URIO[R, Any]) {
+
+    /**
+     * Sets the query that uses the resource and returns the resulting query.
+     */
     def apply[R1 <: R, E1 >: E, B](use: A => ZQuery[R1, E1, B])(implicit trace: Trace): ZQuery[R1, E1, B] =
       acquireReleaseExitWith(acquire())((a: A, _: Exit[E1, B]) => release(a))(use)
   }
 
+  /**
+   * Partially applied form of `ZQuery.acquireReleaseExitWith`, which holds the
+   * acquire effect.
+   */
   final class AcquireExit[-R, +E, +A](private val acquire: () => ZIO[R, E, A]) extends AnyVal {
+
+    /**
+     * Sets the effect that releases the resource, given the `Exit` of the
+     * query.
+     */
     def apply[R1 <: R, E1 >: E, B](
       release: (A, Exit[E1, B]) => URIO[R1, Any]
     ): ReleaseExit[R1, E, E1, A, B] =
       new ReleaseExit(acquire, release)
   }
+
+  /**
+   * Partially applied form of `ZQuery.acquireReleaseExitWith`, which holds the
+   * acquire and release effects.
+   */
   final class ReleaseExit[-R, +E, E1, +A, B](
     acquire: () => ZIO[R, E, A],
     release: (A, Exit[E1, B]) => URIO[R, Any]
   ) {
+
+    /**
+     * Sets the query that uses the resource and returns the resulting query.
+     */
     def apply[R1 <: R, E2 >: E <: E1, B1 <: B](use: A => ZQuery[R1, E2, B1])(implicit
       trace: Trace
     ): ZQuery[R1, E2, B1] =

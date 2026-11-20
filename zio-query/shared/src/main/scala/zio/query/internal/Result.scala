@@ -23,7 +23,7 @@ import zio.stacktracer.TracingImplicits.disableAutoTrace
 
 /**
  * A `Result[R, E, A]` is the result of running one step of a `ZQuery`. A result
- * may either by done with a value `A`, blocked on a set of requests to data
+ * may either be done with a value `A`, blocked on a set of requests to data
  * sources that require an environment `R`, or failed with an `E`.
  */
 private[query] sealed abstract class Result[-R, +E, +A] { self =>

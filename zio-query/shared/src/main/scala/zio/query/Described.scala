@@ -23,12 +23,28 @@ import zio.stacktracer.TracingImplicits.disableAutoTrace
  * that value. The description may be used to generate a hash associated with
  * the value, so values that are equal should have the same description and
  * values that are not equal should have different descriptions.
+ *
+ * Data source combinators such as `DataSource#contramap` and
+ * `DataSource#provideSomeEnvironment` put the description into the identifier
+ * of the data source they return, and two data sources with the same identifier
+ * are treated as the same data source.
  */
 final case class Described[+A](value: A, description: String)
 
+/**
+ * Syntax for building `Described` values. Import `Described._` to use `?`.
+ */
 object Described {
 
+  /**
+   * Adds the `?` method to any value.
+   */
   implicit class AnySyntax[A](private val value: A) extends AnyVal {
+
+    /**
+     * Pairs this value with the specified description, the same as
+     * `Described(value, description)`.
+     */
     def ?(description: String): Described[A] =
       Described(value, description)
   }

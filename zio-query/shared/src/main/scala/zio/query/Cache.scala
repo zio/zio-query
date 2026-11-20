@@ -25,7 +25,36 @@ import java.util.concurrent.ConcurrentHashMap
  * A `Cache` maintains an internal state with a mapping from requests to
  * `Promise`s that will contain the result of those requests when they are
  * executed. This is used internally by the library to provide deduplication and
- * caching of requests.
+ * caching of requests: when a query with caching on makes a request, ZIO Query
+ * looks it up in the cache, and sends it to its data source only when the cache
+ * has no entry for it yet.
+ *
+ * `ZQuery#run` creates a new cache for each run. Pass a cache to
+ * `ZQuery#runCache` to share results between runs. The cache that `Cache.empty`
+ * creates has no size limit and no expiry: an entry stays until `remove` drops
+ * it.
+ *
+ * {{{
+ * import zio._
+ *
+ * final case class GetUserName(id: Int) extends Request[Nothing, String]
+ *
+ * val program: ZIO[Any, Nothing, (String, String, Int)] =
+ *   for {
+ *     calls <- Ref.make(0)
+ *     userNames = DataSource.fromFunctionBatchedZIO[Any, Nothing, GetUserName, String]("UserNames") { requests =>
+ *                   calls.update(_ + 1).as(requests.map(request => s"user-\${request.id}"))
+ *                 }
+ *     cache  <- Cache.empty
+ *     first  <- ZQuery.fromRequest(GetUserName(1))(userNames).runCache(cache)
+ *     second <- ZQuery.fromRequest(GetUserName(1))(userNames).runCache(cache)
+ *     count  <- calls.get
+ *   } yield (first, second, count)
+ * // program succeeds with (user-1,user-1,1): the second run reads the cache
+ * }}}
+ *
+ * @see
+ *   [[https://zio.dev/zio-query/running-queries/ Running Queries]]
  */
 trait Cache {
 
@@ -41,6 +70,12 @@ trait Cache {
    * a `Left` with a `Promise` that can be completed to complete the request. If
    * the request is in the cache returns a `Right` with a `Promise` that will
    * contain the result of the request when it is executed.
+   *
+   * On a miss, the new `Promise` is stored in the cache, so a later lookup of
+   * an equal request returns it in a `Right`. With caching on, ZIO Query calls
+   * this method for each request a query makes when the cache is a custom
+   * `Cache`; for the cache from `Cache.empty` it calls an internal equivalent.
+   * The caller that gets a `Left` must complete the `Promise`.
    */
   def lookup[E, A, B](request: A)(implicit
     ev: A <:< Request[E, B],
@@ -49,7 +84,8 @@ trait Cache {
 
   /**
    * Inserts a request and a `Promise` that will contain the result of the
-   * request when it is executed into the cache.
+   * request when it is executed into the cache, replacing any existing entry
+   * for that request.
    */
   def put[E, A](request: Request[E, A], result: Promise[E, A])(implicit trace: Trace): UIO[Unit]
 
@@ -59,6 +95,9 @@ trait Cache {
   def remove[E, A](request: Request[E, A])(implicit trace: Trace): UIO[Unit]
 }
 
+/**
+ * Constructors for `Cache` values.
+ */
 object Cache {
 
   /**
