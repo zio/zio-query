@@ -13,3 +13,4 @@
 - 19:54 Review B: 2 Important, 6 Minor; bugs 1b-1..3 confirmed (entry 2 needs M-6 precision). R7: fix all, incl. unchanged comments in M-3/M-5; trailing-slash @see. Task 1b resumed for fix round 1.
 - 20:05 Fix round 1 done: 1a (8 commits; new bugs 6 memoize-defects, 7 mapError drops defect), 1b (4 commits + report). Scoped Sonnet re-reviews dispatched on `git diff 3f439db HEAD` per file group.
 - 20:15 Re-review A: NEEDS_FIXES, 0 Important, 1 Minor (memoize defect wording over-broad); bugs 6, 7 confirmed on 2.13.18 and 3.3.9. R8: controller applied the checked replacement (kept `orDie` in the "dies in other ways" list, as bug 6 shows) and the bug 6 reproducer note. Why: one-sentence nit, skill allows. Cost if wrong: a re-check by the coordinator.
+- 20:18 Re-review B: APPROVE, 0 Important, 2 optional Minor; controller applied both (R9: cheap precision gain). [BUG] message sent to coordinator with all 10 bugs (Z1-Z7, D1-D3).
