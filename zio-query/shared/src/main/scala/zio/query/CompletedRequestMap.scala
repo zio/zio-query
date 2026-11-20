@@ -66,8 +66,8 @@ sealed abstract class CompletedRequestMap { self =>
    *
    * @deprecated
    *   Usage of this method is deprecated as it leads to performance
-   *   degradation: each call copies every entry into a new map. Prefer
-   *   `CompletedRequestMap.combine`.
+   *   degradation: a call can copy every entry of this map into a new map.
+   *   Prefer `CompletedRequestMap.combine`.
    */
   @deprecated("Use one of the constructors in the companion object instead. See scaladoc for more info", "0.7.0")
   final def ++(that: CompletedRequestMap): CompletedRequestMap =
@@ -91,8 +91,8 @@ sealed abstract class CompletedRequestMap { self =>
    *
    * @deprecated
    *   Usage of this method is deprecated as it leads to performance
-   *   degradation: each call copies every entry into a new map. Prefer using
-   *   one of the constructors in the companion object instead.
+   *   degradation: a call can copy every entry of this map into a new map.
+   *   Prefer using one of the constructors in the companion object instead.
    */
   @deprecated("Use one of the constructors in the companion object instead. See scaladoc for more info", "0.7.0")
   final def insert[E, A](request: Request[E, A], result: Exit[E, A]): CompletedRequestMap =
@@ -104,8 +104,8 @@ sealed abstract class CompletedRequestMap { self =>
    *
    * @deprecated
    *   Usage of this method is deprecated as it leads to performance
-   *   degradation: each call copies every entry into a new map. Prefer
-   *   `CompletedRequestMap.fromIterableOption`.
+   *   degradation: a call can copy every entry of this map into a new map.
+   *   Prefer `CompletedRequestMap.fromIterableOption`.
    */
   @deprecated("Use one of the constructors in the companion object instead. See scaladoc for more info", "0.7.0")
   final def insertOption[E, A](request: Request[E, A], result: Exit[E, Option[A]]): CompletedRequestMap =
@@ -124,12 +124,14 @@ sealed abstract class CompletedRequestMap { self =>
   /**
    * Collects all requests in a set.
    *
-   * It works for maps built with `empty`, `single`, `apply` with one entry, or
-   * the deprecated `++` and `insert`. It throws a `ClassCastException` for maps
-   * built with the other constructors, such as `apply` with two or more
-   * entries, `combine`, `fromIterable`, `fromIterableWith`, `fail` or the
-   * `unsafe` ones, which include the maps returned by the
-   * `DataSource.fromFunction*` data sources. This is a known bug.
+   * It works for maps built with `empty`, `single`, `apply` with at most one
+   * entry, or the deprecated `++` and `insert`. For maps built with the other
+   * constructors, such as `apply` with two or more entries, `combine`,
+   * `fromIterable`, `fromIterableWith`, `fail` or the `unsafe` ones, which
+   * include the maps that the `DataSource.fromFunction*` data sources return
+   * for a non-empty batch, the cast fails: on the JVM it throws a
+   * `ClassCastException`, and on Scala.js a development build fails while a
+   * release build returns the requests. This is a known bug.
    */
   final def requests: Set[Request[_, _]] =
     map.keySet.asInstanceOf[Set[Request[_, _]]]
