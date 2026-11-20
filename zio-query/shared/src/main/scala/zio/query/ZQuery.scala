@@ -49,7 +49,8 @@ import scala.reflect.ClassTag
  *     do `catchAll`, `foldQuery`, `optional`, `sandbox`, `timeout` and other
  *     combinators that continue with a query.
  *   - While caching is enabled, which is the default, a request equal to one
- *     already made in the same run is not sent again, and its result is reused.
+ *     already made with caching enabled in the same run is not sent again, and
+ *     its result is reused.
  *
  * This allows for writing queries in a high level, compositional style, with
  * confidence that they will be optimized. For example, the following query
@@ -750,8 +751,8 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
   /**
    * Returns an effect that models executing this query.
    *
-   * Each evaluation of the effect starts with a new, empty [[Cache]]: while
-   * caching is enabled, equal requests in one run are sent once, and the next
+   * Each evaluation of the effect starts with a new, empty [[Cache]]: equal
+   * requests made with caching enabled in one run are sent once, and the next
    * run sends them again. To share results between runs, use `runCache` with
    * the same cache.
    *
@@ -1796,9 +1797,10 @@ object ZQuery {
    * The request is not sent when the query is built. It is sent when the query
    * runs, together with the other requests to the same data source that the
    * query makes at the same step. While caching is enabled, which is the
-   * default, a request equal to one already made in the same run is answered
-   * from the cache. The request type must extend `Request[E, B]`; define it as
-   * a case class so that equal requests compare equal.
+   * default, a request equal to one already made with caching enabled in the
+   * same run is answered from the cache. The request type must extend
+   * `Request[E, B]`; define it as a case class so that equal requests compare
+   * equal.
    *
    * {{{
    * import zio._
