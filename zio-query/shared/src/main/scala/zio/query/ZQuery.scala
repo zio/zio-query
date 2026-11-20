@@ -31,35 +31,71 @@ import scala.reflect.ClassTag
  * that may contain requests from one or more data sources, requires an
  * environment `R`, and may fail with an `E` or succeed with an `A`.
  *
- * Requests that can be performed in parallel, as expressed by `zipWithPar` and
- * combinators derived from it, will automatically be batched. Requests that
- * must be performed sequentially, as expressed by `zipWith` and combinators
- * derived from it, will automatically be pipelined. This allows for aggressive
- * data source specific optimizations. Requests can also be deduplicated and
- * cached.
+ * Building a query does not run anything: `run`, `runCache` and `runLog` turn
+ * it into a `ZIO` effect. Requests enter a query through `ZQuery.fromRequest`
+ * or one of its variants, and ZIO Query looks at how queries are combined to
+ * decide how to send those requests to their data sources:
+ *
+ *   - Requests combined with `zipWithPar`, `zipWithBatched` or combinators
+ *     derived from them (`zipPar`, `<&>`, `foreachPar`, `foreachBatched`, ...)
+ *     are batched: each data source receives them together, in one batch.
+ *   - Requests combined with `zipWith` or combinators derived from it (`zip`,
+ *     `*>`, `foreach`, ...) are pipelined: a data source receives its requests
+ *     in one call, as batches that must be performed one after another. A
+ *     `flatMap` on the left side ends the pipeline, because the next requests
+ *     depend on its result.
+ *   - While caching is enabled, which is the default, a request equal to one
+ *     already made in the same run is not sent again, and its result is reused.
  *
  * This allows for writing queries in a high level, compositional style, with
- * confidence that they will automatically be optimized. For example, consider
- * the following query from a user service.
+ * confidence that they will be optimized. For example, the following query
+ * fetches all user ids, then the name of each user:
  *
  * {{{
- * val getAllUserIds: ZQuery[Any, Nothing, List[Int]]         = ???
- * def getUserNameById(id: Int): ZQuery[Any, Nothing, String] = ???
+ * case object GetAllUserIds extends Request[Nothing, List[Int]]
+ * final case class GetUserName(id: Int) extends Request[Nothing, String]
  *
- * for {
- *   userIds   <- getAllUserIds
- *   userNames <- ZQuery.foreachPar(userIds)(getUserNameById)
- * } yield userNames
+ * val userIds: DataSource[Any, GetAllUserIds.type] =
+ *   DataSource.fromFunction("UserIds")((_: GetAllUserIds.type) => List(1, 2, 3))
+ *
+ * val userNames: DataSource[Any, GetUserName] =
+ *   DataSource.fromFunctionBatched("UserNames") { (requests: Chunk[GetUserName]) =>
+ *     requests.map(request => s"user-\${request.id}")
+ *   }
+ *
+ * val getAllUserIds: UQuery[List[Int]] =
+ *   ZQuery.fromRequest(GetAllUserIds)(userIds)
+ *
+ * def getUserName(id: Int): UQuery[String] =
+ *   ZQuery.fromRequest(GetUserName(id))(userNames)
+ *
+ * val query: UQuery[List[String]] =
+ *   for {
+ *     ids   <- getAllUserIds
+ *     names <- ZQuery.foreachPar(ids)(getUserName)
+ *   } yield names
+ * // query.run succeeds with List(user-1, user-2, user-3)
  * }}}
  *
- * This would normally require N + 1 queries, one for `getAllUserIds` and one
- * for each call to `getUserNameById`. In contrast, `ZQuery` will automatically
- * optimize this to two queries, one for `userIds` and one for `userNames`,
- * assuming an implementation of the user service that supports batching.
+ * Written with plain effects, this would take N + 1 calls: one for the ids and
+ * one for each name. Run as a query, it takes two calls: `UserIds` receives
+ * `GetAllUserIds`, then `UserNames` receives the three `GetUserName` requests
+ * in one batch. What the data source does with a batch is up to it:
+ * `DataSource.fromFunctionBatched` passes the whole batch to one function call,
+ * while `DataSource.fromFunction` calls its function once for each request.
  *
  * Based on "There is no Fork: an Abstraction for Efficient, Concurrent, and
  * Concise Data Access" by Simon Marlow, Louis Brandy, Jonathan Coens, and Jon
  * Purdy. [[http://simonmar.github.io/bib/papers/haxl-icfp14.pdf]]
+ *
+ * @see
+ *   [[https://zio.dev/zio-query/how-batching-works How Batching Works]]
+ * @tparam R
+ *   the environment the query requires
+ * @tparam E
+ *   the type of error the query may fail with
+ * @tparam A
+ *   the type of value the query succeeds with
  */
 final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result[R, E, A]]) { self =>
 
@@ -684,6 +720,32 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
 
   /**
    * Returns an effect that models executing this query.
+   *
+   * Each evaluation of the effect starts with a new, empty [[Cache]]: while
+   * caching is enabled, equal requests in one run are sent once, and the next
+   * run sends them again. To share results between runs, use `runCache` with
+   * the same cache.
+   *
+   * {{{
+   * final case class GetUserName(id: Int) extends Request[Nothing, String]
+   *
+   * val userNames: DataSource[Any, GetUserName] =
+   *   DataSource.fromFunctionBatched("UserNames") { (requests: Chunk[GetUserName]) =>
+   *     requests.map(request => s"user-\${request.id}")
+   *   }
+   *
+   * def getUserName(id: Int): UQuery[String] =
+   *   ZQuery.fromRequest(GetUserName(id))(userNames)
+   *
+   * val program: ZIO[Any, Nothing, (String, String)] =
+   *   (getUserName(1) <&> getUserName(1)).run
+   * // program succeeds with (user-1,user-1) after one call to UserNames, with
+   * // the single request GetUserName(1); running program again calls
+   * // UserNames again
+   * }}}
+   *
+   * @see
+   *   [[https://zio.dev/zio-query/running-queries Running Queries]]
    */
   def run(implicit trace: Trace): ZIO[R, E, A] =
     runCache(Cache.unsafeMake())
@@ -691,6 +753,34 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
   /**
    * Returns an effect that models executing this query with the specified
    * cache.
+   *
+   * Requests whose results are already in the cache are not sent to their data
+   * sources, and the results of new requests are added to it. Passing the same
+   * cache to several runs shares results between them.
+   *
+   * {{{
+   * final case class GetUserName(id: Int) extends Request[Nothing, String]
+   *
+   * val userNames: DataSource[Any, GetUserName] =
+   *   DataSource.fromFunctionBatched("UserNames") { (requests: Chunk[GetUserName]) =>
+   *     requests.map(request => s"user-\${request.id}")
+   *   }
+   *
+   * def getUserName(id: Int): UQuery[String] =
+   *   ZQuery.fromRequest(GetUserName(id))(userNames)
+   *
+   * val program: ZIO[Any, Nothing, (String, String)] =
+   *   for {
+   *     cache  <- Cache.empty
+   *     first  <- getUserName(1).runCache(cache)
+   *     second <- getUserName(1).runCache(cache)
+   *   } yield (first, second)
+   * // program succeeds with (user-1,user-1) after one call to UserNames: the
+   * // second run finds GetUserName(1) in the cache
+   * }}}
+   *
+   * @see
+   *   [[https://zio.dev/zio-query/running-queries Running Queries]]
    */
   def runCache(cache: => Cache)(implicit trace: Trace): ZIO[R, E, A] = {
     import ZQuery.{currentCache, currentScope}
@@ -743,8 +833,32 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
   }
 
   /**
-   * Returns an effect that models executing this query, returning the query
-   * result along with the cache.
+   * Returns an effect that models executing this query with a new, empty cache,
+   * returning the cache along with the query result. The cache holds the
+   * results of the requests the query made, and can be passed to `runCache` to
+   * reuse them.
+   *
+   * {{{
+   * final case class GetUserName(id: Int) extends Request[Nothing, String]
+   *
+   * val userNames: DataSource[Any, GetUserName] =
+   *   DataSource.fromFunctionBatched("UserNames") { (requests: Chunk[GetUserName]) =>
+   *     requests.map(request => s"user-\${request.id}")
+   *   }
+   *
+   * def getUserName(id: Int): UQuery[String] =
+   *   ZQuery.fromRequest(GetUserName(id))(userNames)
+   *
+   * val program: ZIO[Any, Nothing, String] =
+   *   ZQuery.foreachPar(List(1, 2))(getUserName).runLog.flatMap { case (cache, _) =>
+   *     getUserName(2).runCache(cache)
+   *   }
+   * // program succeeds with user-2 after one call to UserNames, with the batch
+   * // GetUserName(1), GetUserName(2)
+   * }}}
+   *
+   * @see
+   *   [[https://zio.dev/zio-query/running-queries Running Queries]]
    */
   def runLog(implicit trace: Trace): ZIO[R, E, (Cache, A)] =
     for {
@@ -1422,6 +1536,34 @@ object ZQuery {
    * Performs a query for each element in a collection, batching requests to
    * data sources and collecting the results into a query returning a collection
    * of their results.
+   *
+   * Unlike `foreachPar`, the queries run one after another, so effects lifted
+   * with `ZQuery.fromZIO` run in order, but their requests are still batched.
+   * Use it when the order of those effects matters or when parallel fibers are
+   * not wanted.
+   *
+   * {{{
+   * final case class GetUserName(id: Int) extends Request[Nothing, String]
+   *
+   * val userNames: DataSource[Any, GetUserName] =
+   *   DataSource.fromFunctionBatched("UserNames") { (requests: Chunk[GetUserName]) =>
+   *     requests.map(request => s"user-\${request.id}")
+   *   }
+   *
+   * def getUserName(id: Int): UQuery[String] =
+   *   ZQuery.fromRequest(GetUserName(id))(userNames)
+   *
+   * val names: UQuery[List[String]] =
+   *   ZQuery.foreachBatched(List(1, 2, 3)) { id =>
+   *     ZQuery.fromZIO(Console.printLine(s"loading \$id").orDie) *> getUserName(id)
+   *   }
+   * // names.run prints "loading 1", "loading 2" and "loading 3" in order, then
+   * // calls UserNames once with GetUserName(1), GetUserName(2), GetUserName(3),
+   * // and succeeds with List(user-1, user-2, user-3)
+   * }}}
+   *
+   * @see
+   *   [[https://zio.dev/zio-query/how-batching-works How Batching Works]]
    */
   def foreachBatched[R, E, A, B, Collection[+Element] <: Iterable[Element]](
     as: Collection[A]
@@ -1478,6 +1620,32 @@ object ZQuery {
    * Performs a query for each element in a collection, collecting the results
    * into a query returning a collection of their results. Requests will be
    * executed in parallel and will be batched.
+   *
+   * This is the main way to avoid the N + 1 problem: the requests that the
+   * queries make in the same step reach each data source in one batch, and
+   * equal requests are sent once while caching is enabled. Other work, such as
+   * effects lifted with `ZQuery.fromZIO`, runs on parallel fibers; see
+   * `withParallelism` to limit them.
+   *
+   * {{{
+   * final case class GetUserName(id: Int) extends Request[Nothing, String]
+   *
+   * val userNames: DataSource[Any, GetUserName] =
+   *   DataSource.fromFunctionBatched("UserNames") { (requests: Chunk[GetUserName]) =>
+   *     requests.map(request => s"user-\${request.id}")
+   *   }
+   *
+   * def getUserName(id: Int): UQuery[String] =
+   *   ZQuery.fromRequest(GetUserName(id))(userNames)
+   *
+   * val names: UQuery[List[String]] =
+   *   ZQuery.foreachPar(List(1, 2, 2, 3))(getUserName)
+   * // names.run calls UserNames once with GetUserName(1), GetUserName(2),
+   * // GetUserName(3), and succeeds with List(user-1, user-2, user-2, user-3)
+   * }}}
+   *
+   * @see
+   *   [[https://zio.dev/zio-query/how-batching-works How Batching Works]]
    */
   def foreachPar[R, E, A, B, Collection[+Element] <: Iterable[Element]](
     as: Collection[A]
@@ -1560,9 +1728,34 @@ object ZQuery {
    * all requests received. Queries must be constructed with `fromRequest` or
    * one of its variants for optimizations to be applied.
    *
+   * The request is not sent when the query is built. It is sent when the query
+   * runs, together with the other requests to the same data source that the
+   * query makes at the same step. While caching is enabled, which is the
+   * default, a request equal to one already made in the same run is answered
+   * from the cache. The request type must extend `Request[E, B]`; define it as
+   * a case class so that equal requests compare equal.
+   *
+   * {{{
+   * final case class GetUserName(id: Int) extends Request[Nothing, String]
+   *
+   * val userNames: DataSource[Any, GetUserName] =
+   *   DataSource.fromFunctionBatched("UserNames") { (requests: Chunk[GetUserName]) =>
+   *     requests.map(request => s"user-\${request.id}")
+   *   }
+   *
+   * def getUserName(id: Int): UQuery[String] =
+   *   ZQuery.fromRequest(GetUserName(id))(userNames)
+   *
+   * val both: UQuery[(String, String)] = getUserName(1) <&> getUserName(2)
+   * // both.run calls UserNames once with GetUserName(1), GetUserName(2), and
+   * // succeeds with (user-1,user-2)
+   * }}}
+   *
    * @see
    *   `fromRequests` for variants that allow for multiple requests to be
    *   submitted at once
+   * @see
+   *   [[https://zio.dev/zio-query/creating-queries Creating Queries]]
    */
   def fromRequest[R, E, A, B](
     request0: => A
