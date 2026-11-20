@@ -24,10 +24,10 @@ import zio.stacktracer.TracingImplicits.disableAutoTrace
  * A `Continue[R, E, A]` models a continuation of a blocked request that
  * requires an environment `R` and may either fail with an `E` or succeed with
  * an `A`. A continuation may either be a `Get` that merely gets the result of a
- * blocked request (potentially transforming it with pure functions) or an
- * `Effect` that may perform arbitrary effects. This is used by the library
- * internally to determine whether it is safe to pipeline two requests that must
- * be executed sequentially.
+ * blocked request (potentially transforming it with functions or ZIO effects,
+ * but not with queries) or an `Effect` that may perform arbitrary effects. This
+ * is used by the library internally to determine whether it is safe to pipeline
+ * two requests that must be executed sequentially.
  */
 private[query] abstract class Continue[-R, +E, +A] { self =>
 
@@ -167,7 +167,8 @@ private[query] object Continue {
 
   /**
    * Constructs a continuation that merely gets the result of a blocked request
-   * (potentially transforming it with pure functions).
+   * (potentially transforming it with functions or ZIO effects, but not with
+   * queries).
    */
   def get[R, E, A](io: ZIO[R, E, A]): Continue[R, E, A] =
     Get(io)
