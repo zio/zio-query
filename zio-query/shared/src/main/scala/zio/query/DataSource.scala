@@ -72,7 +72,7 @@ import zio.{Chunk, Exit, Trace, ZEnvironment, ZIO}
  * }}}
  *
  * @see
- *   [[https://zio.dev/zio-query/data-source-reference DataSource Reference]]
+ *   [[https://zio.dev/zio-query/data-source-reference/ DataSource Reference]]
  */
 trait DataSource[-R, -A] { self =>
 
@@ -372,7 +372,7 @@ object DataSource {
    * }}}
    *
    * @see
-   *   [[https://zio.dev/zio-query/creating-data-sources Creating Data Sources]]
+   *   [[https://zio.dev/zio-query/creating-data-sources/ Creating Data Sources]]
    */
   def fromFunctionBatched[A, B](
     name: String

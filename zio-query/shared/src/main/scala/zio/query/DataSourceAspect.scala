@@ -27,7 +27,7 @@ import zio.{Chunk, Trace, ZIO}
  * source into another, possibly enlarging the environment type.
  *
  * @see
- *   [[https://zio.dev/zio-query/aspects Aspects]]
+ *   [[https://zio.dev/zio-query/aspects/ Aspects]]
  */
 trait DataSourceAspect[-R] { self =>
 

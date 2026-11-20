@@ -26,7 +26,7 @@ import zio._
  * queries that the aspect can be applied to.
  *
  * @see
- *   [[https://zio.dev/zio-query/aspects Aspects]]
+ *   [[https://zio.dev/zio-query/aspects/ Aspects]]
  */
 trait QueryAspect[+LowerR, -UpperR, +LowerE, -UpperE, +LowerA, -UpperA] { self =>
 

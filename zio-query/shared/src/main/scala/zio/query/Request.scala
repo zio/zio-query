@@ -54,6 +54,6 @@ import zio.stacktracer.TracingImplicits.disableAutoTrace
  * }}}
  *
  * @see
- *   [[https://zio.dev/zio-query/creating-data-sources Creating Data Sources]]
+ *   [[https://zio.dev/zio-query/creating-data-sources/ Creating Data Sources]]
  */
 trait Request[E, A]

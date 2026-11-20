@@ -54,7 +54,7 @@ import java.util.concurrent.ConcurrentHashMap
  * }}}
  *
  * @see
- *   [[https://zio.dev/zio-query/running-queries Running Queries]]
+ *   [[https://zio.dev/zio-query/running-queries/ Running Queries]]
  */
 trait Cache {
 

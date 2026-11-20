@@ -54,7 +54,7 @@ import scala.collection.{immutable, mutable}
  * }}}
  *
  * @see
- *   [[https://zio.dev/zio-query/completed-request-map CompletedRequestMap]]
+ *   [[https://zio.dev/zio-query/completed-request-map/ CompletedRequestMap]]
  */
 sealed abstract class CompletedRequestMap { self =>
 
