@@ -35,6 +35,8 @@ import java.util.concurrent.ConcurrentHashMap
  * it.
  *
  * {{{
+ * import zio._
+ *
  * final case class GetUserName(id: Int) extends Request[Nothing, String]
  *
  * val program: ZIO[Any, Nothing, (String, String, Int)] =

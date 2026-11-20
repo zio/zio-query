@@ -52,6 +52,8 @@ import scala.reflect.ClassTag
  * fetches all user ids, then the name of each user:
  *
  * {{{
+ * import zio._
+ *
  * case object GetAllUserIds extends Request[Nothing, List[Int]]
  * final case class GetUserName(id: Int) extends Request[Nothing, String]
  *
@@ -462,6 +464,8 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * when one query value is used in several places:
    *
    * {{{
+   * import zio._
+   *
    * final case class Pair(x: UQuery[Int], y: UQuery[Int])
    *
    * val query: UQuery[Int] =
@@ -731,6 +735,8 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * the same cache.
    *
    * {{{
+   * import zio._
+   *
    * final case class GetUserName(id: Int) extends Request[Nothing, String]
    *
    * val userNames: DataSource[Any, GetUserName] =
@@ -763,6 +769,8 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * cache to several runs shares results between them.
    *
    * {{{
+   * import zio._
+   *
    * final case class GetUserName(id: Int) extends Request[Nothing, String]
    *
    * val userNames: DataSource[Any, GetUserName] =
@@ -843,6 +851,8 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * reuse them.
    *
    * {{{
+   * import zio._
+   *
    * final case class GetUserName(id: Int) extends Request[Nothing, String]
    *
    * val userNames: DataSource[Any, GetUserName] =
@@ -1560,6 +1570,8 @@ object ZQuery {
    * not wanted.
    *
    * {{{
+   * import zio._
+   *
    * final case class GetUserName(id: Int) extends Request[Nothing, String]
    *
    * val userNames: DataSource[Any, GetUserName] =
@@ -1650,6 +1662,8 @@ object ZQuery {
    * `withParallelism` to limit them.
    *
    * {{{
+   * import zio._
+   *
    * final case class GetUserName(id: Int) extends Request[Nothing, String]
    *
    * val userNames: DataSource[Any, GetUserName] =
@@ -1758,6 +1772,8 @@ object ZQuery {
    * a case class so that equal requests compare equal.
    *
    * {{{
+   * import zio._
+   *
    * final case class GetUserName(id: Int) extends Request[Nothing, String]
    *
    * val userNames: DataSource[Any, GetUserName] =

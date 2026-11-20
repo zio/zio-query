@@ -31,6 +31,8 @@ import zio.stacktracer.TracingImplicits.disableAutoTrace
  * to one already made in the same run is answered from the cache.
  *
  * {{{
+ * import zio._
+ *
  * sealed trait UserRequest[A] extends Request[Nothing, A]
  *
  * case object GetAllIds                 extends UserRequest[List[Int]]

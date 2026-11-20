@@ -38,6 +38,8 @@ import scala.collection.{immutable, mutable}
  * `fromIterable` or `single`.
  *
  * {{{
+ * import zio._
+ *
  * final case class GetUserName(id: Int) extends Request[String, String]
  *
  * val completed: CompletedRequestMap =

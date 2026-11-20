@@ -52,6 +52,8 @@ import zio.{Chunk, Exit, Trace, ZEnvironment, ZIO}
  * requests:
  *
  * {{{
+ * import zio._
+ *
  * final case class GetUserName(id: Int) extends Request[Nothing, String]
  *
  * val userNames: DataSource[Any, GetUserName] =
@@ -351,6 +353,8 @@ object DataSource {
    * `name` becomes the identifier of the data source.
    *
    * {{{
+   * import zio._
+   *
    * final case class GetUserName(id: Int) extends Request[Nothing, String]
    *
    * val userNames: DataSource[Any, GetUserName] =
@@ -418,6 +422,8 @@ object DataSource {
    * for it dies with a `QueryFailure`.
    *
    * {{{
+   * import zio._
+   *
    * final case class User(id: Int, name: String)
    * final case class GetUser(id: Int) extends Request[Nothing, User]
    *
