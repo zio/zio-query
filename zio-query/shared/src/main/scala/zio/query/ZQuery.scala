@@ -325,11 +325,6 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
   /**
    * Ensures that if this query starts executing, the specified `ZIO` effect
    * runs after this query completes, whether by success or failure.
-   *
-   * If this query is interrupted, the finalizer runs when the whole run ends
-   * with a failure or an interruption. When `timeout` or `race` interrupts this
-   * query and the run still succeeds, the finalizer does not run: this is a
-   * known bug.
    */
   def ensuring[R1 <: R](finalizer: => ZIO[R1, Nothing, Any])(implicit trace: Trace): ZQuery[R1, E, A] =
     ZQuery.acquireReleaseWith(ZIO.unit)(_ => finalizer)(_ => self)
@@ -1305,30 +1300,21 @@ object ZQuery {
 
   /**
    * Acquires the specified resource before the query begins execution and
-   * releases it after the query completes execution, whether by success,
-   * failure, or interruption. The release function also receives the `Exit` of
-   * the query.
+   * releases it after the query completes execution. The release function also
+   * receives the `Exit` of the query.
    *
    * The acquire and release steps are `ZIO` effects, and acquiring is
-   * uninterruptible. If the query is interrupted, the release runs when the
-   * whole run ends with a failure or an interruption, and receives the run's
-   * cause with its typed failures removed (which can be empty) instead of the
-   * query's `Exit`. When `timeout` or `race` interrupts the query and the run
-   * still succeeds, the release does not run: this is a known bug.
+   * uninterruptible.
    */
   def acquireReleaseExitWith[R, E, A](acquire: => ZIO[R, E, A]): ZQuery.AcquireExit[R, E, A] =
     new ZQuery.AcquireExit(() => acquire)
 
   /**
    * Acquires the specified resource before the query begins execution and
-   * releases it after the query completes execution, whether by success,
-   * failure, or interruption.
+   * releases it after the query completes execution.
    *
    * The acquire and release steps are `ZIO` effects, and acquiring is
-   * uninterruptible. If the query is interrupted, the release runs when the
-   * whole run ends with a failure or an interruption. When `timeout` or `race`
-   * interrupts the query and the run still succeeds, the release does not run:
-   * this is a known bug.
+   * uninterruptible.
    */
   def acquireReleaseWith[R, E, A](acquire: => ZIO[R, E, A]): ZQuery.Acquire[R, E, A] =
     new ZQuery.Acquire(() => acquire)
@@ -2315,9 +2301,7 @@ object ZQuery {
   /**
    * The scope of the current run, which holds the finalizers that
    * `acquireReleaseWith` and `ensuring` register. `runCache` sets a new scope
-   * for each run and, at the end of the run, runs each finalizer in it with the
-   * run's `Exit`; the finalizers that `acquireReleaseWith` and `ensuring`
-   * register release only when that `Exit` is a failure or an interruption.
+   * for each run and closes it at the end of the run with the run's `Exit`.
    */
   val currentScope: FiberRef[QueryScope] =
     FiberRef.unsafe.make[QueryScope](QueryScope.NoOp)(Unsafe)
