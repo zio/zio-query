@@ -203,10 +203,11 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    *
    * The result is known for queries built with [[ZQuery.succeedNow]],
    * `ZQuery.failNow`, `ZQuery.failCauseNow` with a cause that contains a typed
-   * failure, and [[ZQuery.fromZIONow]] applied to an [[zio.Exit]], and for
-   * `map` of such a query. It is not known for lazy constructors such as
-   * `ZQuery.succeed`, for `ZQuery.failCauseNow` with a cause that only holds
-   * defects, or for queries that make requests.
+   * failure, and [[ZQuery.fromZIONow]] applied to an [[zio.Exit]] that succeeds
+   * or holds a typed failure, and for `map` of such a query. It is not known
+   * for lazy constructors such as `ZQuery.succeed`, for `ZQuery.failCauseNow`
+   * or `ZQuery.fromZIONow` with a cause that holds no typed failure, or for
+   * queries that make requests.
    */
   def asExitMaybe: Option[Exit[E, A]] =
     Option(asExitOrElse(null))
@@ -248,7 +249,9 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
 
   /**
    * Recovers from all typed failures of this query with the query returned by
-   * `h`. Defects are not caught: use `catchAllCause` to recover from them.
+   * `h`. Defects are not caught: use `catchAllCause` to recover from them. When
+   * the cause holds both a typed failure and a defect, `h` receives the typed
+   * failure and the defect is dropped, as with `ZIO#catchAll`.
    */
   def catchAll[R1 <: R, E2, A1 >: A](
     h: E => ZQuery[R1, E2, A1]
@@ -299,7 +302,9 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
 
   /**
    * Recovers from all typed failures of this query with the `ZIO` effect
-   * returned by `h`. Defects are not caught.
+   * returned by `h`. Defects are not caught. When the cause holds both a typed
+   * failure and a defect, `h` receives the typed failure and the defect is
+   * dropped.
    */
   def catchAllZIO[R1 <: R, E2, A1 >: A](
     h: E => ZIO[R1, E2, A1]
@@ -310,7 +315,8 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * Returns a query whose failure and success have been lifted into an
    * `Either`. The resulting query has no typed failures, because the failure
    * case has been exposed as part of the `Either` success case. Defects still
-   * fail it.
+   * fail it, unless the cause also holds a typed failure, which then becomes
+   * the `Left` while the defect is dropped.
    */
   def either(implicit ev: CanFail[E], trace: Trace): ZQuery[R, Nothing, Either[E, A]] =
     fold(Left(_), Right(_))
@@ -357,8 +363,10 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
 
   /**
    * Folds over the failed or successful result of this query to yield a query
-   * that does not fail, but succeeds with the value returned by the left or
-   * right function passed to `fold`.
+   * that has no typed failures, but succeeds with the value returned by the
+   * left or right function passed to `fold`. Defects still fail it, unless the
+   * cause also holds a typed failure, which is then folded while the defect is
+   * dropped.
    */
   def fold[B](failure: E => B, success: A => B)(implicit
     ev: CanFail[E],
@@ -502,7 +510,8 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
 
   /**
    * Returns a query whose failure and success channels have been mapped by the
-   * specified pair of functions, `f` and `g`.
+   * specified pair of functions, `f` and `g`. When the cause holds both a typed
+   * failure and a defect, the defect is dropped, as with `ZIO#mapBoth`.
    */
   def mapBoth[E1, B](f: E => E1, g: A => B)(implicit ev: CanFail[E], trace: Trace): ZQuery[R, E1, B] =
     mapBothCause(_.failureOrCause.fold(c => Cause.fail(f(c)), ZIO.identityFn), g)
@@ -534,6 +543,10 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
 
   /**
    * Maps the specified function over the failed result of this query.
+   *
+   * When the cause holds both a typed failure and a defect, the result fails
+   * with the mapped typed failure only, and the defect is dropped.
+   * `ZIO#mapError` keeps the defect: this is a known bug.
    */
   def mapError[E1](f: E => E1)(implicit ev: CanFail[E], trace: Trace): ZQuery[R, E1, A] =
     ZQuery {
