@@ -19,7 +19,10 @@ package zio.query
 import zio.stacktracer.TracingImplicits.disableAutoTrace
 
 /**
- * `QueryFailure` keeps track of details relevant to query failures.
+ * `QueryFailure` keeps track of details relevant to query failures. It is the
+ * defect a query dies with when a data source returns no result for a request
+ * it received: `dataSource` is that data source and `request` is the request.
+ * The message names both, and the exception has no stack trace.
  */
 final case class QueryFailure(dataSource: DataSource[Nothing, Nothing], request: Request[_, _])
     extends Throwable(null, null, true, false) {

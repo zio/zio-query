@@ -20,9 +20,30 @@ import zio.stacktracer.TracingImplicits.disableAutoTrace
 
 package object query {
 
-  type RQuery[-R, +A]  = ZQuery[R, Throwable, A]
+  /**
+   * A query that requires an environment `R` and may fail with a `Throwable`.
+   */
+  type RQuery[-R, +A] = ZQuery[R, Throwable, A]
+
+  /**
+   * A query that requires an environment `R` and cannot fail: its error type is
+   * `Nothing`.
+   */
   type URQuery[-R, +A] = ZQuery[R, Nothing, A]
-  type Query[+E, +A]   = ZQuery[Any, E, A]
-  type UQuery[+A]      = ZQuery[Any, Nothing, A]
-  type TaskQuery[+A]   = ZQuery[Any, Throwable, A]
+
+  /**
+   * A query that requires no environment and may fail with an `E`.
+   */
+  type Query[+E, +A] = ZQuery[Any, E, A]
+
+  /**
+   * A query that requires no environment and cannot fail: its error type is
+   * `Nothing`.
+   */
+  type UQuery[+A] = ZQuery[Any, Nothing, A]
+
+  /**
+   * A query that requires no environment and may fail with a `Throwable`.
+   */
+  type TaskQuery[+A] = ZQuery[Any, Throwable, A]
 }
