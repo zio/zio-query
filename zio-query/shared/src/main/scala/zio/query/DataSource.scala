@@ -268,8 +268,9 @@ object DataSource {
 
   /**
    * A data source that executes requests that can be performed in parallel in
-   * batches but does not further optimize batches of requests that must be
-   * performed sequentially.
+   * batches, one batch after another. Apart from leaving out requests that an
+   * earlier batch has already completed, it does not further optimize batches
+   * of requests that must be performed sequentially.
    */
   trait Batched[-R, -A] extends DataSource[R, A] {
 
@@ -317,8 +318,9 @@ object DataSource {
     /**
      * Constructs a data source from a function taking a collection of requests
      * and returning a `CompletedRequestMap`. The function is called once per
-     * batch of requests that can be performed in parallel, and `name` becomes
-     * the identifier.
+     * non-empty batch of requests that can be performed in parallel, after
+     * requests that an earlier batch has already completed are left out, and
+     * `name` becomes the identifier.
      */
     def make[R, A](name: String)(f: Chunk[A] => ZIO[R, Nothing, CompletedRequestMap]): DataSource[R, A] =
       new DataSource.Batched[R, A] {
@@ -496,7 +498,8 @@ object DataSource {
   /**
    * Constructs a data source from an effectual function, called once for each
    * request. The calls for one batch run in parallel, and a failure of one call
-   * fails only the query for that request.
+   * fails only that request: the other requests of the batch still get their
+   * results.
    */
   def fromFunctionZIO[R, E, A, B](
     name: String
@@ -552,7 +555,9 @@ object DataSource {
   /**
    * A data source that never executes requests: its `runAll` never completes,
    * so a query that sends it a request does not complete either. Combined with
-   * another data source by `race`, it always loses. Useful in tests.
+   * another data source by `race`, it never wins: the race returns the results
+   * of the other data source, and does not complete if the other data source's
+   * `runAll` dies. Useful in tests.
    */
   val never: DataSource[Any, Any] =
     new DataSource[Any, Any] {
