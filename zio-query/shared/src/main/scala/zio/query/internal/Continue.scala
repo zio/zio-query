@@ -132,7 +132,8 @@ private[query] abstract class Continue[-R, +E, +A] { self =>
 
   /**
    * Combines this continuation with that continuation using the specified
-   * function, in parallel.
+   * function. Two `Effect` continuations are combined with `ZQuery#zipWithPar`;
+   * a `Get` is awaited in sequence.
    */
   def zipWithPar[R1 <: R, E1 >: E, B, C](
     that: Continue[R1, E1, B]
@@ -140,7 +141,9 @@ private[query] abstract class Continue[-R, +E, +A] { self =>
 
   /**
    * Combines this continuation with that continuation using the specified
-   * function, batching requests to data sources.
+   * function. Two `Effect` continuations are combined with
+   * `ZQuery#zipWithBatched`, batching requests to data sources; a `Get` is
+   * awaited in sequence.
    */
   def zipWithBatched[R1 <: R, E1 >: E, B, C](
     that: Continue[R1, E1, B]
@@ -150,8 +153,8 @@ private[query] abstract class Continue[-R, +E, +A] { self =>
 private[query] object Continue {
 
   /**
-   * Constructs a continuation from a request, a data source, and a `Promise`
-   * that will contain the result of the request when it is executed.
+   * Constructs a continuation from a `Promise` that will contain the result of
+   * the request when it is executed.
    */
   def apply[E, A](promise: Promise[E, A])(implicit trace: Trace): Continue[Any, E, A] =
     Get(promise.await)

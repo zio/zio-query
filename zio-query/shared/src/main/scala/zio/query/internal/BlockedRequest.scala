@@ -28,11 +28,17 @@ import zio.{Exit, Promise}
  * that results will be of the type requested.
  */
 private[query] sealed trait BlockedRequest[+A] {
+
+  /** The error type of the request. */
   type Failure
+
+  /** The success type of the request. */
   type Success
 
+  /** The request. */
   def request: Request[Failure, Success]
 
+  /** The `Promise` that receives the result of the request. */
   def result: Promise[Failure, Success]
 
   override final def toString: String =

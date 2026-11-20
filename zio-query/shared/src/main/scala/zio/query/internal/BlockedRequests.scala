@@ -99,7 +99,9 @@ private[query] abstract class BlockedRequests[-R] { self =>
     fold(Folder.ProvideSomeEnvironment(f))
 
   /**
-   * Executes all requests, submitting requests to each data source in parallel.
+   * Executes all requests. Each round of batches runs after the previous one,
+   * and within a round each data source receives its requests in one call to
+   * `runAll`, with the calls to different data sources made in parallel.
    */
   final def run(implicit trace: Trace): ZIO[R, Nothing, Unit] = {
     if (self eq Empty) return Exit.unit
