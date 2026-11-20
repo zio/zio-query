@@ -96,7 +96,7 @@ import scala.reflect.ClassTag
  * Purdy. [[http://simonmar.github.io/bib/papers/haxl-icfp14.pdf]]
  *
  * @see
- *   [[https://zio.dev/zio-query/how-batching-works How Batching Works]]
+ *   [[https://zio.dev/zio-query/how-batching-works/ How Batching Works]]
  * @tparam R
  *   the environment the query requires
  * @tparam E
@@ -777,7 +777,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * }}}
    *
    * @see
-   *   [[https://zio.dev/zio-query/running-queries Running Queries]]
+   *   [[https://zio.dev/zio-query/running-queries/ Running Queries]]
    */
   def run(implicit trace: Trace): ZIO[R, E, A] =
     runCache(Cache.unsafeMake())
@@ -814,7 +814,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * }}}
    *
    * @see
-   *   [[https://zio.dev/zio-query/running-queries Running Queries]]
+   *   [[https://zio.dev/zio-query/running-queries/ Running Queries]]
    */
   def runCache(cache: => Cache)(implicit trace: Trace): ZIO[R, E, A] = {
     import ZQuery.{currentCache, currentScope}
@@ -894,7 +894,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * }}}
    *
    * @see
-   *   [[https://zio.dev/zio-query/running-queries Running Queries]]
+   *   [[https://zio.dev/zio-query/running-queries/ Running Queries]]
    */
   def runLog(implicit trace: Trace): ZIO[R, E, (Cache, A)] =
     for {
@@ -1288,7 +1288,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
  * `foreachBatched`, `foreachPar` and their `collectAll` forms).
  *
  * @see
- *   [[https://zio.dev/zio-query/creating-queries Creating Queries]]
+ *   [[https://zio.dev/zio-query/creating-queries/ Creating Queries]]
  */
 object ZQuery {
 
@@ -1623,7 +1623,7 @@ object ZQuery {
    * }}}
    *
    * @see
-   *   [[https://zio.dev/zio-query/how-batching-works How Batching Works]]
+   *   [[https://zio.dev/zio-query/how-batching-works/ How Batching Works]]
    */
   def foreachBatched[R, E, A, B, Collection[+Element] <: Iterable[Element]](
     as: Collection[A]
@@ -1712,7 +1712,7 @@ object ZQuery {
    * }}}
    *
    * @see
-   *   [[https://zio.dev/zio-query/how-batching-works How Batching Works]]
+   *   [[https://zio.dev/zio-query/how-batching-works/ How Batching Works]]
    */
   def foreachPar[R, E, A, B, Collection[+Element] <: Iterable[Element]](
     as: Collection[A]
@@ -1825,7 +1825,7 @@ object ZQuery {
    *   `fromRequests` for variants that allow for multiple requests to be
    *   submitted at once
    * @see
-   *   [[https://zio.dev/zio-query/creating-queries Creating Queries]]
+   *   [[https://zio.dev/zio-query/creating-queries/ Creating Queries]]
    */
   def fromRequest[R, E, A, B](
     request0: => A
