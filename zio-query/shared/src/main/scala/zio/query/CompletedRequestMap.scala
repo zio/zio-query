@@ -129,9 +129,9 @@ sealed abstract class CompletedRequestMap { self =>
    * constructors, such as `apply` with two or more entries, `combine`,
    * `fromIterable`, `fromIterableWith`, `fail` or the `unsafe` ones, which
    * include the maps that the `DataSource.fromFunction*` data sources return
-   * for a non-empty batch, the cast fails: on the JVM it throws a
-   * `ClassCastException`, and on Scala.js a development build fails while a
-   * release build returns the requests. This is a known bug.
+   * except for no batch or a single empty batch, the cast fails: on the JVM it
+   * throws a `ClassCastException`, and on Scala.js a development build fails
+   * while a release build returns the requests. This is a known bug.
    */
   final def requests: Set[Request[_, _]] =
     map.keySet.asInstanceOf[Set[Request[_, _]]]

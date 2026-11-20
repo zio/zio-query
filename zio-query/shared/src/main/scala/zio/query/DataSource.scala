@@ -497,9 +497,9 @@ object DataSource {
 
   /**
    * Constructs a data source from an effectual function, called once for each
-   * request. The calls for one batch run in parallel, and a failure of one call
-   * fails only that request: the other requests of the batch still get their
-   * results.
+   * request. The calls for one batch run in parallel, and a failure of the
+   * effect for one request fails only that request: the other requests of the
+   * batch still get their results.
    */
   def fromFunctionZIO[R, E, A, B](
     name: String
