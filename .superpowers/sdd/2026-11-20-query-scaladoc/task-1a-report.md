@@ -142,3 +142,49 @@ against the source: `currentCache` is `None` outside a run and inside `uncached`
   no new `[[...]]` to overloaded members, no `$` without `\`, no `^`, no `/*` in text.
 
 DONE
+
+## Fix round 1 (review A, ruling R6)
+
+Probes: `/tmp/claude-1000/query-scaladoc/probes-1a/P8Fix1.scala`, `P9Mixed.scala`, `P10MapErr.scala` (Scala
+2.13.18, `dev.zio::zio-query:0.7.9`). The issue reproducers moved to
+`/tmp/claude-1000/query-scaladoc/probes-1a-issues/` (they clashed as `object Main` when compiled with the probes).
+Every reviewer replacement was re-probed before use.
+
+Commits:
+
+1. `5fe55c6` docs(query): state when ZQuery pipelines requests and what fromFunction data sources receive (I1, I2, M7)
+2. `e7b73fb` docs(query): describe what a ZQuery timeout does to later requests (I3, M8)
+3. `6669c35` docs(query): say which failures ZQuery#memoize keeps (I4)
+4. `269e6bb` docs(query): describe how ZQuery error operators treat defects and known results (M2, M3, M4, mapError, mapBoth)
+5. `59426fd` docs(query): note when ZQuery#mapError keeps a defect (mapError refinement)
+6. `08b9a6d` docs(query): limit the ZQuery deduplication claims to requests made with caching enabled (M1)
+7. `ec1805c` docs(query): describe the release Exit and the run scope finalizers (M5, M6)
+8. `49743d1` docs(query): use the trailing-slash zio.dev URLs in ZQuery @see links
+9. (this section and `task-1a-issues.md`) docs(query): add the Task 1a fix round 1 report and issues
+
+| Finding | Action | Evidence |
+|---|---|---|
+| I1 header pipelining bullet | Applied the reviewer's text. | P8: `nB(1) *> nB(2)` gives `NamesB fn(1)`, `NamesB fn(2)`; `foreach` gives 3 function calls; `(nM(1) <&> oM(1)) *> nM(2)` gives 3 `runAll` calls; `optional`, `sandbox`, `catchAll`, `timeout` before `*>` each give 2 calls; `map.mapZIO` and `either` keep `[1] [2]` in one call (so `either` is not in the list). `Continue.Get#foldQuery` returns `Effect` (source). |
+| I2 `zipWith` | Applied the reviewer's text. | Same as I1. |
+| I3 `timeout` later requests | Applied, with "can go on" instead of "usually goes on". | P8, 10 runs: `(None,false) -> 5`, `(Some(user-2),true) -> 4`, `(None,true) -> 1` (reviewer: 8 of 10 sent). Added to the impact of bug 2. |
+| I4 `memoize` defects | Applied the reviewer's text; new bug 6. | P8: `orDie` x2, `ZQuery.die` x2, `flatMap(_ => ZQuery.die)` x2, `fromZIO(ZIO.die)` x1, `fromZIO(ZIO.fail)` x1. Reproducer re-run (`probes-1a-issues/memoizedie`). |
+| M1 caching "already made" | Applied in the header and `fromRequest`; same fix in `run` ("equal requests made with caching enabled"). | P8: `nM(1).uncached.flatMap(_ => nM(1))` and `fromRequestUncached(...).flatMap(_ => nM(1))` each give 2 `runAll([1])`. |
+| M2 `asExitMaybe` | Applied the reviewer's text. | P8: `fromZIONow(Exit.die)` = `None`, `fromZIONow(Exit.fail)` = `Some`, `failCauseNow(fail && die)` = `Some`. |
+| M3 `catchAll`, `catchAllZIO`, `either` | Described the real behaviour (typed failure goes to `h` / `Left`, defect dropped). Not a bug: ZIO does the same. | P9: ZQuery and ZIO `catchAll` both `Success(-1)`, `either` both `Success(Left(e))`, `fold` both `Success(-1)`. Source: `failureOrCause` in `catchAll` (base 209), `fold` (base 313). |
+| M3 follow-up: `mapError`, `mapBoth` | `mapError`: described, new bug 7 (ZIO keeps the defect, ZQuery drops it except on the request path). `mapBoth`: one sentence; ZIO drops it too, not a bug. | P9: ZQuery `mapError` `Fail(e!)` vs ZIO `Both(Fail(e!), Die)`; `mapBoth` both `Fail(e!)`. P10: a request whose result holds both keeps `Die` through `mapError` (`Continue.Get#mapError` uses ZIO's). |
+| M4 `fold` | Applied ("has no typed failures ... Defects still fail it"), plus the mixed-cause case. | P9: `fold` on `fromZIO(ZIO.die)` = `Failure(Die)`; mixed = `Success(-1)`. |
+| M5 `acquireReleaseExitWith` Exit | Applied the reviewer's text. | P8: release prints `release got Failure(Empty)` after a `timeout` interruption and a later `ZQuery.fail`. Source base 1930: `Exit.failCause(cause.stripFailures)`. |
+| M6 `currentScope` | Applied the reviewer's text. | P8: a user finalizer added with `addFinalizerExit` runs with `Success(ok)` on a successful run. |
+| M7 `foreachBatched` "parallel fibers" | Applied the reviewer's text. | P8: `foreachBatched` over one request to each of two 300 ms data sources takes 304 ms. |
+| M8 `TimeoutTo#apply` | Applied the reviewer's text. | Same evidence as bug 2; P8 `timeoutTo` on a 500 ms request returned the default this time, so the outcome varies. |
+| `@see` URLs | All 8 links now end with `/`. | `curl`: each bare URL 301, each trailing-slash URL 200. |
+
+Checks after the round:
+
+- Official checker `python3 -I ~/.claude/skills/scaladoc-rollout/scripts/snippets-scala-cli.py . --version 0.7.9
+  --base 4e04bed1b`: 16 examples in 5 files, PASS on 2.12.21, 2.13.18 and 3.3.9.
+- `comments-only.py 4e04bed1b zio-query`: 16 files, 0 with code changes.
+- `scala-cli fmt` run on ZQuery.scala after each group; no `.scala-build` left under `zio-query`.
+- No other `.scala` file touched.
+
+DONE
