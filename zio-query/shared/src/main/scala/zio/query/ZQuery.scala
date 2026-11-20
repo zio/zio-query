@@ -40,10 +40,14 @@ import scala.reflect.ClassTag
  *     derived from them (`zipPar`, `<&>`, `foreachPar`, `foreachBatched`, ...)
  *     are batched: each data source receives them together, in one batch.
  *   - Requests combined with `zipWith` or combinators derived from it (`zip`,
- *     `*>`, `foreach`, ...) are pipelined: a data source receives its requests
- *     in one call, as batches that must be performed one after another. A
- *     `flatMap` on the left side ends the pipeline, because the next requests
- *     depend on its result.
+ *     `*>`, `foreach`, ...) are pipelined when the requests of both sides go to
+ *     the same single data source: it receives them in one call to `runAll`, as
+ *     batches that must be performed one after another. A data source built
+ *     with one of the `DataSource.fromFunction` constructors, which are
+ *     `DataSource.Batched`, still calls its function once for each batch. A
+ *     `flatMap` after the requests of the left side ends the pipeline, and so
+ *     do `catchAll`, `foldQuery`, `optional`, `sandbox`, `timeout` and other
+ *     combinators that continue with a query.
  *   - While caching is enabled, which is the default, a request equal to one
  *     already made in the same run is not sent again, and its result is reused.
  *
@@ -1176,10 +1180,14 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * Returns a query that models the execution of this query and the specified
    * query sequentially, combining their results with the specified function.
    * Requests composed with `zipWith` or combinators derived from it are
-   * pipelined: when both queries make requests to the same data source, it
-   * receives them in one call, as batches performed one after another. A
-   * `flatMap` in this query, between its requests and its end, prevents this,
-   * and the requests of the specified query are then sent in a later call.
+   * pipelined when the requests of both queries go to the same single data
+   * source: it receives them in one call to `runAll`, as batches performed one
+   * after another, and a data source built with one of the
+   * `DataSource.fromFunction` constructors then calls its function once for
+   * each batch. A `flatMap` in this query after its requests prevents this, and
+   * so do `catchAll`, `foldQuery`, `optional`, `sandbox`, `timeout` and other
+   * combinators that continue with a query; the requests of the specified query
+   * are then sent in a later call.
    */
   def zipWith[R1 <: R, E1 >: E, B, C](
     that: => ZQuery[R1, E1, B]
@@ -1566,8 +1574,9 @@ object ZQuery {
    *
    * Unlike `foreachPar`, the queries run one after another, so effects lifted
    * with `ZQuery.fromZIO` run in order, but their requests are still batched.
-   * Use it when the order of those effects matters or when parallel fibers are
-   * not wanted.
+   * Use it when the order of those effects matters or when the queries should
+   * not run on parallel fibers; calls to different data sources in the same
+   * round still run in parallel, as for any query.
    *
    * {{{
    * import zio._
