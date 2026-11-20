@@ -545,8 +545,9 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * Maps the specified function over the failed result of this query.
    *
    * When the cause holds both a typed failure and a defect, the result fails
-   * with the mapped typed failure only, and the defect is dropped.
-   * `ZIO#mapError` keeps the defect: this is a known bug.
+   * with the mapped typed failure only, and the defect is dropped, unless the
+   * cause is the result of a request, which keeps the defect as `ZIO#mapError`
+   * does. Dropping the defect is a known bug.
    */
   def mapError[E1](f: E => E1)(implicit ev: CanFail[E], trace: Trace): ZQuery[R, E1, A] =
     ZQuery {
