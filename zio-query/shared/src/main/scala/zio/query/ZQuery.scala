@@ -973,7 +973,10 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * `ZQuery.fromZIO`, not to the calls to data sources: a request that is
    * already sent runs to completion, and the query can then return `Some` of
    * its result after the timeout has elapsed. This is a known bug. A timeout
-   * does prevent requests that the query would make later from being sent.
+   * that elapses during a step stops the query before it sends its later
+   * requests. A timeout that elapses during a request does not reliably do so:
+   * once that request completes, the query can go on to send its next requests
+   * and return `Some` of its result.
    */
   def timeout(duration: => Duration)(implicit trace: Trace): ZQuery[R, E, Option[A]] =
     timeoutTo(None)(Some(_))(duration)
@@ -2160,8 +2163,9 @@ object ZQuery {
   final class TimeoutTo[-R, +E, +A, +B](self: ZQuery[R, E, A], b: () => B) {
 
     /**
-     * Applies `f` to the result of the query if it completes within `duration`,
-     * and returns the default value otherwise.
+     * Applies `f` to the result of the query, or returns the default value if
+     * `duration` elapses first. Like `ZQuery#timeout`, it does not bound calls
+     * to data sources.
      */
     def apply[B1 >: B](
       f: A => B1
