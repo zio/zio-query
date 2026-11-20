@@ -343,6 +343,7 @@ self-contained scala-cli program (`scala-cli run --server=false <dir>`) on Scala
   (`ZQuery.scala:209`, `1961-1962`), which also fails the step. A failed step makes `modifyZIO` fail, so
   nothing is stored. `ZQuery.fromZIO` keeps a defect inside `Result.Fail` (`foldCause(Result.fail, ...)`), which
   is stored.
+- **Also reproduces (re-review, 2026-11-20):** `ZQuery.fromZIO(ZIO.die(...))` is memoized on its own, but not once `.mapError(identity)`, `.either` or `.orDie` is applied to it: each use computes it again (same root cause).
 - **Impact:** an expensive query that dies is recomputed on every use of its memoized value, with its side
   effects repeated.
 - **Test gap:** test "defects are memoized" (`ZQuerySpec.scala:362-373`) dies inside
