@@ -19,9 +19,14 @@ package zio.query
 import zio._
 
 /**
- * A `QueryAspect` is an aspect that can be weaved into queries. You can think
- * of an aspect as a polymorphic function, capable of transforming one data
- * source into another, possibly enlarging the environment type.
+ * A `QueryAspect` is an aspect that can be weaved into queries, with
+ * `ZQuery#@@`. You can think of an aspect as a polymorphic function, capable of
+ * transforming one query into another, possibly enlarging the environment type.
+ * The six type parameters bound the environment, error and success types of the
+ * queries that the aspect can be applied to.
+ *
+ * @see
+ *   [[https://zio.dev/zio-query/aspects Aspects]]
  */
 trait QueryAspect[+LowerR, -UpperR, +LowerE, -UpperE, +LowerA, -UpperA] { self =>
 
@@ -49,7 +54,8 @@ trait QueryAspect[+LowerR, -UpperR, +LowerE, -UpperE, +LowerA, -UpperA] { self =
 
   /**
    * Returns a new aspect that represents the sequential composition of this
-   * aspect with the specified one.
+   * aspect with the specified one: this aspect is applied first, and the
+   * specified one to its result.
    */
   def andThen[
     LowerR1 >: LowerR,
@@ -69,11 +75,15 @@ trait QueryAspect[+LowerR, -UpperR, +LowerE, -UpperE, +LowerA, -UpperA] { self =
     }
 }
 
+/**
+ * Constructors for query aspects.
+ */
 object QueryAspect {
 
   /**
    * A query aspect that executes queries between two effects, `before` and
-   * `after`, where the result of `before` can be used by `after`.
+   * `after`, where the result of `before` can be used by `after`. The effects
+   * run once per query, with `ZQuery.acquireReleaseWith`.
    */
   def around[R, A](
     before: ZIO[R, Nothing, A]
@@ -85,7 +95,9 @@ object QueryAspect {
 
   /**
    * A query aspect that executes requests between two effects, `before` and
-   * `after`, where the result of `before` can be used by `after`.
+   * `after`, where the result of `before` can be used by `after`. It applies
+   * `DataSourceAspect.around` to every data source of the query, so the effects
+   * run once per call to a data source, not once per request.
    */
   def aroundDataSource[R, A](
     before: Described[ZIO[R, Nothing, A]]
@@ -94,7 +106,7 @@ object QueryAspect {
 
   /**
    * A query aspect that executes requests with the specified data source
-   * aspect.
+   * aspect, by applying it to every data source that the query uses.
    */
   def fromDataSourceAspect[R](
     dataSourceAspect: DataSourceAspect[R]
@@ -105,8 +117,9 @@ object QueryAspect {
     }
 
   /**
-   * A query aspect that limits data sources to executing at most `n` requests
-   * in parallel.
+   * A query aspect that splits each batch of requests to every data source of
+   * the query into batches of at most `n` requests, as `DataSource#batchN`
+   * does.
    */
   def maxBatchSize(n: Int): QueryAspect[Nothing, Any, Nothing, Any, Nothing, Any] =
     fromDataSourceAspect(DataSourceAspect.maxBatchSize(n))
