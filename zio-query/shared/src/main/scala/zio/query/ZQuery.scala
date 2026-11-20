@@ -459,8 +459,11 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
   /**
    * Returns an effect that, when evaluated, returns a memoized version of this
    * query: the first use of the memoized query computes its result, and later
-   * uses reuse it, including a failure. Creating the memoized query does not
-   * run anything.
+   * uses reuse it, including a typed failure or a defect raised by an effect
+   * lifted with `ZQuery.fromZIO`. A query that dies in other ways, for example
+   * through `ZQuery.die` or `orDie`, is not memoized and each use runs it
+   * again: this is a known bug. Creating the memoized query does not run
+   * anything.
    *
    * This differs from caching, which stores the results of requests to a
    * [[DataSource]]. `memoize` also covers work that is not a request, such as
