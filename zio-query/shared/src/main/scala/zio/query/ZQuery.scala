@@ -43,11 +43,12 @@ import scala.reflect.ClassTag
  *     `*>`, `foreach`, ...) are pipelined when the requests of both sides go to
  *     the same single data source: it receives them in one call to `runAll`, as
  *     batches that must be performed one after another. A data source built
- *     with one of the `DataSource.fromFunction` constructors, which are
- *     `DataSource.Batched`, still calls its function once for each batch. A
- *     `flatMap` after the requests of the left side ends the pipeline, and so
- *     do `catchAll`, `foldQuery`, `optional`, `sandbox`, `timeout` and other
- *     combinators that continue with a query.
+ *     with a per-request constructor such as `DataSource.fromFunction`, which
+ *     is `DataSource.Batched`, calls its function once for each request, and
+ *     one with `DataSource.fromFunctionBatched` calls its function once for
+ *     each batch. A `flatMap` after the requests of the left side ends the
+ *     pipeline, and so do `catchAll`, `foldQuery`, `optional`, `sandbox`,
+ *     `timeout` and other combinators that continue with a query.
  *   - While caching is enabled, which is the default, a request equal to one
  *     already made with caching enabled in the same run is not sent again, and
  *     its result is reused.
@@ -467,8 +468,8 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * by an effect lifted with `ZQuery.fromZIO` when no combinator that handles
    * failures, such as `mapError`, `either` or `orDie`, is applied to it
    * afterwards. A query that dies in other ways, for example through
-   * `ZQuery.die` or `orDie`, is not memoized and each use runs it again: this
-   * is a known bug. Creating the memoized query does not run anything.
+   * `ZQuery.die` or `orDie`, is not memoized and each use runs it again.
+   * Creating the memoized query does not run anything.
    *
    * This differs from caching, which stores the results of requests to a
    * [[DataSource]]. `memoize` also covers work that is not a request, such as
@@ -494,7 +495,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * The memoized value is the first step of the query. For a query that makes
    * requests to a data source, that step is "waiting for these requests", so
    * each use sends the requests again, even with caching enabled, and reruns
-   * the work after them: this is a known bug.
+   * the work after them.
    */
   def memoize(implicit trace: Trace): UIO[ZQuery[R, E, A]] =
     ZIO.succeed(ZQuery.unsafe.memoize(self)(Unsafe, trace))
@@ -544,7 +545,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * When the cause holds both a typed failure and a defect, the result fails
    * with the mapped typed failure only, and the defect is dropped, unless the
    * cause is the result of a request, which keeps the defect as `ZIO#mapError`
-   * does. Dropping the defect is a known bug.
+   * does.
    */
   def mapError[E1](f: E => E1)(implicit ev: CanFail[E], trace: Trace): ZQuery[R, E1, A] =
     ZQuery {
@@ -621,7 +622,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * The layer is built when the query starts. Its scope closes when the first
    * step of the query completes, which for a query that makes requests is
    * before the data sources run: the data sources receive the services, but a
-   * scoped layer has already released them. This is a known bug.
+   * scoped layer has already released them.
    */
   def provideLayer[E1 >: E, R0](
     layer: => Described[ZLayer[R0, E1, R]]
@@ -667,8 +668,7 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * The race applies to the steps of the two queries, not to their requests:
    * when one query stops to wait for data sources, its requests run to
    * completion before the race goes on. So a slow request can win over a fast
-   * one, and a query that makes requests can win over one that does not. This
-   * is a known bug.
+   * one, and a query that makes requests can win over one that does not.
    */
   def race[R1 <: R, E1 >: E, A1 >: A](
     that: => ZQuery[R1, E1, A1]
@@ -986,11 +986,11 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * The timeout applies to the steps of the query, such as effects lifted with
    * `ZQuery.fromZIO`, not to the calls to data sources: a request that is
    * already sent runs to completion, and the query can then return `Some` of
-   * its result after the timeout has elapsed. This is a known bug. A timeout
-   * that elapses during a step stops the query before it sends its later
-   * requests. A timeout that elapses during a request does not reliably do so:
-   * once that request completes, the query can go on to send its next requests
-   * and return `Some` of its result.
+   * its result after the timeout has elapsed. A timeout that elapses during a
+   * step stops the query before it sends its later requests. A timeout that
+   * elapses during a request does not reliably do so: once that request
+   * completes, the query can go on to send its next requests and return `Some`
+   * of its result.
    */
   def timeout(duration: => Duration)(implicit trace: Trace): ZQuery[R, E, Option[A]] =
     timeoutTo(None)(Some(_))(duration)
@@ -1199,12 +1199,13 @@ final class ZQuery[-R, +E, +A] private (private val step: ZIO[R, Nothing, Result
    * Requests composed with `zipWith` or combinators derived from it are
    * pipelined when the requests of both queries go to the same single data
    * source: it receives them in one call to `runAll`, as batches performed one
-   * after another, and a data source built with one of the
-   * `DataSource.fromFunction` constructors then calls its function once for
-   * each batch. A `flatMap` in this query after its requests prevents this, and
-   * so do `catchAll`, `foldQuery`, `optional`, `sandbox`, `timeout` and other
-   * combinators that continue with a query; the requests of the specified query
-   * are then sent in a later call.
+   * after another, and a data source built with a per-request constructor such
+   * as `DataSource.fromFunction` then calls its function once for each request,
+   * while one built with `DataSource.fromFunctionBatched` calls its function
+   * once for each batch. A `flatMap` in this query after its requests prevents
+   * this, and so do `catchAll`, `foldQuery`, `optional`, `sandbox`, `timeout`
+   * and other combinators that continue with a query; the requests of the
+   * specified query are then sent in a later call.
    */
   def zipWith[R1 <: R, E1 >: E, B, C](
     that: => ZQuery[R1, E1, B]
